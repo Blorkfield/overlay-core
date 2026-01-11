@@ -12,14 +12,17 @@ import type {
   DynamicObstacle,
   DynamicEntity,
   ContainerOptions,
-  Bounds
+  Bounds,
+  EntityType
 } from './types';
+import { ENTITY_TYPE_DEBUG_COLORS } from './types';
 
 interface EntityEntry {
   id: string;
   body: Matter.Body;
   tags: string[];
   grounded: boolean;
+  entityType: EntityType;
 }
 
 interface ObstacleEntry {
@@ -212,13 +215,15 @@ export class OverlayScene {
    */
   spawnEntity(config: EntityConfig): string {
     const id = crypto.randomUUID();
-    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle' });
+    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
+    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle', entityType });
     const body = createEntity(id, config);
     const entry: EntityEntry = {
       id,
       body,
       tags: config.tags ?? [],
-      grounded: false
+      grounded: false,
+      entityType
     };
     this.entities.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -231,13 +236,15 @@ export class OverlayScene {
    */
   async spawnEntityAsync(config: EntityConfig): Promise<string> {
     const id = crypto.randomUUID();
-    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle' });
+    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
+    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle', entityType });
     const body = await createEntityAsync(id, config);
     const entry: EntityEntry = {
       id,
       body,
       tags: config.tags ?? [],
-      grounded: false
+      grounded: false,
+      entityType
     };
     this.entities.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -415,9 +422,9 @@ export class OverlayScene {
 
   private loop = (): void => {
     for (const entry of this.entities.values()) {
-      // Don't apply mouse force if entity is being dragged
+      // Only apply mouse force to GROUNDED_FOLLOW entities, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
-      if (!isDragging) {
+      if (!isDragging && entry.entityType === 'GROUNDED_FOLLOW') {
         applyMouseForce(entry.body, this.mouseX, entry.grounded);
       }
       if (this.config.wrapHorizontal) {
@@ -425,6 +432,9 @@ export class OverlayScene {
       }
     }
     this.fireUpdateCallbacks();
+    if (this.config.debug) {
+      this.renderDebugOverlay();
+    }
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
 
@@ -449,11 +459,37 @@ export class OverlayScene {
         x: entry.body.position.x,
         y: entry.body.position.y,
         angle: entry.body.angle,
-        tags: entry.tags
+        tags: entry.tags,
+        entityType: entry.entityType
       });
     });
 
     const data: UpdateCallbackData = { dynamicObstacles, entities };
     this.updateCallbacks.forEach((cb) => cb(data));
+  }
+
+  private renderDebugOverlay(): void {
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+
+    for (const entry of this.entities.values()) {
+      const body = entry.body;
+      const color = ENTITY_TYPE_DEBUG_COLORS[entry.entityType];
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      const vertices = body.vertices;
+      if (vertices.length > 0) {
+        ctx.moveTo(vertices[0].x, vertices[0].y);
+        for (let i = 1; i < vertices.length; i++) {
+          ctx.lineTo(vertices[i].x, vertices[i].y);
+        }
+        ctx.closePath();
+      }
+
+      ctx.stroke();
+    }
   }
 }

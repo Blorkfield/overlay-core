@@ -1,4 +1,4 @@
-import { OverlayScene } from '@blorkfield/overlay-core';
+import { OverlayScene, EntityType } from '@blorkfield/overlay-core';
 
 // Elements
 const sceneContainer = document.getElementById('scene-container') as HTMLDivElement;
@@ -17,6 +17,7 @@ const btnRemoveEntities = document.getElementById('btn-remove-entities') as HTML
 const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HTMLButtonElement;
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
+const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
@@ -151,7 +152,8 @@ async function spawnRandomEntity(): Promise<void> {
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
-  console.log('Spawning entity with image:', selectedImage || 'none');
+  const selectedType = selectEntityType.value as EntityType;
+  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType);
 
   const config = {
     x,
@@ -159,7 +161,8 @@ async function spawnRandomEntity(): Promise<void> {
     radius: 20 + Math.random() * 15,
     fillStyle: color,
     imageUrl: selectedImage || undefined,
-    tags: ['spawned']
+    tags: ['spawned'],
+    entityType: selectedType
   };
 
   // Use async for image entities (extracts shape from alpha), sync otherwise

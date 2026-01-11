@@ -42,6 +42,8 @@ export interface EntityConfig {
   tags?: string[];
   /** Shape configuration. Defaults to circle if not specified */
   shape?: ShapeConfig;
+  /** Entity behavior type. Defaults to GROUNDED_FOLLOW */
+  entityType?: EntityType;
 }
 
 export interface ObstacleConfig {
@@ -66,6 +68,7 @@ export interface DynamicEntity {
   y: number;
   angle: number;
   tags: string[];
+  entityType: EntityType;
 }
 
 export interface UpdateCallbackData {
@@ -76,6 +79,19 @@ export interface UpdateCallbackData {
 export type UpdateCallback = (data: UpdateCallbackData) => void;
 
 export type EntityState = 'idle' | 'moving' | 'falling' | 'grounded';
+
+/**
+ * Entity behavior types
+ * - GROUNDED_FOLLOW: Entity follows mouse position when grounded (default)
+ * - GROUNDED_STATIC: Entity does not follow mouse but can still be bumped/dragged
+ */
+export type EntityType = 'GROUNDED_FOLLOW' | 'GROUNDED_STATIC';
+
+/** Debug outline colors per entity type */
+export const ENTITY_TYPE_DEBUG_COLORS: Record<EntityType, string> = {
+  GROUNDED_FOLLOW: '#ff0000', // red
+  GROUNDED_STATIC: '#00ffff'  // cyan
+};
 
 export interface ContainerOptions {
   width?: number;

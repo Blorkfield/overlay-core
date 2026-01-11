@@ -1,5 +1,6 @@
 export { OverlayScene } from './OverlayScene';
 export { logger, setLogLevel, getLogLevel } from './logger';
+export { ENTITY_TYPE_DEBUG_COLORS } from './types';
 export type {
   OverlaySceneConfig,
   Bounds,
@@ -12,5 +13,6 @@ export type {
   EntityState,
   ContainerOptions,
   ShapeConfig,
-  ShapePreset
+  ShapePreset,
+  EntityType
 } from './types';
