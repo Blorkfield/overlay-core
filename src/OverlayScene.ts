@@ -176,6 +176,11 @@ export class OverlayScene {
     this.updateCallbacks = [];
   }
 
+  setDebug(enabled: boolean): void {
+    this.config.debug = enabled;
+    this.render.options.wireframes = enabled;
+  }
+
   resize(width: number, height: number): void {
     // Update canvas dimensions
     this.canvas.width = width;

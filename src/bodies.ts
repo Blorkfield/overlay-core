@@ -44,14 +44,24 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
 }
 
 export function createEntity(id: string, config: EntityConfig): Matter.Body {
+  const renderOptions: Matter.IBodyRenderOptions = config.imageUrl
+    ? {
+        sprite: {
+          texture: config.imageUrl,
+          xScale: (config.radius * 2) / 512,
+          yScale: (config.radius * 2) / 512
+        }
+      }
+    : {
+        fillStyle: config.fillStyle ?? '#ff0000'
+      };
+
   return Matter.Bodies.circle(config.x, config.y, config.radius, {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
     label: `entity:${id}`,
-    render: {
-      fillStyle: config.fillStyle ?? '#ff0000'
-    }
+    render: renderOptions
   });
 }
 

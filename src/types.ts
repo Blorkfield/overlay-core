@@ -18,6 +18,7 @@ export interface EntityConfig {
   y: number;
   radius: number;
   fillStyle?: string;
+  imageUrl?: string;
   tags?: string[];
 }
 

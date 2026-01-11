@@ -16,7 +16,9 @@ const btnReleaseAll = document.getElementById('btn-release-all') as HTMLButtonEl
 const btnRemoveEntities = document.getElementById('btn-remove-entities') as HTMLButtonElement;
 const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HTMLButtonElement;
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
+const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
+const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
 let scene: OverlayScene | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -50,7 +52,7 @@ function createScene(width: number, height: number): void {
     bounds: { top: 0, bottom: height, left: 0, right: width },
     gravity: 1,
     wrapHorizontal: true,
-    debug: true,
+    debug: false,
     background: '#16213e'
   });
 
@@ -148,11 +150,14 @@ function spawnRandomEntity(): void {
   const y = Math.random() * canvas.height * 0.3 + 50;
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   const color = colors[Math.floor(Math.random() * colors.length)];
+  const selectedImage = selectEntityImage.value;
+  console.log('Spawning entity with image:', selectedImage || 'none');
   scene.spawnEntity({
     x,
     y,
     radius: 20 + Math.random() * 15,
     fillStyle: color,
+    imageUrl: selectedImage || undefined,
     tags: ['spawned']
   });
 }
@@ -209,6 +214,10 @@ btnRemoveObstacles.addEventListener('click', () => {
 
 btnRemoveAll.addEventListener('click', () => {
   scene?.removeAll();
+});
+
+checkboxDebug.addEventListener('change', () => {
+  scene?.setDebug(checkboxDebug.checked);
 });
 
 // Handle window resize for fullscreen mode
