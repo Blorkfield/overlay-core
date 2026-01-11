@@ -1,7 +1,103 @@
 import Matter from 'matter-js';
-import type { Bounds, EntityConfig, ObstacleConfig } from './types';
+import type { Bounds, EntityConfig, ObstacleConfig, ShapeConfig } from './types';
+import { getVerticesFromImage, Vector2D } from './imageClip';
+import { logger } from './logger';
 
 const BOUNDARY_THICKNESS = 50;
+const LOG_PREFIX = 'Bodies';
+
+// Preset shape side counts
+const SHAPE_SIDES: Record<string, number> = {
+  triangle: 3,
+  rectangle: 4,
+  pentagon: 5,
+  hexagon: 6,
+  octagon: 8
+};
+
+/**
+ * Generate polygon vertices centered at origin
+ * @param sides - number of sides
+ * @param radius - distance from center to vertices
+ * @param aspectRatio - for non-regular polygons (only applies to 4-sided rectangles)
+ */
+function generatePolygonVertices(sides: number, radius: number, aspectRatio?: number): Vector2D[] {
+  // Rectangle with aspect ratio is a special 4-sided case
+  if (sides === 4 && aspectRatio !== undefined && aspectRatio !== 1) {
+    const width = radius * Math.sqrt(2 * aspectRatio / (1 + aspectRatio));
+    const height = width / aspectRatio;
+    return [
+      { x: -width, y: -height },
+      { x: width, y: -height },
+      { x: width, y: height },
+      { x: -width, y: height }
+    ];
+  }
+
+  // Regular polygon
+  const vertices: Vector2D[] = [];
+  const angleStep = (2 * Math.PI) / sides;
+  const startAngle = -Math.PI / 2; // Start from top for nicer orientation
+
+  for (let i = 0; i < sides; i++) {
+    const angle = startAngle + i * angleStep;
+    vertices.push({
+      x: radius * Math.cos(angle),
+      y: radius * Math.sin(angle)
+    });
+  }
+  return vertices;
+}
+
+/**
+ * Get vertices for a shape config (non-async presets only)
+ * Returns null only if shape is invalid - caller should fall back to circle
+ */
+function getShapeVertices(shape: ShapeConfig, radius: number): Vector2D[] | null {
+  // Custom vertices take priority
+  if (shape.vertices && shape.vertices.length >= 3) {
+    logger.debug(LOG_PREFIX, `Using custom vertices`, { count: shape.vertices.length });
+    return shape.vertices;
+  }
+
+  // Get side count - either explicit or from preset
+  const sides = shape.sides ?? SHAPE_SIDES[shape.type];
+
+  if (!sides || sides < 3) {
+    logger.warn(LOG_PREFIX, `Invalid polygon: need sides >= 3`, { type: shape.type, sides });
+    return null;
+  }
+
+  logger.debug(LOG_PREFIX, `Generating polygon`, { type: shape.type, sides, aspectRatio: shape.aspectRatio });
+  return generatePolygonVertices(sides, radius, shape.aspectRatio);
+}
+
+/**
+ * Create a Matter.js body from vertices
+ */
+function createBodyFromVertices(
+  id: string,
+  x: number,
+  y: number,
+  vertices: Vector2D[],
+  renderOptions: Matter.IBodyRenderOptions
+): Matter.Body {
+  const matterVertices = vertices.map(v => ({ x: v.x, y: v.y }));
+
+  const body = Matter.Bodies.fromVertices(x, y, [matterVertices], {
+    restitution: 0.3,
+    friction: 0.1,
+    frictionAir: 0.01,
+    label: `entity:${id}`,
+    render: renderOptions
+  });
+
+  // fromVertices can return a compound body if the vertices are concave
+  // Matter.js will decompose them. We need to ensure the body is positioned correctly
+  Matter.Body.setPosition(body, { x, y });
+
+  return body;
+}
 
 export function createBoundaries(bounds: Bounds): Matter.Body[] {
   const width = bounds.right - bounds.left;
@@ -43,8 +139,11 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
   ];
 }
 
-export function createEntity(id: string, config: EntityConfig): Matter.Body {
-  const renderOptions: Matter.IBodyRenderOptions = config.imageUrl
+/**
+ * Create render options for entity
+ */
+function createRenderOptions(config: EntityConfig): Matter.IBodyRenderOptions {
+  return config.imageUrl
     ? {
         sprite: {
           texture: config.imageUrl,
@@ -55,14 +154,90 @@ export function createEntity(id: string, config: EntityConfig): Matter.Body {
     : {
         fillStyle: config.fillStyle ?? '#ff0000'
       };
+}
 
+/**
+ * Create a circle body (default fallback)
+ */
+function createCircleEntity(id: string, config: EntityConfig): Matter.Body {
+  logger.debug(LOG_PREFIX, `Creating circle entity`, { id, radius: config.radius });
   return Matter.Bodies.circle(config.x, config.y, config.radius, {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
     label: `entity:${id}`,
-    render: renderOptions
+    render: createRenderOptions(config)
   });
+}
+
+/**
+ * Synchronous entity creation - handles circles and preset polygon shapes
+ * For image-based shape extraction, use createEntityAsync instead
+ */
+export function createEntity(id: string, config: EntityConfig): Matter.Body {
+  const shape = config.shape;
+
+  // No shape config or circle - use circle
+  if (!shape || shape.type === 'circle') {
+    return createCircleEntity(id, config);
+  }
+
+  // If there's an imageUrl, warn that they should use async for shape extraction
+  if (config.imageUrl) {
+    logger.warn(LOG_PREFIX, `Image provided but using sync createEntity - shape won't be extracted. Use createEntityAsync for image shape extraction.`);
+  }
+
+  // Get vertices for polygon shape
+  const vertices = getShapeVertices(shape, config.radius);
+  if (!vertices) {
+    logger.warn(LOG_PREFIX, `Failed to get vertices, falling back to circle`, { type: shape.type });
+    return createCircleEntity(id, config);
+  }
+
+  logger.info(LOG_PREFIX, `Creating polygon entity`, { id, type: shape.type, vertices: vertices.length });
+  return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+}
+
+/**
+ * Async entity creation - automatically extracts shape from image if imageUrl provided
+ * Falls back to circle if extraction fails
+ */
+export async function createEntityAsync(id: string, config: EntityConfig): Promise<Matter.Body> {
+  const shape = config.shape;
+
+  // If explicit circle requested, use circle
+  if (shape?.type === 'circle') {
+    logger.info(LOG_PREFIX, `Creating circle entity (explicit)`, { id });
+    return createCircleEntity(id, config);
+  }
+
+  // If imageUrl provided, try to extract shape from it
+  if (config.imageUrl) {
+    logger.info(LOG_PREFIX, `Attempting to extract shape from image`, { id, imageUrl: config.imageUrl });
+    const vertices = await getVerticesFromImage(config.imageUrl, config.radius * 2);
+
+    if (vertices.length >= 3) {
+      logger.info(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length });
+      return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+    }
+
+    logger.warn(LOG_PREFIX, `Image shape extraction failed, falling back to circle`, { id, verticesFound: vertices.length });
+    return createCircleEntity(id, config);
+  }
+
+  // No image - check for shape config (polygon presets, custom vertices)
+  if (shape) {
+    const vertices = getShapeVertices(shape, config.radius);
+    if (vertices) {
+      logger.info(LOG_PREFIX, `Creating polygon entity`, { id, type: shape.type, vertices: vertices.length });
+      return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+    }
+    logger.warn(LOG_PREFIX, `Failed to get vertices from shape config, falling back to circle`, { type: shape.type });
+  }
+
+  // Default: circle
+  logger.info(LOG_PREFIX, `Creating circle entity (default)`, { id });
+  return createCircleEntity(id, config);
 }
 
 export function createObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Matter.Body {

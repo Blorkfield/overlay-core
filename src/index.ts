@@ -1,4 +1,5 @@
 export { OverlayScene } from './OverlayScene';
+export { logger, setLogLevel, getLogLevel } from './logger';
 export type {
   OverlaySceneConfig,
   Bounds,
@@ -9,5 +10,7 @@ export type {
   UpdateCallbackData,
   UpdateCallback,
   EntityState,
-  ContainerOptions
+  ContainerOptions,
+  ShapeConfig,
+  ShapePreset
 } from './types';

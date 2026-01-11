@@ -13,6 +13,26 @@ export interface Bounds {
   right: number;
 }
 
+export type ShapePreset =
+  | 'circle'
+  | 'rectangle'
+  | 'polygon'    // generic n-gon, requires `sides`
+  | 'hexagon'
+  | 'octagon'
+  | 'triangle'
+  | 'pentagon';
+
+export interface ShapeConfig {
+  /** Shape type - preset name or 'polygon' for n-gon. Image shape extraction is automatic when imageUrl provided */
+  type: ShapePreset;
+  /** For rectangle: aspect ratio (width/height). Default 1 */
+  aspectRatio?: number;
+  /** Number of sides for polygon shapes. Required for 'polygon', optional override for presets */
+  sides?: number;
+  /** Custom vertices (overrides type). Array of {x, y} relative to center */
+  vertices?: Array<{ x: number; y: number }>;
+}
+
 export interface EntityConfig {
   x: number;
   y: number;
@@ -20,6 +40,8 @@ export interface EntityConfig {
   fillStyle?: string;
   imageUrl?: string;
   tags?: string[];
+  /** Shape configuration. Defaults to circle if not specified */
+  shape?: ShapeConfig;
 }
 
 export interface ObstacleConfig {

@@ -1,6 +1,7 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createObstacle } from './bodies';
+import { createBoundaries, createEntity, createEntityAsync, createObstacle } from './bodies';
+import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import type {
   OverlaySceneConfig,
@@ -205,9 +206,33 @@ export class OverlayScene {
 
   // ==================== ENTITY METHODS ====================
 
+  /**
+   * Spawn an entity synchronously. For 'fromImage' shapes, use spawnEntityAsync instead.
+   * If fromImage is used here, it will fall back to circle shape.
+   */
   spawnEntity(config: EntityConfig): string {
     const id = crypto.randomUUID();
+    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle' });
     const body = createEntity(id, config);
+    const entry: EntityEntry = {
+      id,
+      body,
+      tags: config.tags ?? [],
+      grounded: false
+    };
+    this.entities.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+    return id;
+  }
+
+  /**
+   * Spawn an entity asynchronously. Required for 'fromImage' shapes that need to
+   * extract shape from image alpha channel.
+   */
+  async spawnEntityAsync(config: EntityConfig): Promise<string> {
+    const id = crypto.randomUUID();
+    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle' });
+    const body = await createEntityAsync(id, config);
     const entry: EntityEntry = {
       id,
       body,

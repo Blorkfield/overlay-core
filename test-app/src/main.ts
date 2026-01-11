@@ -144,7 +144,7 @@ function applySize(): void {
   createScene(width, height);
 }
 
-function spawnRandomEntity(): void {
+async function spawnRandomEntity(): Promise<void> {
   if (!scene || !canvas) return;
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = Math.random() * canvas.height * 0.3 + 50;
@@ -152,14 +152,22 @@ function spawnRandomEntity(): void {
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
   console.log('Spawning entity with image:', selectedImage || 'none');
-  scene.spawnEntity({
+
+  const config = {
     x,
     y,
     radius: 20 + Math.random() * 15,
     fillStyle: color,
     imageUrl: selectedImage || undefined,
     tags: ['spawned']
-  });
+  };
+
+  // Use async for image entities (extracts shape from alpha), sync otherwise
+  if (selectedImage) {
+    await scene.spawnEntityAsync(config);
+  } else {
+    scene.spawnEntity(config);
+  }
 }
 
 function spawnRandomObstacle(): void {
