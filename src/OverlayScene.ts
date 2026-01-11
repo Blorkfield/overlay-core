@@ -3,6 +3,7 @@ import { createEngine, createRender } from './engine';
 import { createBoundaries, createEntity, createEntityAsync, createObstacle } from './bodies';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
+import { EffectManager } from './EffectManager';
 import type {
   OverlaySceneConfig,
   EntityConfig,
@@ -13,7 +14,8 @@ import type {
   DynamicEntity,
   ContainerOptions,
   Bounds,
-  EntityType
+  EntityType,
+  EffectConfig
 } from './types';
 import { ENTITY_TYPE_DEBUG_COLORS } from './types';
 
@@ -46,6 +48,7 @@ export class OverlayScene {
   private animationFrameId: number | null = null;
   private mouse: Matter.Mouse | null = null;
   private mouseConstraint: Matter.MouseConstraint | null = null;
+  private effectManager: EffectManager;
 
   static createContainer(
     parent: HTMLElement,
@@ -110,6 +113,13 @@ export class OverlayScene {
     // Setup collision detection for grounded state
     Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Events.on(this.engine, 'collisionEnd', this.handleCollisionEnd);
+
+    // Setup effect manager
+    this.effectManager = new EffectManager(
+      this.config.bounds,
+      (cfg) => this.spawnEntity(cfg),
+      (id) => this.entities.get(id)?.body ?? null
+    );
   }
 
   private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
@@ -205,6 +215,9 @@ export class OverlayScene {
     this.render.options.height = height;
     this.render.canvas.width = width;
     this.render.canvas.height = height;
+
+    // Update effect manager bounds
+    this.effectManager.setBounds(this.config.bounds);
   }
 
   // ==================== ENTITY METHODS ====================
@@ -418,9 +431,57 @@ export class OverlayScene {
     this.updateCallbacks.push(callback);
   }
 
+  // ==================== EFFECT METHODS ====================
+
+  /**
+   * Add or update an effect configuration.
+   * Effects are persistent spawning mechanisms that run until disabled.
+   */
+  setEffect(config: EffectConfig): void {
+    this.effectManager.setEffect(config);
+  }
+
+  /**
+   * Remove an effect by ID
+   */
+  removeEffect(id: string): void {
+    this.effectManager.removeEffect(id);
+  }
+
+  /**
+   * Enable or disable an effect
+   */
+  setEffectEnabled(id: string, enabled: boolean): void {
+    this.effectManager.setEffectEnabled(id, enabled);
+  }
+
+  /**
+   * Get an effect configuration by ID
+   */
+  getEffect(id: string): EffectConfig | undefined {
+    return this.effectManager.getEffect(id);
+  }
+
+  /**
+   * Get all effect IDs
+   */
+  getEffectIds(): string[] {
+    return this.effectManager.getEffectIds();
+  }
+
+  /**
+   * Check if an effect is currently enabled
+   */
+  isEffectEnabled(id: string): boolean {
+    return this.effectManager.isEffectEnabled(id);
+  }
+
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
+    // Update effects (spawn entities)
+    this.effectManager.update();
+
     for (const entry of this.entities.values()) {
       // Only apply mouse force to GROUNDED_FOLLOW entities, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;

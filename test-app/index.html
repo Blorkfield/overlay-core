@@ -195,6 +195,183 @@
       transform: translateX(20px);
       background: #fff;
     }
+
+    /* Floating Effects Panel Styles */
+    #effects-panel {
+      position: fixed;
+      top: 80px;
+      right: 16px;
+      background: #0f0f1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      max-width: 320px;
+      max-height: calc(100vh - 100px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #effects-panel.collapsed {
+      max-height: none;
+    }
+    .effects-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      cursor: move;
+      user-select: none;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      background: #1a1a2e;
+      border-bottom: 1px solid #2a2a4a;
+      flex-shrink: 0;
+    }
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .collapse-btn:hover {
+      color: #fff;
+    }
+    .effects-content {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .effects-content.collapsed {
+      display: none;
+    }
+    .effect-section {
+      background: #1a1a2e;
+      border-radius: 6px;
+      padding: 12px;
+      border: 1px solid #2a2a4a;
+    }
+    .effect-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .effect-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #fff;
+    }
+    .effect-params {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .param-row label {
+      font-size: 12px;
+      color: #888;
+      min-width: 120px;
+    }
+    .param-row input {
+      width: 80px;
+      padding: 6px 8px;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      background: #2a2a4a;
+      color: #fff;
+      font-size: 12px;
+    }
+    .effect-entities {
+      border-top: 1px solid #2a2a4a;
+      padding-top: 12px;
+    }
+    .entities-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .entities-header span {
+      font-size: 12px;
+      color: #888;
+    }
+    .add-entity-btn {
+      padding: 4px 8px;
+      background: #3a3a5a;
+      border: none;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .add-entity-btn:hover {
+      background: #4a4a6a;
+      color: #fff;
+    }
+    .entity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .entity-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #2a2a4a;
+      padding: 8px;
+      border-radius: 4px;
+      flex-wrap: wrap;
+    }
+    .entity-item select,
+    .entity-item input {
+      padding: 4px 6px;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 11px;
+    }
+    .entity-item select {
+      width: 100px;
+    }
+    .entity-item input {
+      width: 50px;
+    }
+    .entity-item label {
+      font-size: 10px;
+      color: #666;
+    }
+    .entity-item .remove-btn {
+      padding: 2px 6px;
+      background: #5a3a3a;
+      border: none;
+      border-radius: 4px;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 10px;
+      margin-left: auto;
+    }
+    .entity-item .remove-btn:hover {
+      background: #7a4a4a;
+    }
+    .empty-message {
+      font-size: 11px;
+      color: #555;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -244,12 +421,82 @@
       </label>
     </div>
   </div>
+
   <div id="scene-container" class="fullscreen">
     <div id="scene-wrapper">
       <div id="info">Move mouse to attract entities | Drag to move</div>
       <div id="stats">Entities: 0 | Obstacles: 0</div>
     </div>
   </div>
+  <!-- Floating Effects Panel -->
+  <div id="effects-panel">
+    <div class="effects-header" id="effects-drag-handle">
+      <span>Effects</span>
+      <button class="collapse-btn" id="effects-collapse">−</button>
+    </div>
+    <div class="effects-content" id="effects-content">
+      <!-- Burst Effect -->
+      <div class="effect-section">
+        <div class="effect-header">
+          <label class="toggle-switch">
+            <input type="checkbox" id="checkbox-burst">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="effect-title">Burst Effect</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Interval (ms):</label>
+            <input type="number" id="burst-interval" value="2000" min="100">
+          </div>
+          <div class="param-row">
+            <label>Count:</label>
+            <input type="number" id="burst-count" value="8" min="1">
+          </div>
+          <div class="param-row">
+            <label>Force:</label>
+            <input type="number" id="burst-force" value="15" min="1">
+          </div>
+        </div>
+        <div class="effect-entities">
+          <div class="entities-header">
+            <span>Entity Types</span>
+            <button class="add-entity-btn" id="burst-add-entity">+ Add</button>
+          </div>
+          <div class="entity-list" id="burst-entity-list"></div>
+        </div>
+      </div>
+
+      <!-- Rain Effect -->
+      <div class="effect-section">
+        <div class="effect-header">
+          <label class="toggle-switch">
+            <input type="checkbox" id="checkbox-rain">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="effect-title">Rain Effect</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Spawn Rate (per sec):</label>
+            <input type="number" id="rain-spawn-rate" value="5" min="0.1" step="0.5">
+          </div>
+          <div class="param-row">
+            <label>Spawn Width (0-1):</label>
+            <input type="number" id="rain-spawn-width" value="1" min="0.1" max="1" step="0.1">
+          </div>
+        </div>
+        <div class="effect-entities">
+          <div class="entities-header">
+            <span>Entity Types</span>
+            <button class="add-entity-btn" id="rain-add-entity">+ Add</button>
+          </div>
+          <div class="entity-list" id="rain-entity-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

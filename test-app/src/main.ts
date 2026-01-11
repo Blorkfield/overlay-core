@@ -1,4 +1,4 @@
-import { OverlayScene, EntityType } from '@blorkfield/overlay-core';
+import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig } from '@blorkfield/overlay-core';
 
 // Elements
 const sceneContainer = document.getElementById('scene-container') as HTMLDivElement;
@@ -20,6 +20,43 @@ const selectEntityImage = document.getElementById('select-entity-image') as HTML
 const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
+
+// Effects elements
+const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
+const effectsDragHandle = document.getElementById('effects-drag-handle') as HTMLDivElement;
+const effectsCollapseBtn = document.getElementById('effects-collapse') as HTMLButtonElement;
+const effectsContent = document.getElementById('effects-content') as HTMLDivElement;
+const checkboxBurst = document.getElementById('checkbox-burst') as HTMLInputElement;
+const checkboxRain = document.getElementById('checkbox-rain') as HTMLInputElement;
+const burstInterval = document.getElementById('burst-interval') as HTMLInputElement;
+const burstCount = document.getElementById('burst-count') as HTMLInputElement;
+const burstForce = document.getElementById('burst-force') as HTMLInputElement;
+const rainSpawnRate = document.getElementById('rain-spawn-rate') as HTMLInputElement;
+const rainSpawnWidth = document.getElementById('rain-spawn-width') as HTMLInputElement;
+const burstAddEntity = document.getElementById('burst-add-entity') as HTMLButtonElement;
+const rainAddEntity = document.getElementById('rain-add-entity') as HTMLButtonElement;
+const burstEntityList = document.getElementById('burst-entity-list') as HTMLDivElement;
+const rainEntityList = document.getElementById('rain-entity-list') as HTMLDivElement;
+
+// Available images for effects
+const availableImages = [
+  { value: '', label: 'Color (random)' },
+  { value: '/bf_koban_512.png', label: 'bf_koban_512.png' },
+  { value: '/test-bg.png', label: 'test-bg.png' }
+];
+
+// Effect entity configs storage
+interface EffectEntityUI {
+  id: string;
+  imageUrl: string;
+  probability: number;
+  minScale: number;
+  maxScale: number;
+  baseRadius: number;
+}
+
+const burstEntities: EffectEntityUI[] = [];
+const rainEntities: EffectEntityUI[] = [];
 
 let scene: OverlayScene | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -108,6 +145,11 @@ function createScene(width: number, height: number): void {
   });
 
   scene.start();
+
+  // Re-initialize effects with new scene
+  updateBurstEffect();
+  updateRainEffect();
+
   console.log('Overlay scene started!');
 }
 
@@ -238,6 +280,226 @@ window.addEventListener('resize', () => {
     scene.resize(size.width, size.height);
   }
 });
+
+// ==================== EFFECTS LOGIC ====================
+
+// Toggle effects panel collapse
+let isEffectsCollapsed = false;
+effectsCollapseBtn.addEventListener('click', () => {
+  isEffectsCollapsed = !isEffectsCollapsed;
+  effectsContent.classList.toggle('collapsed', isEffectsCollapsed);
+  effectsPanel.classList.toggle('collapsed', isEffectsCollapsed);
+  effectsCollapseBtn.textContent = isEffectsCollapsed ? '+' : '−';
+});
+
+// Draggable effects panel
+let isDragging = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+effectsDragHandle.addEventListener('mousedown', (e) => {
+  // Don't drag if clicking the collapse button
+  if (e.target === effectsCollapseBtn) return;
+  isDragging = true;
+  const rect = effectsPanel.getBoundingClientRect();
+  dragOffsetX = e.clientX - rect.left;
+  dragOffsetY = e.clientY - rect.top;
+  document.body.style.userSelect = 'none';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const x = e.clientX - dragOffsetX;
+  const y = e.clientY - dragOffsetY;
+  // Constrain to viewport
+  const maxX = window.innerWidth - effectsPanel.offsetWidth;
+  const maxY = window.innerHeight - effectsPanel.offsetHeight;
+  effectsPanel.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
+  effectsPanel.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
+  effectsPanel.style.right = 'auto';
+});
+
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+  document.body.style.userSelect = '';
+});
+
+// Convert UI entities to EffectEntityConfig[]
+function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] {
+  const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
+  return uiEntities.map((ui) => ({
+    entityConfig: {
+      fillStyle: colors[Math.floor(Math.random() * colors.length)],
+      imageUrl: ui.imageUrl || undefined,
+      tags: ['effect-spawned']
+    },
+    probability: ui.probability,
+    minScale: ui.minScale,
+    maxScale: ui.maxScale,
+    baseRadius: ui.baseRadius
+  }));
+}
+
+// Update burst effect config
+function updateBurstEffect(): void {
+  if (!scene) return;
+
+  const config: BurstEffectConfig = {
+    id: 'burst',
+    type: 'burst',
+    enabled: checkboxBurst.checked,
+    burstInterval: parseInt(burstInterval.value) || 2000,
+    burstCount: parseInt(burstCount.value) || 8,
+    burstForce: parseInt(burstForce.value) || 15,
+    entityConfigs: uiToEffectEntities(burstEntities)
+  };
+
+  scene.setEffect(config);
+  console.log('Burst effect updated:', config.enabled ? 'enabled' : 'disabled');
+}
+
+// Update rain effect config
+function updateRainEffect(): void {
+  if (!scene) return;
+
+  const config: RainEffectConfig = {
+    id: 'rain',
+    type: 'rain',
+    enabled: checkboxRain.checked,
+    spawnRate: parseFloat(rainSpawnRate.value) || 5,
+    spawnWidth: parseFloat(rainSpawnWidth.value) || 1,
+    entityConfigs: uiToEffectEntities(rainEntities)
+  };
+
+  scene.setEffect(config);
+  console.log('Rain effect updated:', config.enabled ? 'enabled' : 'disabled');
+}
+
+// Render entity list UI
+function renderEntityList(
+  container: HTMLDivElement,
+  entities: EffectEntityUI[],
+  onUpdate: () => void
+): void {
+  container.innerHTML = '';
+
+  if (entities.length === 0) {
+    container.innerHTML = '<div class="empty-message">No entity types added. Click "+ Add" to add one.</div>';
+    return;
+  }
+
+  entities.forEach((entity, index) => {
+    const item = document.createElement('div');
+    item.className = 'entity-item';
+    item.innerHTML = `
+      <select class="entity-image" data-index="${index}">
+        ${availableImages.map((img) => `<option value="${img.value}" ${entity.imageUrl === img.value ? 'selected' : ''}>${img.label}</option>`).join('')}
+      </select>
+      <label>Prob:</label>
+      <input type="number" class="entity-prob" data-index="${index}" value="${entity.probability}" min="0.1" step="0.1">
+      <label>Scale:</label>
+      <input type="number" class="entity-min-scale" data-index="${index}" value="${entity.minScale}" min="0.1" step="0.1">
+      <span>-</span>
+      <input type="number" class="entity-max-scale" data-index="${index}" value="${entity.maxScale}" min="0.1" step="0.1">
+      <label>Radius:</label>
+      <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
+      <button class="remove-btn" data-index="${index}">✕</button>
+    `;
+    container.appendChild(item);
+  });
+
+  // Event listeners for inputs
+  container.querySelectorAll('.entity-image').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
+      entities[idx].imageUrl = (e.target as HTMLSelectElement).value;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-prob').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      entities[idx].probability = parseFloat((e.target as HTMLInputElement).value) || 1;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-min-scale').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      entities[idx].minScale = parseFloat((e.target as HTMLInputElement).value) || 0.5;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-max-scale').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      entities[idx].maxScale = parseFloat((e.target as HTMLInputElement).value) || 1.5;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-radius').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      entities[idx].baseRadius = parseInt((e.target as HTMLInputElement).value) || 20;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.remove-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt((e.target as HTMLButtonElement).dataset.index!);
+      entities.splice(idx, 1);
+      renderEntityList(container, entities, onUpdate);
+      onUpdate();
+    });
+  });
+}
+
+// Add entity to effect
+function addEffectEntity(entities: EffectEntityUI[], container: HTMLDivElement, onUpdate: () => void): void {
+  entities.push({
+    id: crypto.randomUUID(),
+    imageUrl: '',
+    probability: 1,
+    minScale: 0.8,
+    maxScale: 1.2,
+    baseRadius: 20
+  });
+  renderEntityList(container, entities, onUpdate);
+  onUpdate();
+}
+
+// Effect event listeners
+checkboxBurst.addEventListener('change', updateBurstEffect);
+burstInterval.addEventListener('change', updateBurstEffect);
+burstCount.addEventListener('change', updateBurstEffect);
+burstForce.addEventListener('change', updateBurstEffect);
+
+checkboxRain.addEventListener('change', updateRainEffect);
+rainSpawnRate.addEventListener('change', updateRainEffect);
+rainSpawnWidth.addEventListener('change', updateRainEffect);
+
+burstAddEntity.addEventListener('click', () => {
+  addEffectEntity(burstEntities, burstEntityList, updateBurstEffect);
+});
+
+rainAddEntity.addEventListener('click', () => {
+  addEffectEntity(rainEntities, rainEntityList, updateRainEffect);
+});
+
+// Initialize entity lists with empty state
+renderEntityList(burstEntityList, burstEntities, updateBurstEffect);
+renderEntityList(rainEntityList, rainEntities, updateRainEffect);
+
+// Initialize effects after scene creation
+function initializeEffects(): void {
+  updateBurstEffect();
+  updateRainEffect();
+}
 
 // Initialize in fullscreen mode
 setFullscreenMode();

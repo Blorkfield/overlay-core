@@ -14,5 +14,12 @@ export type {
   ContainerOptions,
   ShapeConfig,
   ShapePreset,
-  EntityType
+  EntityType,
+  // Effect types
+  EffectConfig,
+  EffectType,
+  EffectEntityConfig,
+  BaseEffectConfig,
+  BurstEffectConfig,
+  RainEffectConfig
 } from './types';
