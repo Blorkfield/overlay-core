@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay Core Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: system-ui, sans-serif;
+    }
+    #container {
+      position: relative;
+    }
+    canvas {
+      border: 2px solid #4a4a6a;
+      border-radius: 8px;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-size: 14px;
+      background: rgba(0,0,0,0.5);
+      padding: 8px 12px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <canvas id="scene"></canvas>
+    <div id="info">Move mouse to attract the ball</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
