@@ -5,7 +5,9 @@ export type {
   EntityConfig,
   ObstacleConfig,
   DynamicObstacle,
+  DynamicEntity,
   UpdateCallbackData,
   UpdateCallback,
-  EntityState
+  EntityState,
+  ContainerOptions
 } from './types';

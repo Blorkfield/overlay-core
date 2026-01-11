@@ -43,21 +43,21 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
   ];
 }
 
-export function createEntity(config: EntityConfig): Matter.Body {
+export function createEntity(id: string, config: EntityConfig): Matter.Body {
   return Matter.Bodies.circle(config.x, config.y, config.radius, {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
-    label: 'entity',
+    label: `entity:${id}`,
     render: {
       fillStyle: config.fillStyle ?? '#ff0000'
     }
   });
 }
 
-export function createObstacle(id: string, config: ObstacleConfig): Matter.Body {
+export function createObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Matter.Body {
   return Matter.Bodies.rectangle(config.x, config.y, config.width, config.height, {
-    isStatic: true,
+    isStatic,
     label: `obstacle:${id}`,
     render: {
       visible: true,

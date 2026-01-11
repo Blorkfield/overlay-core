@@ -18,6 +18,7 @@ export interface EntityConfig {
   y: number;
   radius: number;
   fillStyle?: string;
+  tags?: string[];
 }
 
 export interface ObstacleConfig {
@@ -25,6 +26,7 @@ export interface ObstacleConfig {
   y: number;
   width: number;
   height: number;
+  tags?: string[];
 }
 
 export interface DynamicObstacle {
@@ -32,12 +34,28 @@ export interface DynamicObstacle {
   x: number;
   y: number;
   angle: number;
+  tags: string[];
+}
+
+export interface DynamicEntity {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;
+  tags: string[];
 }
 
 export interface UpdateCallbackData {
   dynamicObstacles: DynamicObstacle[];
+  entities: DynamicEntity[];
 }
 
 export type UpdateCallback = (data: UpdateCallbackData) => void;
 
 export type EntityState = 'idle' | 'moving' | 'falling' | 'grounded';
+
+export interface ContainerOptions {
+  width?: number;
+  height?: number;
+  fullscreen?: boolean;
+}

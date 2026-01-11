@@ -8,30 +8,74 @@ import type {
   ObstacleConfig,
   UpdateCallback,
   UpdateCallbackData,
-  DynamicObstacle
+  DynamicObstacle,
+  DynamicEntity,
+  ContainerOptions,
+  Bounds
 } from './types';
+
+interface EntityEntry {
+  id: string;
+  body: Matter.Body;
+  tags: string[];
+  grounded: boolean;
+}
 
 interface ObstacleEntry {
   id: string;
   body: Matter.Body;
   isStatic: boolean;
+  tags: string[];
 }
 
 export class OverlayScene {
   private engine: Matter.Engine;
   private render: Matter.Render;
   private runner: Matter.Runner;
-  private entity: Matter.Body | null = null;
+  private canvas: HTMLCanvasElement;
+  private entities: Map<string, EntityEntry> = new Map();
   private obstacles: Map<string, ObstacleEntry> = new Map();
+  private boundaries: Matter.Body[] = [];
   private updateCallbacks: UpdateCallback[] = [];
   private mouseX: number = 0;
   private config: OverlaySceneConfig;
   private animationFrameId: number | null = null;
   private mouse: Matter.Mouse | null = null;
   private mouseConstraint: Matter.MouseConstraint | null = null;
-  private entityGrounded: boolean = false;
+
+  static createContainer(
+    parent: HTMLElement,
+    options: ContainerOptions = {}
+  ): { canvas: HTMLCanvasElement; bounds: Bounds } {
+    const canvas = document.createElement('canvas');
+
+    let width: number;
+    let height: number;
+
+    if (options.fullscreen !== false && !options.width && !options.height) {
+      // Default: fullscreen (fill parent)
+      width = parent.clientWidth;
+      height = parent.clientHeight;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+    } else {
+      // Fixed size
+      width = options.width ?? 800;
+      height = options.height ?? 600;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    parent.appendChild(canvas);
+
+    return {
+      canvas,
+      bounds: { top: 0, bottom: height, left: 0, right: width }
+    };
+  }
 
   constructor(canvas: HTMLCanvasElement, config: OverlaySceneConfig) {
+    this.canvas = canvas;
     this.config = {
       gravity: 1,
       wrapHorizontal: true,
@@ -42,8 +86,8 @@ export class OverlayScene {
     this.engine = createEngine(this.config.gravity!);
     this.render = createRender(this.engine, canvas, this.config);
     this.runner = Matter.Runner.create();
-    const boundaries = createBoundaries(this.config.bounds);
-    Matter.Composite.add(this.engine.world, boundaries);
+    this.boundaries = createBoundaries(this.config.bounds);
+    Matter.Composite.add(this.engine.world, this.boundaries);
 
     // Setup mouse interaction
     this.mouse = Matter.Mouse.create(canvas);
@@ -66,39 +110,41 @@ export class OverlayScene {
 
   private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
     for (const pair of event.pairs) {
-      if (this.isEntityGroundedCollision(pair)) {
-        this.entityGrounded = true;
+      const entityEntry = this.findEntityInCollision(pair);
+      if (entityEntry && this.isEntityOnTop(entityEntry.body, pair)) {
+        entityEntry.grounded = true;
       }
     }
   };
 
   private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
     for (const pair of event.pairs) {
-      if (this.isEntityGroundedCollision(pair)) {
-        // Check if still colliding with something else
-        this.entityGrounded = this.checkEntityStillGrounded();
+      const entityEntry = this.findEntityInCollision(pair);
+      if (entityEntry) {
+        entityEntry.grounded = this.checkEntityStillGrounded(entityEntry.body);
       }
     }
   };
 
-  private isEntityGroundedCollision(pair: Matter.Pair): boolean {
-    if (!this.entity) return false;
-    const dominated = pair.bodyA === this.entity || pair.bodyB === this.entity;
-    if (!dominated) return false;
-
-    const other = pair.bodyA === this.entity ? pair.bodyB : pair.bodyA;
-    // Check if the entity is on top (collision normal pointing up)
-    const entityPos = this.entity.position;
-    const otherPos = other.position;
-    return entityPos.y < otherPos.y;
+  private findEntityInCollision(pair: Matter.Pair): EntityEntry | null {
+    for (const entry of this.entities.values()) {
+      if (pair.bodyA === entry.body || pair.bodyB === entry.body) {
+        return entry;
+      }
+    }
+    return null;
   }
 
-  private checkEntityStillGrounded(): boolean {
-    if (!this.entity) return false;
-    const collisions = Matter.Query.collides(this.entity, Matter.Composite.allBodies(this.engine.world));
+  private isEntityOnTop(entity: Matter.Body, pair: Matter.Pair): boolean {
+    const other = pair.bodyA === entity ? pair.bodyB : pair.bodyA;
+    return entity.position.y < other.position.y;
+  }
+
+  private checkEntityStillGrounded(entity: Matter.Body): boolean {
+    const collisions = Matter.Query.collides(entity, Matter.Composite.allBodies(this.engine.world));
     for (const collision of collisions) {
-      const other: Matter.Body = collision.bodyA === this.entity ? collision.bodyB : collision.bodyA;
-      if (other !== this.entity && this.entity.position.y < other.position.y) {
+      const other: Matter.Body = collision.bodyA === entity ? collision.bodyB : collision.bodyA;
+      if (other !== entity && entity.position.y < other.position.y) {
         return true;
       }
     }
@@ -125,26 +171,118 @@ export class OverlayScene {
     Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
     Matter.Engine.clear(this.engine);
+    this.entities.clear();
     this.obstacles.clear();
     this.updateCallbacks = [];
   }
 
-  spawnEntity(config: EntityConfig): void {
-    if (this.entity) {
-      Matter.Composite.remove(this.engine.world, this.entity);
+  resize(width: number, height: number): void {
+    // Update canvas dimensions
+    this.canvas.width = width;
+    this.canvas.height = height;
+
+    // Update config bounds
+    this.config.bounds = { top: 0, bottom: height, left: 0, right: width };
+
+    // Remove old boundaries
+    Matter.Composite.remove(this.engine.world, this.boundaries);
+
+    // Create and add new boundaries
+    this.boundaries = createBoundaries(this.config.bounds);
+    Matter.Composite.add(this.engine.world, this.boundaries);
+
+    // Update render bounds
+    this.render.options.width = width;
+    this.render.options.height = height;
+    this.render.canvas.width = width;
+    this.render.canvas.height = height;
+  }
+
+  // ==================== ENTITY METHODS ====================
+
+  spawnEntity(config: EntityConfig): string {
+    const id = crypto.randomUUID();
+    const body = createEntity(id, config);
+    const entry: EntityEntry = {
+      id,
+      body,
+      tags: config.tags ?? [],
+      grounded: false
+    };
+    this.entities.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+    return id;
+  }
+
+  removeEntity(id: string): void {
+    const entry = this.entities.get(id);
+    if (!entry) return;
+    Matter.Composite.remove(this.engine.world, entry.body);
+    this.entities.delete(id);
+  }
+
+  removeAllEntities(): void {
+    for (const entry of this.entities.values()) {
+      Matter.Composite.remove(this.engine.world, entry.body);
     }
-    this.entity = createEntity(config);
-    Matter.Composite.add(this.engine.world, this.entity);
+    this.entities.clear();
+  }
+
+  removeEntitiesByTag(tag: string): void {
+    const toRemove: string[] = [];
+    for (const [id, entry] of this.entities) {
+      if (entry.tags.includes(tag)) {
+        Matter.Composite.remove(this.engine.world, entry.body);
+        toRemove.push(id);
+      }
+    }
+    toRemove.forEach((id) => this.entities.delete(id));
+  }
+
+  getEntityIds(): string[] {
+    return Array.from(this.entities.keys());
+  }
+
+  getEntityIdsByTag(tag: string): string[] {
+    const ids: string[] = [];
+    for (const [id, entry] of this.entities) {
+      if (entry.tags.includes(tag)) {
+        ids.push(id);
+      }
+    }
+    return ids;
   }
 
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
   }
 
+  // ==================== OBSTACLE METHODS ====================
+
   addObstacle(config: ObstacleConfig): string {
     const id = crypto.randomUUID();
-    const body = createObstacle(id, config);
-    this.obstacles.set(id, { id, body, isStatic: true });
+    const body = createObstacle(id, config, true);
+    const entry: ObstacleEntry = {
+      id,
+      body,
+      isStatic: true,
+      tags: config.tags ?? []
+    };
+    this.obstacles.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+    return id;
+  }
+
+  spawnFallingObstacle(config: ObstacleConfig): string {
+    const id = crypto.randomUUID();
+    const body = createObstacle(id, config, false);
+    const entry: ObstacleEntry = {
+      id,
+      body,
+      isStatic: false,
+      tags: config.tags ?? []
+    };
+    this.obstacles.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
     return id;
   }
@@ -156,6 +294,30 @@ export class OverlayScene {
     entry.isStatic = false;
   }
 
+  releaseObstacles(ids: string[]): void {
+    for (const id of ids) {
+      this.releaseObstacle(id);
+    }
+  }
+
+  releaseAllObstacles(): void {
+    for (const entry of this.obstacles.values()) {
+      if (entry.isStatic) {
+        Matter.Body.setStatic(entry.body, false);
+        entry.isStatic = false;
+      }
+    }
+  }
+
+  releaseObstaclesByTag(tag: string): void {
+    for (const entry of this.obstacles.values()) {
+      if (entry.tags.includes(tag) && entry.isStatic) {
+        Matter.Body.setStatic(entry.body, false);
+        entry.isStatic = false;
+      }
+    }
+  }
+
   removeObstacle(id: string): void {
     const entry = this.obstacles.get(id);
     if (!entry) return;
@@ -163,19 +325,73 @@ export class OverlayScene {
     this.obstacles.delete(id);
   }
 
+  removeObstacles(ids: string[]): void {
+    for (const id of ids) {
+      this.removeObstacle(id);
+    }
+  }
+
+  removeAllObstacles(): void {
+    for (const entry of this.obstacles.values()) {
+      Matter.Composite.remove(this.engine.world, entry.body);
+    }
+    this.obstacles.clear();
+  }
+
+  removeObstaclesByTag(tag: string): void {
+    const toRemove: string[] = [];
+    for (const [id, entry] of this.obstacles) {
+      if (entry.tags.includes(tag)) {
+        Matter.Composite.remove(this.engine.world, entry.body);
+        toRemove.push(id);
+      }
+    }
+    toRemove.forEach((id) => this.obstacles.delete(id));
+  }
+
+  getObstacleIds(): string[] {
+    return Array.from(this.obstacles.keys());
+  }
+
+  getObstacleIdsByTag(tag: string): string[] {
+    const ids: string[] = [];
+    for (const [id, entry] of this.obstacles) {
+      if (entry.tags.includes(tag)) {
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  // ==================== COMBINED TAG METHODS ====================
+
+  removeAllByTag(tag: string): void {
+    this.removeEntitiesByTag(tag);
+    this.removeObstaclesByTag(tag);
+  }
+
+  removeAll(): void {
+    this.removeAllEntities();
+    this.removeAllObstacles();
+  }
+
+  // ==================== CALLBACKS ====================
+
   onUpdate(callback: UpdateCallback): void {
     this.updateCallbacks.push(callback);
   }
 
+  // ==================== PRIVATE ====================
+
   private loop = (): void => {
-    if (this.entity) {
+    for (const entry of this.entities.values()) {
       // Don't apply mouse force if entity is being dragged
-      const isDragging = this.mouseConstraint?.body === this.entity;
+      const isDragging = this.mouseConstraint?.body === entry.body;
       if (!isDragging) {
-        applyMouseForce(this.entity, this.mouseX, this.entityGrounded);
+        applyMouseForce(entry.body, this.mouseX, entry.grounded);
       }
       if (this.config.wrapHorizontal) {
-        wrapHorizontal(this.entity, this.config.bounds);
+        wrapHorizontal(entry.body, this.config.bounds);
       }
     }
     this.fireUpdateCallbacks();
@@ -190,11 +406,24 @@ export class OverlayScene {
           id: entry.id,
           x: entry.body.position.x,
           y: entry.body.position.y,
-          angle: entry.body.angle
+          angle: entry.body.angle,
+          tags: entry.tags
         });
       }
     });
-    const data: UpdateCallbackData = { dynamicObstacles };
+
+    const entities: DynamicEntity[] = [];
+    this.entities.forEach((entry) => {
+      entities.push({
+        id: entry.id,
+        x: entry.body.position.x,
+        y: entry.body.position.y,
+        angle: entry.body.angle,
+        tags: entry.tags
+      });
+    });
+
+    const data: UpdateCallbackData = { dynamicObstacles, entities };
     this.updateCallbacks.forEach((cb) => cb(data));
   }
 }
