@@ -154,7 +154,6 @@
       flex-direction: column;
     }
     #effects-panel {
-      right: 16px;
       max-height: calc(100vh - 32px);
       overflow: hidden;
     }
@@ -162,18 +161,47 @@
       overflow-y: auto;
     }
     #entity-panel {
-      left: 16px;
       overflow: hidden;
     }
     #entity-panel .effects-content {
       overflow: hidden;
     }
-    #settings-panel {
-      left: 50%;
-      transform: translateX(-50%);
-    }
     #settings-panel .effects-content {
       overflow: hidden;
+    }
+    .snap-preview {
+      position: fixed;
+      top: 0;
+      width: 4px;
+      background: #4a90d9;
+      border-radius: 2px;
+      pointer-events: none;
+      z-index: 1001;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .snap-preview.visible {
+      opacity: 1;
+    }
+    .anchor-indicator {
+      position: fixed;
+      width: 40px;
+      height: 40px;
+      border: 2px dashed #4a90d9;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .anchor-indicator.visible {
+      opacity: 0.6;
+    }
+    .anchor-indicator.active {
+      opacity: 1;
+      border-style: solid;
+      background: rgba(74, 144, 217, 0.2);
+      transform: scale(1.1);
     }
     .panel-btn {
       padding: 8px 12px;
@@ -204,6 +232,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 10px 12px;
+      padding-left: 0;
       cursor: move;
       user-select: none;
       color: #fff;
@@ -212,6 +241,26 @@
       background: #1a1a2e;
       border-bottom: 1px solid #2a2a4a;
       flex-shrink: 0;
+    }
+    .detach-grip {
+      width: 12px;
+      height: 100%;
+      min-height: 20px;
+      background: linear-gradient(90deg, #3a3a5a 0%, #3a3a5a 40%, transparent 40%, transparent 60%, #3a3a5a 60%, #3a3a5a 100%);
+      background-size: 6px 100%;
+      cursor: grab;
+      flex-shrink: 0;
+      margin-right: 8px;
+      border-radius: 4px 0 0 4px;
+      opacity: 0.6;
+      transition: opacity 0.15s, background-color 0.15s;
+    }
+    .detach-grip:hover {
+      opacity: 1;
+      background-color: rgba(74, 144, 217, 0.3);
+    }
+    .detach-grip:active {
+      cursor: grabbing;
     }
     .collapse-btn {
       background: none;
@@ -384,10 +433,11 @@
   <!-- Floating Settings Panel -->
   <div id="settings-panel" class="floating-panel">
     <div class="effects-header" id="settings-drag-handle">
-      <span>Overlay Settings</span>
-      <button class="collapse-btn" id="settings-collapse">−</button>
+      <div class="detach-grip" id="settings-detach-grip"></div>
+      <span style="flex:1">Overlay Settings</span>
+      <button class="collapse-btn" id="settings-collapse">+</button>
     </div>
-    <div class="effects-content" id="settings-content">
+    <div class="effects-content collapsed" id="settings-content">
       <div class="effect-section">
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <button id="btn-fullscreen" class="toggle-btn active" style="flex:1">Fullscreen</button>
@@ -420,10 +470,11 @@
   <!-- Floating Entity Panel -->
   <div id="entity-panel" class="floating-panel">
     <div class="effects-header" id="entity-drag-handle">
-      <span>Entity Management</span>
-      <button class="collapse-btn" id="entity-collapse">−</button>
+      <div class="detach-grip" id="entity-detach-grip"></div>
+      <span style="flex:1">Entity Management</span>
+      <button class="collapse-btn" id="entity-collapse">+</button>
     </div>
-    <div class="effects-content" id="entity-content">
+    <div class="effects-content collapsed" id="entity-content">
       <div class="effect-section">
         <div class="effect-params">
           <div class="param-row">
@@ -467,10 +518,11 @@
   <!-- Floating Effects Panel -->
   <div id="effects-panel" class="floating-panel">
     <div class="effects-header" id="effects-drag-handle">
-      <span>Effects</span>
-      <button class="collapse-btn" id="effects-collapse">−</button>
+      <div class="detach-grip" id="effects-detach-grip"></div>
+      <span style="flex:1">Effects</span>
+      <button class="collapse-btn" id="effects-collapse">+</button>
     </div>
-    <div class="effects-content" id="effects-content">
+    <div class="effects-content collapsed" id="effects-content">
       <!-- Burst Effect -->
       <div class="effect-section">
         <div class="effect-header">
