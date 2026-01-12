@@ -21,6 +21,12 @@ const selectEntityType = document.getElementById('select-entity-type') as HTMLSe
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
+// Settings panel elements
+const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
+const settingsDragHandle = document.getElementById('settings-drag-handle') as HTMLDivElement;
+const settingsCollapseBtn = document.getElementById('settings-collapse') as HTMLButtonElement;
+const settingsContent = document.getElementById('settings-content') as HTMLDivElement;
+
 // Entity panel elements
 const entityPanel = document.getElementById('entity-panel') as HTMLDivElement;
 const entityDragHandle = document.getElementById('entity-drag-handle') as HTMLDivElement;
@@ -339,6 +345,7 @@ function setupFloatingPanel(
   });
 }
 
+setupFloatingPanel(settingsPanel, settingsDragHandle, settingsCollapseBtn, settingsContent);
 setupFloatingPanel(entityPanel, entityDragHandle, entityCollapseBtn, entityContent);
 setupFloatingPanel(effectsPanel, effectsDragHandle, effectsCollapseBtn, effectsContent);
 
