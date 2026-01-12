@@ -112,14 +112,6 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
       BOUNDARY_THICKNESS,
       { ...options, label: 'ground' }
     ),
-    // Ceiling
-    Matter.Bodies.rectangle(
-      bounds.left + width / 2,
-      bounds.top - BOUNDARY_THICKNESS / 2,
-      width,
-      BOUNDARY_THICKNESS,
-      { ...options, label: 'ceiling' }
-    ),
     // Left wall
     Matter.Bodies.rectangle(
       bounds.left - BOUNDARY_THICKNESS / 2,

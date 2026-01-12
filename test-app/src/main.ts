@@ -21,7 +21,13 @@ const selectEntityType = document.getElementById('select-entity-type') as HTMLSe
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
-// Effects elements
+// Entity panel elements
+const entityPanel = document.getElementById('entity-panel') as HTMLDivElement;
+const entityDragHandle = document.getElementById('entity-drag-handle') as HTMLDivElement;
+const entityCollapseBtn = document.getElementById('entity-collapse') as HTMLButtonElement;
+const entityContent = document.getElementById('entity-content') as HTMLDivElement;
+
+// Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
 const effectsDragHandle = document.getElementById('effects-drag-handle') as HTMLDivElement;
 const effectsCollapseBtn = document.getElementById('effects-collapse') as HTMLButtonElement;
@@ -45,10 +51,17 @@ const availableImages = [
   { value: '/test-bg.png', label: 'test-bg.png' }
 ];
 
+// Available entity types
+const availableEntityTypes: { value: EntityType; label: string }[] = [
+  { value: 'GROUNDED_FOLLOW', label: 'Follow' },
+  { value: 'GROUNDED_STATIC', label: 'Static' }
+];
+
 // Effect entity configs storage
 interface EffectEntityUI {
   id: string;
   imageUrl: string;
+  entityType: EntityType;
   probability: number;
   minScale: number;
   maxScale: number;
@@ -281,48 +294,55 @@ window.addEventListener('resize', () => {
   }
 });
 
+// ==================== PANEL LOGIC ====================
+
+function setupFloatingPanel(
+  panel: HTMLDivElement,
+  dragHandle: HTMLDivElement,
+  collapseBtn: HTMLButtonElement,
+  content: HTMLDivElement
+) {
+  let isCollapsed = false;
+  collapseBtn.addEventListener('click', () => {
+    isCollapsed = !isCollapsed;
+    content.classList.toggle('collapsed', isCollapsed);
+    collapseBtn.textContent = isCollapsed ? '+' : '−';
+  });
+
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  dragHandle.addEventListener('mousedown', (e) => {
+    if (e.target === collapseBtn) return;
+    isDragging = true;
+    const rect = panel.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const x = e.clientX - dragOffsetX;
+    const y = e.clientY - dragOffsetY;
+    const maxX = window.innerWidth - panel.offsetWidth;
+    const maxY = window.innerHeight - panel.offsetHeight;
+    panel.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
+    panel.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
+    panel.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    document.body.style.userSelect = '';
+  });
+}
+
+setupFloatingPanel(entityPanel, entityDragHandle, entityCollapseBtn, entityContent);
+setupFloatingPanel(effectsPanel, effectsDragHandle, effectsCollapseBtn, effectsContent);
+
 // ==================== EFFECTS LOGIC ====================
-
-// Toggle effects panel collapse
-let isEffectsCollapsed = false;
-effectsCollapseBtn.addEventListener('click', () => {
-  isEffectsCollapsed = !isEffectsCollapsed;
-  effectsContent.classList.toggle('collapsed', isEffectsCollapsed);
-  effectsPanel.classList.toggle('collapsed', isEffectsCollapsed);
-  effectsCollapseBtn.textContent = isEffectsCollapsed ? '+' : '−';
-});
-
-// Draggable effects panel
-let isDragging = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-
-effectsDragHandle.addEventListener('mousedown', (e) => {
-  // Don't drag if clicking the collapse button
-  if (e.target === effectsCollapseBtn) return;
-  isDragging = true;
-  const rect = effectsPanel.getBoundingClientRect();
-  dragOffsetX = e.clientX - rect.left;
-  dragOffsetY = e.clientY - rect.top;
-  document.body.style.userSelect = 'none';
-});
-
-document.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
-  const x = e.clientX - dragOffsetX;
-  const y = e.clientY - dragOffsetY;
-  // Constrain to viewport
-  const maxX = window.innerWidth - effectsPanel.offsetWidth;
-  const maxY = window.innerHeight - effectsPanel.offsetHeight;
-  effectsPanel.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
-  effectsPanel.style.top = `${Math.max(0, Math.min(y, maxY))}px`;
-  effectsPanel.style.right = 'auto';
-});
-
-document.addEventListener('mouseup', () => {
-  isDragging = false;
-  document.body.style.userSelect = '';
-});
 
 // Convert UI entities to EffectEntityConfig[]
 function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] {
@@ -331,7 +351,8 @@ function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] 
     entityConfig: {
       fillStyle: colors[Math.floor(Math.random() * colors.length)],
       imageUrl: ui.imageUrl || undefined,
-      tags: ['effect-spawned']
+      tags: ['effect-spawned'],
+      entityType: ui.entityType
     },
     probability: ui.probability,
     minScale: ui.minScale,
@@ -392,18 +413,34 @@ function renderEntityList(
     const item = document.createElement('div');
     item.className = 'entity-item';
     item.innerHTML = `
-      <select class="entity-image" data-index="${index}">
-        ${availableImages.map((img) => `<option value="${img.value}" ${entity.imageUrl === img.value ? 'selected' : ''}>${img.label}</option>`).join('')}
-      </select>
-      <label>Prob:</label>
-      <input type="number" class="entity-prob" data-index="${index}" value="${entity.probability}" min="0.1" step="0.1">
-      <label>Scale:</label>
-      <input type="number" class="entity-min-scale" data-index="${index}" value="${entity.minScale}" min="0.1" step="0.1">
-      <span>-</span>
-      <input type="number" class="entity-max-scale" data-index="${index}" value="${entity.maxScale}" min="0.1" step="0.1">
-      <label>Radius:</label>
-      <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
-      <button class="remove-btn" data-index="${index}">✕</button>
+      <div class="entity-row entity-row-header">
+        <span style="font-size:11px;color:#aaa">Entity ${index + 1}</span>
+        <button class="remove-btn" data-index="${index}">Remove</button>
+      </div>
+      <div class="entity-row">
+        <label>Image</label>
+        <select class="entity-image" data-index="${index}">
+          ${availableImages.map((img) => `<option value="${img.value}" ${entity.imageUrl === img.value ? 'selected' : ''}>${img.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="entity-row">
+        <label>Type</label>
+        <select class="entity-type" data-index="${index}">
+          ${availableEntityTypes.map((t) => `<option value="${t.value}" ${entity.entityType === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="entity-row">
+        <label>Scale</label>
+        <input type="number" class="entity-min-scale" data-index="${index}" value="${entity.minScale}" min="0.1" step="0.1">
+        <span style="color:#666">to</span>
+        <input type="number" class="entity-max-scale" data-index="${index}" value="${entity.maxScale}" min="0.1" step="0.1">
+      </div>
+      <div class="entity-row">
+        <label>Prob</label>
+        <input type="number" class="entity-prob" data-index="${index}" value="${entity.probability}" min="0.1" step="0.1">
+        <label style="margin-left:12px">Radius</label>
+        <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
+      </div>
     `;
     container.appendChild(item);
   });
@@ -413,6 +450,14 @@ function renderEntityList(
     select.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
       entities[idx].imageUrl = (e.target as HTMLSelectElement).value;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-type').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
+      entities[idx].entityType = (e.target as HTMLSelectElement).value as EntityType;
       onUpdate();
     });
   });
@@ -464,6 +509,7 @@ function addEffectEntity(entities: EffectEntityUI[], container: HTMLDivElement, 
   entities.push({
     id: crypto.randomUUID(),
     imageUrl: '',
+    entityType: 'GROUNDED_FOLLOW',
     probability: 1,
     minScale: 0.8,
     maxScale: 1.2,

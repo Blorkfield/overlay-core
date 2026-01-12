@@ -48,6 +48,13 @@ export class EffectManager {
   setEffect(config: EffectConfig): void {
     const existing = this.effects.get(config.id);
     if (existing) {
+      // Reset timing if effect is being enabled (was disabled, now enabled)
+      const wasDisabled = !existing.config.enabled;
+      const nowEnabled = config.enabled;
+      if (wasDisabled && nowEnabled) {
+        existing.lastSpawnTime = Date.now();
+        existing.spawnAccumulator = 0;
+      }
       existing.config = config;
       logger.debug('EffectManager', `Updated effect: ${config.id}`, { type: config.type, enabled: config.enabled });
     } else {
@@ -137,7 +144,8 @@ export class EffectManager {
 
   private updateRainEffect(state: EffectState, now: number): void {
     const config = state.config as RainEffectConfig;
-    const elapsed = now - state.lastSpawnTime;
+    // Cap elapsed time to 100ms to prevent burst spawning after pauses/re-enables
+    const elapsed = Math.min(now - state.lastSpawnTime, 100);
     state.lastSpawnTime = now;
 
     // Calculate how many entities to spawn this frame

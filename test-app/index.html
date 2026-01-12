@@ -109,6 +109,12 @@
       font-size: 14px;
       cursor: pointer;
     }
+    .select-truncate {
+      width: 120px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
     #scene-container {
       flex: 1;
       position: relative;
@@ -196,24 +202,53 @@
       background: #fff;
     }
 
-    /* Floating Effects Panel Styles */
-    #effects-panel {
+    /* Floating Panel Styles */
+    .floating-panel {
       position: fixed;
       top: 80px;
-      right: 16px;
       background: #0f0f1a;
       border: 1px solid #2a2a4a;
       border-radius: 8px;
       z-index: 1000;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-      max-width: 320px;
-      max-height: calc(100vh - 100px);
-      overflow: hidden;
+      width: 300px;
       display: flex;
       flex-direction: column;
     }
-    #effects-panel.collapsed {
-      max-height: none;
+    #effects-panel {
+      right: 16px;
+      max-height: calc(100vh - 100px);
+      overflow: hidden;
+    }
+    #effects-panel .effects-content {
+      overflow-y: auto;
+    }
+    #entity-panel {
+      left: 16px;
+      overflow: hidden;
+    }
+    #entity-panel .effects-content {
+      overflow: hidden;
+    }
+    .panel-btn {
+      padding: 8px 12px;
+      background: #3a4a6a;
+      border: 1px solid #4a5a7a;
+      border-radius: 4px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+    .panel-btn:hover {
+      background: #4a5a8a;
+    }
+    .panel-btn-danger {
+      background: #4a3a5a;
+      border-color: #5a4a6a;
+    }
+    .panel-btn-danger:hover {
+      background: #5a4a6a;
     }
     .effects-header {
       display: flex;
@@ -327,17 +362,29 @@
       gap: 8px;
     }
     .entity-item {
+      background: #2a2a4a;
+      padding: 10px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .entity-row {
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #2a2a4a;
-      padding: 8px;
-      border-radius: 4px;
-      flex-wrap: wrap;
+      margin-bottom: 8px;
+      min-width: 0;
+    }
+    .entity-row:last-child {
+      margin-bottom: 0;
+    }
+    .entity-row-header {
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #3a3a5a;
     }
     .entity-item select,
     .entity-item input {
-      padding: 4px 6px;
+      padding: 5px 8px;
       border: 1px solid #3a3a5a;
       border-radius: 4px;
       background: #1a1a2e;
@@ -345,27 +392,30 @@
       font-size: 11px;
     }
     .entity-item select {
-      width: 100px;
+      flex: 1;
+      min-width: 0;
     }
     .entity-item input {
       width: 50px;
+      flex-shrink: 0;
     }
     .entity-item label {
-      font-size: 10px;
-      color: #666;
+      font-size: 11px;
+      color: #888;
+      min-width: 45px;
     }
     .entity-item .remove-btn {
-      padding: 2px 6px;
-      background: #5a3a3a;
+      padding: 4px 8px;
+      background: #3a4a6a;
       border: none;
       border-radius: 4px;
-      color: #ccc;
+      color: #aaa;
       cursor: pointer;
       font-size: 10px;
-      margin-left: auto;
     }
     .entity-item .remove-btn:hover {
-      background: #7a4a4a;
+      background: #4a5a7a;
+      color: #fff;
     }
     .empty-message {
       font-size: 11px;
@@ -388,31 +438,6 @@
       <input type="number" id="input-height" value="600" disabled>
       <button id="btn-apply" class="apply-btn" disabled>Apply</button>
     </div>
-    <div class="control-group">
-      <label>Image:</label>
-      <select id="select-entity-image" class="select-input">
-        <option value="">None</option>
-        <option value="/bf_koban_512.png">bf_koban_512.png</option>
-        <option value="/test-bg.png">test-bg.png</option>
-      </select>
-      <label>Type:</label>
-      <select id="select-entity-type" class="select-input">
-        <option value="GROUNDED_FOLLOW">Follow</option>
-        <option value="GROUNDED_STATIC">Static</option>
-      </select>
-      <button id="btn-spawn-entity" class="action-btn">Spawn Entity</button>
-      <button id="btn-spawn-obstacle" class="action-btn">Add Obstacle</button>
-      <button id="btn-spawn-falling" class="action-btn">Add Falling</button>
-    </div>
-    <div class="control-group">
-      <button id="btn-release-group" class="action-btn">Release "platforms"</button>
-      <button id="btn-release-all" class="action-btn">Release All</button>
-    </div>
-    <div class="control-group">
-      <button id="btn-remove-entities" class="action-btn">Remove Entities</button>
-      <button id="btn-remove-obstacles" class="action-btn">Remove Obstacles</button>
-      <button id="btn-remove-all" class="action-btn">Remove All</button>
-    </div>
     <div class="control-group" style="margin-left: auto;">
       <label>Debug:</label>
       <label class="toggle-switch">
@@ -428,8 +453,55 @@
       <div id="stats">Entities: 0 | Obstacles: 0</div>
     </div>
   </div>
+  <!-- Floating Entity Panel -->
+  <div id="entity-panel" class="floating-panel">
+    <div class="effects-header" id="entity-drag-handle">
+      <span>Entity Management</span>
+      <button class="collapse-btn" id="entity-collapse">−</button>
+    </div>
+    <div class="effects-content" id="entity-content">
+      <div class="effect-section">
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Image:</label>
+            <select id="select-entity-image" class="select-input select-truncate">
+              <option value="">None</option>
+              <option value="/bf_koban_512.png">bf_koban_512.png</option>
+              <option value="/test-bg.png">test-bg.png</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label>Type:</label>
+            <select id="select-entity-type" class="select-input select-truncate">
+              <option value="GROUNDED_FOLLOW">Follow</option>
+              <option value="GROUNDED_STATIC">Static</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <button id="btn-spawn-entity" class="panel-btn">Spawn Entity</button>
+          <button id="btn-spawn-obstacle" class="panel-btn">Add Obstacle</button>
+          <button id="btn-spawn-falling" class="panel-btn">Add Falling</button>
+        </div>
+      </div>
+      <div class="effect-section">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button id="btn-release-group" class="panel-btn">Release "platforms"</button>
+          <button id="btn-release-all" class="panel-btn">Release All</button>
+        </div>
+      </div>
+      <div class="effect-section">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button id="btn-remove-entities" class="panel-btn panel-btn-danger">Remove Entities</button>
+          <button id="btn-remove-obstacles" class="panel-btn panel-btn-danger">Remove Obstacles</button>
+          <button id="btn-remove-all" class="panel-btn panel-btn-danger">Remove All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating Effects Panel -->
-  <div id="effects-panel">
+  <div id="effects-panel" class="floating-panel">
     <div class="effects-header" id="effects-drag-handle">
       <span>Effects</span>
       <button class="collapse-btn" id="effects-collapse">−</button>
