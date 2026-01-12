@@ -114,10 +114,10 @@ export class OverlayScene {
     Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Events.on(this.engine, 'collisionEnd', this.handleCollisionEnd);
 
-    // Setup effect manager
+    // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
       this.config.bounds,
-      (cfg) => this.spawnEntity(cfg),
+      (cfg) => this.spawnEntityAsync(cfg),
       (id) => this.entities.get(id)?.body ?? null
     );
   }

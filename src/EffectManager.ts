@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { logger } from './logger';
 
-type SpawnEntityFn = (config: EntityConfig) => string;
+type SpawnEntityAsyncFn = (config: EntityConfig) => Promise<string>;
 type GetBodyFn = (id: string) => Matter.Body | null;
 
 interface EffectState {
@@ -26,12 +26,12 @@ interface EffectState {
 export class EffectManager {
   private effects: Map<string, EffectState> = new Map();
   private bounds: Bounds;
-  private spawnEntity: SpawnEntityFn;
+  private spawnEntityAsync: SpawnEntityAsyncFn;
   private getBody: GetBodyFn;
 
-  constructor(bounds: Bounds, spawnEntity: SpawnEntityFn, getBody: GetBodyFn) {
+  constructor(bounds: Bounds, spawnEntityAsync: SpawnEntityAsyncFn, getBody: GetBodyFn) {
     this.bounds = bounds;
-    this.spawnEntity = spawnEntity;
+    this.spawnEntityAsync = spawnEntityAsync;
     this.getBody = getBody;
   }
 
@@ -138,6 +138,7 @@ export class EffectManager {
 
     if (elapsed >= config.burstInterval) {
       state.lastSpawnTime = now;
+      // Fire-and-forget async burst spawn
       this.spawnBurst(config);
     }
   }
@@ -159,7 +160,7 @@ export class EffectManager {
     }
   }
 
-  private spawnBurst(config: BurstEffectConfig): void {
+  private async spawnBurst(config: BurstEffectConfig): Promise<void> {
     const { bounds } = this;
 
     // Determine burst origin
@@ -168,6 +169,8 @@ export class EffectManager {
 
     logger.debug('EffectManager', `Spawning burst at (${originX.toFixed(0)}, ${originY.toFixed(0)})`, { count: config.burstCount });
 
+    // Prepare all spawn configs with their random angles
+    const spawnData: Array<{ config: EntityConfig; angle: number }> = [];
     for (let i = 0; i < config.burstCount; i++) {
       const entityConfig = this.selectEntityConfig(config.entityConfigs);
       if (!entityConfig) continue;
@@ -180,12 +183,22 @@ export class EffectManager {
         radius
       };
 
-      const id = this.spawnEntity(fullConfig);
-      const body = this.getBody(id);
+      spawnData.push({
+        config: fullConfig,
+        angle: Math.random() * Math.PI * 2
+      });
+    }
 
+    // Spawn all entities in parallel (uses cached image clipping for same images)
+    const ids = await Promise.all(
+      spawnData.map(data => this.spawnEntityAsync(data.config))
+    );
+
+    // Apply forces to all spawned entities
+    for (let i = 0; i < ids.length; i++) {
+      const body = this.getBody(ids[i]);
       if (body) {
-        // Apply outward velocity in random direction
-        const angle = Math.random() * Math.PI * 2;
+        const angle = spawnData[i].angle;
         const force = config.burstForce;
         Matter.Body.setVelocity(body, {
           x: Math.cos(angle) * force,
@@ -218,7 +231,8 @@ export class EffectManager {
       radius
     };
 
-    this.spawnEntity(fullConfig);
+    // Fire-and-forget async spawn (no force needed for rain)
+    this.spawnEntityAsync(fullConfig);
   }
 
   /**

@@ -8,6 +8,17 @@ export interface Vector2D {
 const LOG_PREFIX = 'ImageClip';
 const ALPHA_THRESHOLD = 128;
 
+// Cache for extracted vertices - keyed by imageUrl
+// We cache the raw contour data (before scaling) so it can be reused at different sizes
+interface ContourCacheEntry {
+  vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range)
+  timestamp: number;
+}
+
+const contourCache: Map<string, ContourCacheEntry> = new Map();
+const CACHE_MAX_SIZE = 100;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export function loadImage(url: string): Promise<HTMLImageElement> {
   logger.debug(LOG_PREFIX, `Loading image: ${url}`);
   return new Promise((resolve, reject) => {
@@ -176,8 +187,53 @@ export function normalizeVertices(vertices: Vector2D[], targetSize: number): Vec
   }));
 }
 
+/**
+ * Scale cached unit vertices to target size
+ */
+function scaleVertices(vertices: Vector2D[], targetSize: number): Vector2D[] {
+  return vertices.map(v => ({
+    x: v.x * targetSize,
+    y: v.y * targetSize
+  }));
+}
+
+/**
+ * Clean up expired cache entries
+ */
+function cleanupCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of contourCache) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      contourCache.delete(key);
+    }
+  }
+  // If still over limit, remove oldest entries
+  if (contourCache.size > CACHE_MAX_SIZE) {
+    const entries = Array.from(contourCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, entries.length - CACHE_MAX_SIZE);
+    for (const [key] of toRemove) {
+      contourCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Extract vertices from image, with caching for repeated calls.
+ * Vertices are cached normalized to unit size and scaled to targetSize on retrieval.
+ */
 export async function getVerticesFromImage(imageUrl: string, targetSize: number): Promise<Vector2D[]> {
   logger.info(LOG_PREFIX, `Getting vertices from image`, { imageUrl, targetSize });
+
+  // Check cache first
+  const cached = contourCache.get(imageUrl);
+  if (cached) {
+    logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, cachedVertices: cached.vertices.length });
+    cached.timestamp = Date.now(); // Refresh TTL on access
+    return scaleVertices(cached.vertices, targetSize);
+  }
+
+  logger.debug(LOG_PREFIX, `Cache miss for image`, { imageUrl });
 
   try {
     const img = await loadImage(imageUrl);
@@ -200,11 +256,37 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
       return [];
     }
 
-    const normalized = normalizeVertices(simplified, targetSize);
-    logger.info(LOG_PREFIX, `Vertices extracted successfully`, { vertexCount: normalized.length });
-    return normalized;
+    // Normalize to unit size (vertices centered at origin, fitting in -0.5 to 0.5 range)
+    const unitVertices = normalizeVertices(simplified, 1);
+
+    // Cache the unit-sized vertices
+    contourCache.set(imageUrl, {
+      vertices: unitVertices,
+      timestamp: Date.now()
+    });
+    cleanupCache();
+
+    logger.info(LOG_PREFIX, `Vertices extracted and cached`, { imageUrl, vertexCount: unitVertices.length });
+
+    // Scale to requested size and return
+    return scaleVertices(unitVertices, targetSize);
   } catch (error) {
     logger.error(LOG_PREFIX, `Failed to extract vertices from image`, { error: String(error) });
     return [];
   }
+}
+
+/**
+ * Clear the vertex cache (useful for testing or memory management)
+ */
+export function clearVertexCache(): void {
+  contourCache.clear();
+  logger.debug(LOG_PREFIX, `Vertex cache cleared`);
+}
+
+/**
+ * Get cache statistics
+ */
+export function getVertexCacheStats(): { size: number; maxSize: number } {
+  return { size: contourCache.size, maxSize: CACHE_MAX_SIZE };
 }
