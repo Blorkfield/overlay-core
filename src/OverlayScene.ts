@@ -17,7 +17,6 @@ import type {
   EntityType,
   EffectConfig
 } from './types';
-import { ENTITY_TYPE_DEBUG_COLORS } from './types';
 
 interface EntityEntry {
   id: string;
@@ -493,9 +492,6 @@ export class OverlayScene {
       }
     }
     this.fireUpdateCallbacks();
-    if (this.config.debug) {
-      this.renderDebugOverlay();
-    }
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
 
@@ -529,28 +525,4 @@ export class OverlayScene {
     this.updateCallbacks.forEach((cb) => cb(data));
   }
 
-  private renderDebugOverlay(): void {
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-
-    for (const entry of this.entities.values()) {
-      const body = entry.body;
-      const color = ENTITY_TYPE_DEBUG_COLORS[entry.entityType];
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      const vertices = body.vertices;
-      if (vertices.length > 0) {
-        ctx.moveTo(vertices[0].x, vertices[0].y);
-        for (let i = 1; i < vertices.length; i++) {
-          ctx.lineTo(vertices[i].x, vertices[i].y);
-        }
-        ctx.closePath();
-      }
-
-      ctx.stroke();
-    }
-  }
 }
