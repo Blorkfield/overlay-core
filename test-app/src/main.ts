@@ -1,4 +1,4 @@
-import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig } from '@blorkfield/overlay-core';
+import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig } from '@blorkfield/overlay-core';
 import { TabManager } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
@@ -47,10 +47,19 @@ const burstCount = document.getElementById('burst-count') as HTMLInputElement;
 const burstForce = document.getElementById('burst-force') as HTMLInputElement;
 const rainSpawnRate = document.getElementById('rain-spawn-rate') as HTMLInputElement;
 const rainSpawnWidth = document.getElementById('rain-spawn-width') as HTMLInputElement;
+const checkboxStream = document.getElementById('checkbox-stream') as HTMLInputElement;
+const streamOriginX = document.getElementById('stream-origin-x') as HTMLInputElement;
+const streamOriginY = document.getElementById('stream-origin-y') as HTMLInputElement;
+const streamDirection = document.getElementById('stream-direction') as HTMLInputElement;
+const streamSpawnRate = document.getElementById('stream-spawn-rate') as HTMLInputElement;
+const streamForce = document.getElementById('stream-force') as HTMLInputElement;
+const streamConeAngle = document.getElementById('stream-cone-angle') as HTMLInputElement;
 const burstAddEntity = document.getElementById('burst-add-entity') as HTMLButtonElement;
 const rainAddEntity = document.getElementById('rain-add-entity') as HTMLButtonElement;
+const streamAddEntity = document.getElementById('stream-add-entity') as HTMLButtonElement;
 const burstEntityList = document.getElementById('burst-entity-list') as HTMLDivElement;
 const rainEntityList = document.getElementById('rain-entity-list') as HTMLDivElement;
+const streamEntityList = document.getElementById('stream-entity-list') as HTMLDivElement;
 
 // Available images for effects
 const availableImages = [
@@ -78,6 +87,7 @@ interface EffectEntityUI {
 
 const burstEntities: EffectEntityUI[] = [];
 const rainEntities: EffectEntityUI[] = [];
+const streamEntities: EffectEntityUI[] = [];
 
 let scene: OverlayScene | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -170,6 +180,7 @@ function createScene(width: number, height: number): void {
   // Re-initialize effects with new scene
   updateBurstEffect();
   updateRainEffect();
+  updateStreamEffect();
 
   console.log('Overlay scene started!');
 }
@@ -403,6 +414,43 @@ function updateRainEffect(): void {
   console.log('Rain effect updated:', config.enabled ? 'enabled' : 'disabled');
 }
 
+// Update stream effect config
+function updateStreamEffect(): void {
+  if (!scene || !canvas) return;
+
+  // Convert origin percentages to pixels
+  const originXPercent = parseFloat(streamOriginX.value) || 10;
+  const originYPercent = parseFloat(streamOriginY.value) || 0;
+  const originX = (originXPercent / 100) * canvas.width;
+  const originY = (originYPercent / 100) * canvas.height;
+
+  // Convert direction angle (degrees) to direction vector
+  // 0° = right, 90° = down, 180° = left, 270° = up
+  const directionDeg = parseFloat(streamDirection.value) || 135;
+  const directionRad = (directionDeg * Math.PI) / 180;
+  const directionX = Math.cos(directionRad);
+  const directionY = Math.sin(directionRad);
+
+  // Convert cone angle degrees to radians
+  const coneAngleDeg = parseFloat(streamConeAngle.value) || 15;
+  const coneAngleRad = (coneAngleDeg * Math.PI) / 180;
+
+  const config: StreamEffectConfig = {
+    id: 'stream',
+    type: 'stream',
+    enabled: checkboxStream.checked,
+    origin: { x: originX, y: originY },
+    direction: { x: directionX, y: directionY },
+    spawnRate: parseFloat(streamSpawnRate.value) || 10,
+    force: parseFloat(streamForce.value) || 15,
+    coneAngle: coneAngleRad,
+    entityConfigs: uiToEffectEntities(streamEntities)
+  };
+
+  scene.setEffect(config);
+  console.log('Stream effect updated:', config.enabled ? 'enabled' : 'disabled');
+}
+
 // Render entity list UI
 function renderEntityList(
   container: HTMLDivElement,
@@ -536,6 +584,14 @@ checkboxRain.addEventListener('change', updateRainEffect);
 rainSpawnRate.addEventListener('change', updateRainEffect);
 rainSpawnWidth.addEventListener('change', updateRainEffect);
 
+checkboxStream.addEventListener('change', updateStreamEffect);
+streamOriginX.addEventListener('change', updateStreamEffect);
+streamOriginY.addEventListener('change', updateStreamEffect);
+streamDirection.addEventListener('change', updateStreamEffect);
+streamSpawnRate.addEventListener('change', updateStreamEffect);
+streamForce.addEventListener('change', updateStreamEffect);
+streamConeAngle.addEventListener('change', updateStreamEffect);
+
 burstAddEntity.addEventListener('click', () => {
   addEffectEntity(burstEntities, burstEntityList, updateBurstEffect);
 });
@@ -544,14 +600,20 @@ rainAddEntity.addEventListener('click', () => {
   addEffectEntity(rainEntities, rainEntityList, updateRainEffect);
 });
 
+streamAddEntity.addEventListener('click', () => {
+  addEffectEntity(streamEntities, streamEntityList, updateStreamEffect);
+});
+
 // Initialize entity lists with empty state
 renderEntityList(burstEntityList, burstEntities, updateBurstEffect);
 renderEntityList(rainEntityList, rainEntities, updateRainEffect);
+renderEntityList(streamEntityList, streamEntities, updateStreamEffect);
 
 // Initialize effects after scene creation
 function initializeEffects(): void {
   updateBurstEffect();
   updateRainEffect();
+  updateStreamEffect();
 }
 
 // Initialize in fullscreen mode

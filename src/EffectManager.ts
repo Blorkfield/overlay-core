@@ -3,6 +3,7 @@ import type {
   EffectConfig,
   BurstEffectConfig,
   RainEffectConfig,
+  StreamEffectConfig,
   EffectEntityConfig,
   EntityConfig,
   Bounds
@@ -128,6 +129,9 @@ export class EffectManager {
         case 'rain':
           this.updateRainEffect(state, now);
           break;
+        case 'stream':
+          this.updateStreamEffect(state, now);
+          break;
       }
     }
   }
@@ -233,6 +237,61 @@ export class EffectManager {
 
     // Fire-and-forget async spawn (no force needed for rain)
     this.spawnEntityAsync(fullConfig);
+  }
+
+  private updateStreamEffect(state: EffectState, now: number): void {
+    const config = state.config as StreamEffectConfig;
+    // Cap elapsed time to 100ms to prevent burst spawning after pauses/re-enables
+    const elapsed = Math.min(now - state.lastSpawnTime, 100);
+    state.lastSpawnTime = now;
+
+    // Calculate how many entities to spawn this frame
+    const deltaSeconds = elapsed / 1000;
+    state.spawnAccumulator += config.spawnRate * deltaSeconds;
+
+    // Spawn whole entities
+    while (state.spawnAccumulator >= 1) {
+      state.spawnAccumulator -= 1;
+      this.spawnStreamEntity(config);
+    }
+  }
+
+  private async spawnStreamEntity(config: StreamEffectConfig): Promise<void> {
+    const entityConfig = this.selectEntityConfig(config.entityConfigs);
+    if (!entityConfig) return;
+
+    const radius = this.calculateRadius(entityConfig);
+
+    // Spawn at origin
+    const fullConfig: EntityConfig = {
+      ...entityConfig.entityConfig,
+      x: config.origin.x,
+      y: config.origin.y,
+      radius
+    };
+
+    // Normalize the direction vector
+    const dirLength = Math.sqrt(config.direction.x ** 2 + config.direction.y ** 2);
+    const normalizedDir = dirLength > 0
+      ? { x: config.direction.x / dirLength, y: config.direction.y / dirLength }
+      : { x: 0, y: 1 }; // Default to downward if zero vector
+
+    // Calculate base angle from normalized direction
+    const baseAngle = Math.atan2(normalizedDir.y, normalizedDir.x);
+
+    // Add random spread within cone angle (-coneAngle to +coneAngle)
+    const spreadAngle = (Math.random() * 2 - 1) * config.coneAngle;
+    const finalAngle = baseAngle + spreadAngle;
+
+    // Spawn entity and apply velocity
+    const id = await this.spawnEntityAsync(fullConfig);
+    const body = this.getBody(id);
+    if (body) {
+      Matter.Body.setVelocity(body, {
+        x: Math.cos(finalAngle) * config.force,
+        y: Math.sin(finalAngle) * config.force
+      });
+    }
   }
 
   /**

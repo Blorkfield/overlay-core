@@ -156,5 +156,22 @@ export interface RainEffectConfig extends BaseEffectConfig {
   spawnWidth?: number;
 }
 
-export type EffectConfig = BurstEffectConfig | RainEffectConfig;
+/**
+ * Stream effect - emits entities from a point in a configurable direction with cone spread
+ */
+export interface StreamEffectConfig extends BaseEffectConfig {
+  type: 'stream';
+  /** Origin point where entities are emitted from (can be outside bounds) */
+  origin: { x: number; y: number };
+  /** Direction vector (will be normalized). e.g., { x: 0, y: 1 } for downward */
+  direction: { x: number; y: number };
+  /** How many entities to spawn per second */
+  spawnRate: number;
+  /** Initial velocity/force magnitude for spawned entities */
+  force: number;
+  /** Cone angle in radians - spread from center direction (0 = laser, Math.PI/4 = 45° cone) */
+  coneAngle: number;
+}
+
+export type EffectConfig = BurstEffectConfig | RainEffectConfig | StreamEffectConfig;
 export type EffectType = EffectConfig['type'];

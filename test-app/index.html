@@ -469,6 +469,50 @@
           <div class="entity-list" id="rain-entity-list"></div>
         </div>
       </div>
+
+      <!-- Stream Effect -->
+      <div class="effect-section">
+        <div class="effect-header">
+          <label class="toggle-switch">
+            <input type="checkbox" id="checkbox-stream">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="effect-title">Stream Effect</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Origin X (%):</label>
+            <input type="number" id="stream-origin-x" value="10" min="-50" max="150" step="5">
+          </div>
+          <div class="param-row">
+            <label>Origin Y (%):</label>
+            <input type="number" id="stream-origin-y" value="0" min="-50" max="150" step="5">
+          </div>
+          <div class="param-row">
+            <label>Direction (deg):</label>
+            <input type="number" id="stream-direction" value="135" min="0" max="360" step="5">
+          </div>
+          <div class="param-row">
+            <label>Spawn Rate (/sec):</label>
+            <input type="number" id="stream-spawn-rate" value="10" min="0.1" step="0.5">
+          </div>
+          <div class="param-row">
+            <label>Force:</label>
+            <input type="number" id="stream-force" value="15" min="1">
+          </div>
+          <div class="param-row">
+            <label>Cone Angle (deg):</label>
+            <input type="number" id="stream-cone-angle" value="15" min="0" max="180" step="5">
+          </div>
+        </div>
+        <div class="effect-entities">
+          <div class="entities-header">
+            <span>Entity Types</span>
+            <button class="add-entity-btn" id="stream-add-entity">+ Add</button>
+          </div>
+          <div class="entity-list" id="stream-entity-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 

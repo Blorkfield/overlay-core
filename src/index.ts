@@ -21,5 +21,6 @@ export type {
   EffectEntityConfig,
   BaseEffectConfig,
   BurstEffectConfig,
-  RainEffectConfig
+  RainEffectConfig,
+  StreamEffectConfig
 } from './types';
