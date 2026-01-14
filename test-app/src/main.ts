@@ -20,6 +20,7 @@ const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HT
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
 const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
+const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
@@ -83,6 +84,7 @@ interface EffectEntityUI {
   minScale: number;
   maxScale: number;
   baseRadius: number;
+  ttl?: number;
 }
 
 const burstEntities: EffectEntityUI[] = [];
@@ -227,7 +229,8 @@ async function spawnRandomEntity(): Promise<void> {
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
   const selectedType = selectEntityType.value as EntityType;
-  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType);
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
+  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType, 'ttl:', ttlValue ?? '∞');
 
   const config = {
     x,
@@ -236,7 +239,8 @@ async function spawnRandomEntity(): Promise<void> {
     fillStyle: color,
     imageUrl: selectedImage || undefined,
     tags: ['spawned'],
-    entityType: selectedType
+    entityType: selectedType,
+    ttl: ttlValue
   };
 
   // Use async for image entities (extracts shape from alpha), sync otherwise
@@ -251,12 +255,14 @@ function spawnRandomObstacle(): void {
   if (!scene || !canvas) return;
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = Math.random() * canvas.height * 0.5 + canvas.height * 0.2;
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   scene.addObstacle({
     x,
     y,
     width: 80 + Math.random() * 100,
     height: 15 + Math.random() * 10,
-    tags: ['spawned-obstacle']
+    tags: ['spawned-obstacle'],
+    ttl: ttlValue
   });
 }
 
@@ -264,12 +270,14 @@ function spawnFallingObstacle(): void {
   if (!scene || !canvas) return;
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = 50;
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   scene.spawnFallingObstacle({
     x,
     y,
     width: 60 + Math.random() * 60,
     height: 15 + Math.random() * 10,
-    tags: ['falling']
+    tags: ['falling'],
+    ttl: ttlValue
   });
 }
 
@@ -370,7 +378,8 @@ function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] 
       fillStyle: colors[Math.floor(Math.random() * colors.length)],
       imageUrl: ui.imageUrl || undefined,
       tags: ['effect-spawned'],
-      entityType: ui.entityType
+      entityType: ui.entityType,
+      ttl: ui.ttl
     },
     probability: ui.probability,
     minScale: ui.minScale,
@@ -419,14 +428,14 @@ function updateStreamEffect(): void {
   if (!scene || !canvas) return;
 
   // Convert origin percentages to pixels
-  const originXPercent = parseFloat(streamOriginX.value) || 10;
+  const originXPercent = parseFloat(streamOriginX.value) || 50;
   const originYPercent = parseFloat(streamOriginY.value) || 0;
   const originX = (originXPercent / 100) * canvas.width;
   const originY = (originYPercent / 100) * canvas.height;
 
   // Convert direction angle (degrees) to direction vector
   // 0° = right, 90° = down, 180° = left, 270° = up
-  const directionDeg = parseFloat(streamDirection.value) || 135;
+  const directionDeg = parseFloat(streamDirection.value) || 90;
   const directionRad = (directionDeg * Math.PI) / 180;
   const directionX = Math.cos(directionRad);
   const directionY = Math.sin(directionRad);
@@ -496,6 +505,10 @@ function renderEntityList(
         <label style="margin-left:12px">Radius</label>
         <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
       </div>
+      <div class="entity-row">
+        <label>TTL (ms)</label>
+        <input type="number" class="entity-ttl" data-index="${index}" value="${entity.ttl ?? ''}" placeholder="∞" min="0" step="100">
+      </div>
     `;
     container.appendChild(item);
   });
@@ -545,6 +558,15 @@ function renderEntityList(
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
       entities[idx].baseRadius = parseInt((e.target as HTMLInputElement).value) || 20;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-ttl').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      const value = (e.target as HTMLInputElement).value;
+      entities[idx].ttl = value ? parseInt(value) : undefined;
       onUpdate();
     });
   });

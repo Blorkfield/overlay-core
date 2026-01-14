@@ -15,7 +15,8 @@ import type {
   ContainerOptions,
   Bounds,
   EntityType,
-  EffectConfig
+  EffectConfig,
+  DespawnEffectConfig
 } from './types';
 
 interface EntityEntry {
@@ -24,6 +25,9 @@ interface EntityEntry {
   tags: string[];
   grounded: boolean;
   entityType: EntityType;
+  spawnTime: number;
+  ttl?: number;
+  despawnEffect?: DespawnEffectConfig;
 }
 
 interface ObstacleEntry {
@@ -31,6 +35,9 @@ interface ObstacleEntry {
   body: Matter.Body;
   isStatic: boolean;
   tags: string[];
+  spawnTime: number;
+  ttl?: number;
+  despawnEffect?: DespawnEffectConfig;
 }
 
 export class OverlayScene {
@@ -228,14 +235,17 @@ export class OverlayScene {
   spawnEntity(config: EntityConfig): string {
     const id = crypto.randomUUID();
     const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle', entityType });
+    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
     const body = createEntity(id, config);
     const entry: EntityEntry = {
       id,
       body,
       tags: config.tags ?? [],
       grounded: false,
-      entityType
+      entityType,
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
     };
     this.entities.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -249,14 +259,17 @@ export class OverlayScene {
   async spawnEntityAsync(config: EntityConfig): Promise<string> {
     const id = crypto.randomUUID();
     const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle', entityType });
+    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
     const body = await createEntityAsync(id, config);
     const entry: EntityEntry = {
       id,
       body,
       tags: config.tags ?? [],
       grounded: false,
-      entityType
+      entityType,
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
     };
     this.entities.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -315,7 +328,10 @@ export class OverlayScene {
       id,
       body,
       isStatic: true,
-      tags: config.tags ?? []
+      tags: config.tags ?? [],
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
     };
     this.obstacles.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -329,7 +345,10 @@ export class OverlayScene {
       id,
       body,
       isStatic: false,
-      tags: config.tags ?? []
+      tags: config.tags ?? [],
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
     };
     this.obstacles.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -481,6 +500,9 @@ export class OverlayScene {
     // Update effects (spawn entities)
     this.effectManager.update();
 
+    // Check for TTL expiration
+    this.checkTTLExpiration();
+
     for (const entry of this.entities.values()) {
       // Only apply mouse force to GROUNDED_FOLLOW entities, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
@@ -494,6 +516,36 @@ export class OverlayScene {
     this.fireUpdateCallbacks();
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
+
+  private checkTTLExpiration(): void {
+    const now = performance.now();
+
+    // Check entities
+    const expiredEntities: string[] = [];
+    for (const [id, entry] of this.entities) {
+      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
+        // TODO: Trigger despawn effect when implemented
+        // if (entry.despawnEffect) { ... }
+        expiredEntities.push(id);
+      }
+    }
+    for (const id of expiredEntities) {
+      this.removeEntity(id);
+    }
+
+    // Check obstacles
+    const expiredObstacles: string[] = [];
+    for (const [id, entry] of this.obstacles) {
+      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
+        // TODO: Trigger despawn effect when implemented
+        // if (entry.despawnEffect) { ... }
+        expiredObstacles.push(id);
+      }
+    }
+    for (const id of expiredObstacles) {
+      this.removeObstacle(id);
+    }
+  }
 
   private fireUpdateCallbacks(): void {
     const dynamicObstacles: DynamicObstacle[] = [];

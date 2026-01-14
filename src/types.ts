@@ -33,6 +33,14 @@ export interface ShapeConfig {
   vertices?: Array<{ x: number; y: number }>;
 }
 
+/**
+ * Configuration for despawn effects (placeholder for future custom effects)
+ */
+export interface DespawnEffectConfig {
+  /** Effect type identifier for future use */
+  type?: string;
+}
+
 export interface EntityConfig {
   x: number;
   y: number;
@@ -44,6 +52,10 @@ export interface EntityConfig {
   shape?: ShapeConfig;
   /** Entity behavior type. Defaults to GROUNDED_FOLLOW */
   entityType?: EntityType;
+  /** Time-to-live in milliseconds. If not set, entity lives forever */
+  ttl?: number;
+  /** Configuration for despawn effect (future use) */
+  despawnEffect?: DespawnEffectConfig;
 }
 
 export interface ObstacleConfig {
@@ -52,6 +64,10 @@ export interface ObstacleConfig {
   width: number;
   height: number;
   tags?: string[];
+  /** Time-to-live in milliseconds. If not set, obstacle lives forever */
+  ttl?: number;
+  /** Configuration for despawn effect (future use) */
+  despawnEffect?: DespawnEffectConfig;
 }
 
 export interface DynamicObstacle {

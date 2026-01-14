@@ -379,6 +379,10 @@
               <option value="GROUNDED_STATIC">Static</option>
             </select>
           </div>
+          <div class="param-row">
+            <label>TTL (ms):</label>
+            <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
           <button id="btn-spawn-entity" class="panel-btn">Spawn Entity</button>
@@ -482,7 +486,7 @@
         <div class="effect-params">
           <div class="param-row">
             <label>Origin X (%):</label>
-            <input type="number" id="stream-origin-x" value="10" min="-50" max="150" step="5">
+            <input type="number" id="stream-origin-x" value="50" min="-50" max="150" step="5">
           </div>
           <div class="param-row">
             <label>Origin Y (%):</label>
@@ -490,7 +494,7 @@
           </div>
           <div class="param-row">
             <label>Direction (deg):</label>
-            <input type="number" id="stream-direction" value="135" min="0" max="360" step="5">
+            <input type="number" id="stream-direction" value="90" min="0" max="360" step="5">
           </div>
           <div class="param-row">
             <label>Spawn Rate (/sec):</label>

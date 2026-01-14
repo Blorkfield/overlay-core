@@ -15,6 +15,7 @@ export type {
   ShapeConfig,
   ShapePreset,
   EntityType,
+  DespawnEffectConfig,
   // Effect types
   EffectConfig,
   EffectType,
