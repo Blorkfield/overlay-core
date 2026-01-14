@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@blorkfield/blork-tabs": "^0.2.0",
     "@blorkfield/overlay-core": "link:.."
   },
   "devDependencies": {

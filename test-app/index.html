@@ -140,69 +140,14 @@
       background: #fff;
     }
 
-    /* Floating Panel Styles */
-    .floating-panel {
-      position: fixed;
-      top: 16px;
-      background: #0f0f1a;
-      border: 1px solid #2a2a4a;
-      border-radius: 8px;
-      z-index: 1000;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-      width: 300px;
+    /* Extend blork-tabs content with flex layout */
+    .blork-tabs-content {
       display: flex;
       flex-direction: column;
+      gap: 12px;
     }
-    #effects-panel {
-      max-height: calc(100vh - 32px);
-      overflow: hidden;
-    }
-    #effects-panel .effects-content {
-      overflow-y: auto;
-    }
-    #entity-panel {
-      overflow: hidden;
-    }
-    #entity-panel .effects-content {
-      overflow: hidden;
-    }
-    #settings-panel .effects-content {
-      overflow: hidden;
-    }
-    .snap-preview {
-      position: fixed;
-      top: 0;
-      width: 4px;
-      background: #4a90d9;
-      border-radius: 2px;
-      pointer-events: none;
-      z-index: 1001;
-      opacity: 0;
-      transition: opacity 0.15s;
-    }
-    .snap-preview.visible {
-      opacity: 1;
-    }
-    .anchor-indicator {
-      position: fixed;
-      width: 40px;
-      height: 40px;
-      border: 2px dashed #4a90d9;
-      border-radius: 8px;
-      pointer-events: none;
-      z-index: 999;
-      opacity: 0;
-      transition: opacity 0.15s, transform 0.15s;
-    }
-    .anchor-indicator.visible {
-      opacity: 0.6;
-    }
-    .anchor-indicator.active {
-      opacity: 1;
-      border-style: solid;
-      background: rgba(74, 144, 217, 0.2);
-      transform: scale(1.1);
-    }
+
+    /* Panel button styles (app-specific content) */
     .panel-btn {
       padding: 8px 12px;
       background: #3a4a6a;
@@ -226,64 +171,6 @@
     }
     .panel-btn-danger:hover {
       background: #5a4a6a;
-    }
-    .effects-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 12px;
-      padding-left: 0;
-      cursor: move;
-      user-select: none;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 500;
-      background: #1a1a2e;
-      border-bottom: 1px solid #2a2a4a;
-      flex-shrink: 0;
-    }
-    .detach-grip {
-      width: 12px;
-      height: 100%;
-      min-height: 20px;
-      background: linear-gradient(90deg, #3a3a5a 0%, #3a3a5a 40%, transparent 40%, transparent 60%, #3a3a5a 60%, #3a3a5a 100%);
-      background-size: 6px 100%;
-      cursor: grab;
-      flex-shrink: 0;
-      margin-right: 8px;
-      border-radius: 4px 0 0 4px;
-      opacity: 0.6;
-      transition: opacity 0.15s, background-color 0.15s;
-    }
-    .detach-grip:hover {
-      opacity: 1;
-      background-color: rgba(74, 144, 217, 0.3);
-    }
-    .detach-grip:active {
-      cursor: grabbing;
-    }
-    .collapse-btn {
-      background: none;
-      border: none;
-      color: #888;
-      font-size: 18px;
-      cursor: pointer;
-      padding: 0 4px;
-      line-height: 1;
-    }
-    .collapse-btn:hover {
-      color: #fff;
-    }
-    .effects-content {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding: 12px;
-      overflow-y: auto;
-      flex: 1;
-    }
-    .effects-content.collapsed {
-      display: none;
     }
     .effect-section {
       background: #1a1a2e;
@@ -431,13 +318,13 @@
   </div>
 
   <!-- Floating Settings Panel -->
-  <div id="settings-panel" class="floating-panel">
-    <div class="effects-header" id="settings-drag-handle">
-      <div class="detach-grip" id="settings-detach-grip"></div>
-      <span style="flex:1">Overlay Settings</span>
-      <button class="collapse-btn" id="settings-collapse">+</button>
+  <div id="settings-panel" class="blork-tabs-panel">
+    <div class="blork-tabs-header" id="settings-drag-handle">
+      <div class="blork-tabs-detach-grip" id="settings-detach-grip"></div>
+      <span class="blork-tabs-title">Overlay Settings</span>
+      <button class="blork-tabs-collapse-btn" id="settings-collapse">+</button>
     </div>
-    <div class="effects-content collapsed" id="settings-content">
+    <div class="blork-tabs-content blork-tabs-content-collapsed" id="settings-content">
       <div class="effect-section">
         <div style="display:flex;gap:8px;margin-bottom:12px">
           <button id="btn-fullscreen" class="toggle-btn active" style="flex:1">Fullscreen</button>
@@ -468,13 +355,13 @@
   </div>
 
   <!-- Floating Entity Panel -->
-  <div id="entity-panel" class="floating-panel">
-    <div class="effects-header" id="entity-drag-handle">
-      <div class="detach-grip" id="entity-detach-grip"></div>
-      <span style="flex:1">Entity Management</span>
-      <button class="collapse-btn" id="entity-collapse">+</button>
+  <div id="entity-panel" class="blork-tabs-panel">
+    <div class="blork-tabs-header" id="entity-drag-handle">
+      <div class="blork-tabs-detach-grip" id="entity-detach-grip"></div>
+      <span class="blork-tabs-title">Entity Management</span>
+      <button class="blork-tabs-collapse-btn" id="entity-collapse">+</button>
     </div>
-    <div class="effects-content collapsed" id="entity-content">
+    <div class="blork-tabs-content blork-tabs-content-collapsed" id="entity-content">
       <div class="effect-section">
         <div class="effect-params">
           <div class="param-row">
@@ -516,13 +403,13 @@
   </div>
 
   <!-- Floating Effects Panel -->
-  <div id="effects-panel" class="floating-panel">
-    <div class="effects-header" id="effects-drag-handle">
-      <div class="detach-grip" id="effects-detach-grip"></div>
-      <span style="flex:1">Effects</span>
-      <button class="collapse-btn" id="effects-collapse">+</button>
+  <div id="effects-panel" class="blork-tabs-panel">
+    <div class="blork-tabs-header" id="effects-drag-handle">
+      <div class="blork-tabs-detach-grip" id="effects-detach-grip"></div>
+      <span class="blork-tabs-title">Effects</span>
+      <button class="blork-tabs-collapse-btn" id="effects-collapse">+</button>
     </div>
-    <div class="effects-content collapsed" id="effects-content">
+    <div class="blork-tabs-content blork-tabs-content-collapsed" id="effects-content">
       <!-- Burst Effect -->
       <div class="effect-section">
         <div class="effect-header">
