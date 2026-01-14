@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createEntityAsync, createObstacle } from './bodies';
+import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync } from './bodies';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
@@ -16,7 +16,9 @@ import type {
   Bounds,
   EntityType,
   EffectConfig,
-  DespawnEffectConfig
+  DespawnEffectConfig,
+  TextObstacleConfig,
+  TextObstacleResult
 } from './types';
 
 interface EntityEntry {
@@ -338,9 +340,50 @@ export class OverlayScene {
     return id;
   }
 
+  /**
+   * Add an obstacle asynchronously. Required for image-based obstacles that need
+   * shape extraction from image alpha channel.
+   */
+  async addObstacleAsync(config: ObstacleConfig): Promise<string> {
+    const id = crypto.randomUUID();
+    const body = await createObstacleAsync(id, config, true);
+    const entry: ObstacleEntry = {
+      id,
+      body,
+      isStatic: true,
+      tags: config.tags ?? [],
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
+    };
+    this.obstacles.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+    return id;
+  }
+
   spawnFallingObstacle(config: ObstacleConfig): string {
     const id = crypto.randomUUID();
     const body = createObstacle(id, config, false);
+    const entry: ObstacleEntry = {
+      id,
+      body,
+      isStatic: false,
+      tags: config.tags ?? [],
+      spawnTime: performance.now(),
+      ttl: config.ttl,
+      despawnEffect: config.despawnEffect
+    };
+    this.obstacles.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+    return id;
+  }
+
+  /**
+   * Spawn a falling obstacle asynchronously. Required for image-based obstacles.
+   */
+  async spawnFallingObstacleAsync(config: ObstacleConfig): Promise<string> {
+    const id = crypto.randomUUID();
+    const body = await createObstacleAsync(id, config, false);
     const entry: ObstacleEntry = {
       id,
       body,
@@ -429,6 +472,106 @@ export class OverlayScene {
       }
     }
     return ids;
+  }
+
+  // ==================== TEXT OBSTACLE METHODS ====================
+
+  /**
+   * Create text obstacles from a string. Each character becomes an individual obstacle
+   * with shape extracted from the corresponding letter PNG image.
+   * Supported characters: A-Z, 0-9 (case insensitive, spaces ignored)
+   */
+  async addTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
+    const text = config.text.toUpperCase();
+    const letterSize = config.letterSize;
+    const letterSpacing = config.letterSpacing ?? letterSize * 0.8;
+    const basePath = config.basePath ?? '/';
+    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
+    const isStatic = config.isStatic ?? true;
+
+    const letterIds: string[] = [];
+    const letterMap = new Map<string, string>();
+
+    let currentX = config.x;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+
+      // Skip spaces but add spacing
+      if (char === ' ') {
+        currentX += letterSpacing;
+        continue;
+      }
+
+      // Only process A-Z and 0-9
+      if (!/^[A-Z0-9]$/.test(char)) {
+        continue;
+      }
+
+      const imageUrl = `${basePath}${char}.png`;
+      const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
+
+      const obstacleConfig: ObstacleConfig = {
+        x: currentX,
+        y: config.y,
+        imageUrl,
+        size: letterSize,
+        fillStyle: config.fillStyle,
+        tags,
+        ttl: config.ttl
+      };
+
+      const id = isStatic
+        ? await this.addObstacleAsync(obstacleConfig)
+        : await this.spawnFallingObstacleAsync(obstacleConfig);
+
+      letterIds.push(id);
+      letterMap.set(`${char}-${i}`, id);
+
+      currentX += letterSpacing;
+    }
+
+    logger.info('OverlayScene', `Created text obstacles`, { text, letterCount: letterIds.length, wordTag });
+
+    return {
+      letterIds,
+      wordTag,
+      letterMap
+    };
+  }
+
+  /**
+   * Spawn falling text obstacles from a string.
+   * Same as addTextObstacles but obstacles are non-static (fall with gravity).
+   */
+  async spawnFallingTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
+    return this.addTextObstacles({ ...config, isStatic: false });
+  }
+
+  /**
+   * Release all letters in a word (make them non-static so they fall).
+   * @param wordTag - The word tag returned from addTextObstacles
+   */
+  releaseTextObstacles(wordTag: string): void {
+    this.releaseObstaclesByTag(wordTag);
+  }
+
+  /**
+   * Release letters one by one with a delay between each.
+   * @param wordTag - The word tag returned from addTextObstacles
+   * @param delayMs - Delay between releasing each letter (default: 100ms)
+   * @param reverse - If true, release from end to start (default: false)
+   */
+  async releaseTextObstaclesSequentially(wordTag: string, delayMs: number = 100, reverse: boolean = false): Promise<void> {
+    const ids = this.getObstacleIdsByTag(wordTag);
+    if (reverse) ids.reverse();
+
+    for (const id of ids) {
+      this.releaseObstacle(id);
+      if (delayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
   }
 
   // ==================== COMBINED TAG METHODS ====================

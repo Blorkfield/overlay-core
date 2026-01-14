@@ -24,6 +24,13 @@ const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputE
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 
+// Text obstacle elements
+const inputTextObstacle = document.getElementById('input-text-obstacle') as HTMLInputElement;
+const inputLetterSize = document.getElementById('input-letter-size') as HTMLInputElement;
+const inputLetterSpacing = document.getElementById('input-letter-spacing') as HTMLInputElement;
+const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
+const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
+
 // Settings panel elements
 const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
 const settingsDragHandle = document.getElementById('settings-drag-handle') as HTMLDivElement;
@@ -65,8 +72,7 @@ const streamEntityList = document.getElementById('stream-entity-list') as HTMLDi
 // Available images for effects
 const availableImages = [
   { value: '', label: 'Color (random)' },
-  { value: '/bf_koban_512.png', label: 'bf_koban_512.png' },
-  { value: '/test-bg.png', label: 'test-bg.png' }
+  { value: '/bf_koban_512.png', label: 'bf_koban_512.png' }
 ];
 
 // Available entity types
@@ -312,6 +318,38 @@ btnRemoveAll.addEventListener('click', () => {
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
 });
+
+// ==================== TEXT OBSTACLE LOGIC ====================
+
+async function addTextObstacle(falling: boolean = false): Promise<void> {
+  if (!scene || !canvas) return;
+
+  const text = inputTextObstacle.value.trim();
+  if (!text) return;
+
+  const letterSize = parseInt(inputLetterSize.value) || 60;
+  const letterSpacing = parseInt(inputLetterSpacing.value) || 50;
+
+  // Calculate starting X to center the text
+  const totalWidth = text.replace(/[^A-Za-z0-9]/g, '').length * letterSpacing;
+  const startX = (canvas.width - totalWidth) / 2 + letterSpacing / 2;
+  const y = falling ? 50 : canvas.height * 0.3;
+
+  const result = await scene.addTextObstacles({
+    text,
+    x: startX,
+    y,
+    letterSize,
+    letterSpacing,
+    isStatic: !falling,
+    tags: ['text-obstacle']
+  });
+
+  console.log('Created text obstacle:', { text, wordTag: result.wordTag, letterIds: result.letterIds });
+}
+
+btnAddTextObstacle.addEventListener('click', () => addTextObstacle(false));
+btnSpawnFallingText.addEventListener('click', () => addTextObstacle(true));
 
 // Handle window resize for fullscreen mode
 window.addEventListener('resize', () => {

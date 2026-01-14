@@ -12,6 +12,8 @@ const ALPHA_THRESHOLD = 128;
 // We cache the raw contour data (before scaling) so it can be reused at different sizes
 interface ContourCacheEntry {
   vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range)
+  imageWidth: number;
+  imageHeight: number;
   timestamp: number;
 }
 
@@ -223,6 +225,15 @@ function cleanupCache(): void {
  * Vertices are cached normalized to unit size and scaled to targetSize on retrieval.
  */
 export async function getVerticesFromImage(imageUrl: string, targetSize: number): Promise<Vector2D[]> {
+  const result = await getVerticesAndDimensionsFromImage(imageUrl, targetSize);
+  return result.vertices;
+}
+
+/**
+ * Extract vertices from image along with original image dimensions.
+ * Useful when you need to know the source image size for sprite scaling.
+ */
+export async function getVerticesAndDimensionsFromImage(imageUrl: string, targetSize: number): Promise<{ vertices: Vector2D[]; imageWidth: number; imageHeight: number }> {
   logger.info(LOG_PREFIX, `Getting vertices from image`, { imageUrl, targetSize });
 
   // Check cache first
@@ -230,7 +241,11 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
   if (cached) {
     logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, cachedVertices: cached.vertices.length });
     cached.timestamp = Date.now(); // Refresh TTL on access
-    return scaleVertices(cached.vertices, targetSize);
+    return {
+      vertices: scaleVertices(cached.vertices, targetSize),
+      imageWidth: cached.imageWidth,
+      imageHeight: cached.imageHeight
+    };
   }
 
   logger.debug(LOG_PREFIX, `Cache miss for image`, { imageUrl });
@@ -242,7 +257,7 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
     const contour = extractContour(data, width, height);
     if (contour.length < 3) {
       logger.warn(LOG_PREFIX, `Contour has insufficient points`, { pointCount: contour.length });
-      return [];
+      return { vertices: [], imageWidth: width, imageHeight: height };
     }
 
     // Simplify based on image size - larger images need more aggressive simplification
@@ -253,26 +268,32 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
     // Ensure we have at least 3 vertices for a valid polygon
     if (simplified.length < 3) {
       logger.warn(LOG_PREFIX, `Simplified contour has insufficient points`, { pointCount: simplified.length });
-      return [];
+      return { vertices: [], imageWidth: width, imageHeight: height };
     }
 
     // Normalize to unit size (vertices centered at origin, fitting in -0.5 to 0.5 range)
     const unitVertices = normalizeVertices(simplified, 1);
 
-    // Cache the unit-sized vertices
+    // Cache the unit-sized vertices along with image dimensions
     contourCache.set(imageUrl, {
       vertices: unitVertices,
+      imageWidth: width,
+      imageHeight: height,
       timestamp: Date.now()
     });
     cleanupCache();
 
-    logger.info(LOG_PREFIX, `Vertices extracted and cached`, { imageUrl, vertexCount: unitVertices.length });
+    logger.info(LOG_PREFIX, `Vertices extracted and cached`, { imageUrl, vertexCount: unitVertices.length, width, height });
 
     // Scale to requested size and return
-    return scaleVertices(unitVertices, targetSize);
+    return {
+      vertices: scaleVertices(unitVertices, targetSize),
+      imageWidth: width,
+      imageHeight: height
+    };
   } catch (error) {
     logger.error(LOG_PREFIX, `Failed to extract vertices from image`, { error: String(error) });
-    return [];
+    return { vertices: [], imageWidth: 0, imageHeight: 0 };
   }
 }
 

@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import type { Bounds, EntityConfig, ObstacleConfig, ShapeConfig } from './types';
-import { getVerticesFromImage, Vector2D } from './imageClip';
+import { getVerticesFromImage, getVerticesAndDimensionsFromImage, Vector2D } from './imageClip';
 import { logger } from './logger';
 
 const BOUNDARY_THICKNESS = 50;
@@ -233,12 +233,59 @@ export async function createEntityAsync(id: string, config: EntityConfig): Promi
 }
 
 export function createObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Matter.Body {
-  return Matter.Bodies.rectangle(config.x, config.y, config.width, config.height, {
+  const width = config.width ?? 100;
+  const height = config.height ?? 20;
+  return Matter.Bodies.rectangle(config.x, config.y, width, height, {
     isStatic,
     label: `obstacle:${id}`,
     render: {
       visible: true,
-      fillStyle: '#4a4a6a'
+      fillStyle: config.fillStyle ?? '#4a4a6a'
     }
   });
+}
+
+/**
+ * Create an image-based obstacle asynchronously.
+ * Extracts shape from image alpha channel.
+ */
+export async function createObstacleAsync(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<Matter.Body> {
+  // If no imageUrl, fall back to rectangle
+  if (!config.imageUrl) {
+    return createObstacle(id, config, isStatic);
+  }
+
+  const size = config.size ?? 50;
+  logger.info(LOG_PREFIX, `Creating image-based obstacle`, { id, imageUrl: config.imageUrl, size });
+
+  const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl, size);
+
+  if (vertices.length >= 3) {
+    logger.info(LOG_PREFIX, `Image obstacle shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
+    const matterVertices = vertices.map(v => ({ x: v.x, y: v.y }));
+
+    // Scale sprite based on actual image dimensions
+    const maxDim = Math.max(imageWidth, imageHeight);
+    const spriteScale = size / maxDim;
+
+    const body = Matter.Bodies.fromVertices(config.x, config.y, [matterVertices], {
+      isStatic,
+      label: `obstacle:${id}`,
+      render: {
+        sprite: {
+          texture: config.imageUrl,
+          xScale: spriteScale,
+          yScale: spriteScale
+        }
+      }
+    });
+
+    // Ensure correct position (fromVertices can shift center)
+    Matter.Body.setPosition(body, { x: config.x, y: config.y });
+    return body;
+  }
+
+  // Fall back to rectangle if shape extraction fails
+  logger.warn(LOG_PREFIX, `Image obstacle shape extraction failed, falling back to rectangle`, { id });
+  return createObstacle(id, config, isStatic);
 }

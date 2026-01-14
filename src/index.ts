@@ -23,5 +23,8 @@ export type {
   BaseEffectConfig,
   BurstEffectConfig,
   RainEffectConfig,
-  StreamEffectConfig
+  StreamEffectConfig,
+  // Text obstacle types
+  TextObstacleConfig,
+  TextObstacleResult
 } from './types';

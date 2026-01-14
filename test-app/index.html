@@ -369,7 +369,6 @@
             <select id="select-entity-image" class="select-input select-truncate">
               <option value="">None</option>
               <option value="/bf_koban_512.png">bf_koban_512.png</option>
-              <option value="/test-bg.png">test-bg.png</option>
             </select>
           </div>
           <div class="param-row">
@@ -394,6 +393,29 @@
         <div style="display:flex;flex-direction:column;gap:6px">
           <button id="btn-release-group" class="panel-btn">Release "platforms"</button>
           <button id="btn-release-all" class="panel-btn">Release All</button>
+        </div>
+      </div>
+      <div class="effect-section">
+        <div class="effect-header" style="margin-bottom:8px">
+          <span class="effect-title">Text Obstacles</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Text:</label>
+            <input type="text" id="input-text-obstacle" value="HELLO" style="width:120px" placeholder="A-Z, 0-9">
+          </div>
+          <div class="param-row">
+            <label>Letter Size:</label>
+            <input type="number" id="input-letter-size" value="60" min="20" max="200">
+          </div>
+          <div class="param-row">
+            <label>Spacing:</label>
+            <input type="number" id="input-letter-spacing" value="50" min="10" max="200">
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <button id="btn-add-text-obstacle" class="panel-btn">Add Text Obstacle</button>
+          <button id="btn-spawn-falling-text" class="panel-btn">Spawn Falling Text</button>
         </div>
       </div>
       <div class="effect-section">

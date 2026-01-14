@@ -61,8 +61,16 @@ export interface EntityConfig {
 export interface ObstacleConfig {
   x: number;
   y: number;
-  width: number;
-  height: number;
+  /** Width for rectangle obstacles (ignored if imageUrl is provided) */
+  width?: number;
+  /** Height for rectangle obstacles (ignored if imageUrl is provided) */
+  height?: number;
+  /** Image URL for image-based obstacle shapes */
+  imageUrl?: string;
+  /** Size of the obstacle when using imageUrl (diameter) */
+  size?: number;
+  /** Fill style color */
+  fillStyle?: string;
   tags?: string[];
   /** Time-to-live in milliseconds. If not set, obstacle lives forever */
   ttl?: number;
@@ -191,3 +199,45 @@ export interface StreamEffectConfig extends BaseEffectConfig {
 
 export type EffectConfig = BurstEffectConfig | RainEffectConfig | StreamEffectConfig;
 export type EffectType = EffectConfig['type'];
+
+// ==================== TEXT OBSTACLE TYPES ====================
+
+/**
+ * Configuration for creating text obstacles from strings
+ */
+export interface TextObstacleConfig {
+  /** The text to create obstacles from (A-Z, 0-9 supported) */
+  text: string;
+  /** X position of the first letter's center */
+  x: number;
+  /** Y position of the letter centers */
+  y: number;
+  /** Size of each letter (width/height) */
+  letterSize: number;
+  /** Spacing between letter centers (default: letterSize * 0.8) */
+  letterSpacing?: number;
+  /** Base URL path for letter images (default: '/') */
+  basePath?: string;
+  /** Fill color for letters (default: '#ffffff') */
+  fillStyle?: string;
+  /** Tags to apply to all letters */
+  tags?: string[];
+  /** Additional tag for the word group (for releasing whole word) */
+  wordTag?: string;
+  /** Whether obstacles are static (default: true) */
+  isStatic?: boolean;
+  /** Time-to-live in milliseconds */
+  ttl?: number;
+}
+
+/**
+ * Result of creating text obstacles
+ */
+export interface TextObstacleResult {
+  /** IDs of all created letter obstacles */
+  letterIds: string[];
+  /** The word tag used to group these letters */
+  wordTag: string;
+  /** Map of character to obstacle ID for individual control */
+  letterMap: Map<string, string>;
+}
