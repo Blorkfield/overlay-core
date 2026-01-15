@@ -321,8 +321,8 @@ export async function createBoxObstacleWithInfo(id: string, config: ObstacleConf
   const scaledWidth = imageWidth * spriteScale;
   const scaledHeight = imageHeight * spriteScale;
 
-  // Create rectangle first - this positions correctly at (x, y)
-  const body = Matter.Bodies.rectangle(config.x, config.y, size, size, {
+  // Create rectangle with actual scaled dimensions from the PNG
+  const body = Matter.Bodies.rectangle(config.x, config.y, scaledWidth, scaledHeight, {
     isStatic,
     label: `obstacle:${id}`,
     render: {

@@ -361,7 +361,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
 
   const fontName = selectFont.value;
   const letterSize = parseInt(inputLetterSize.value) || 60;
-  const letterSpacing = parseInt(inputLetterSpacing.value) || 50;
+  const letterSpacing = parseInt(inputLetterSpacing.value);
   const letterColor = inputLetterColor.value.trim() || undefined;
 
   // Find the selected font info
@@ -370,7 +370,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
 
   // Calculate starting X to center the text
   const totalWidth = text.replace(/[^A-Za-z0-9]/g, '').length * letterSpacing;
-  const startX = (canvas.width - totalWidth) / 2 + letterSpacing / 2;
+  const startX = (canvas.width) / 5;
   const y = falling ? 50 : canvas.height * 0.3;
 
   let result;
