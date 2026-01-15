@@ -19,7 +19,9 @@ import type {
   EffectConfig,
   DespawnEffectConfig,
   TextObstacleConfig,
-  TextObstacleResult
+  TextObstacleResult,
+  FontInfo,
+  FontManifest
 } from './types';
 
 interface EntityEntry {
@@ -58,6 +60,8 @@ export class OverlayScene {
   private mouse: Matter.Mouse | null = null;
   private mouseConstraint: Matter.MouseConstraint | null = null;
   private effectManager: EffectManager;
+  private fonts: FontInfo[] = [];
+  private fontsInitialized: boolean = false;
 
   static createContainer(
     parent: HTMLElement,
@@ -475,6 +479,80 @@ export class OverlayScene {
     return ids;
   }
 
+  // ==================== FONT MANAGEMENT METHODS ====================
+
+  /**
+   * Initialize fonts by loading the font manifest.
+   * Should be called before using text obstacles if you want automatic font detection.
+   * @param fontsBasePath Base URL path for fonts directory (default: '/fonts/')
+   */
+  async initializeFonts(fontsBasePath: string = '/fonts/'): Promise<void> {
+    if (this.fontsInitialized) {
+      return;
+    }
+
+    try {
+      const manifestUrl = `${fontsBasePath}fonts.json`;
+      const response = await fetch(manifestUrl);
+
+      if (!response.ok) {
+        logger.warn('OverlayScene', `Failed to load fonts manifest from ${manifestUrl}: ${response.status}`);
+        this.fonts = [];
+        this.fontsInitialized = true;
+        return;
+      }
+
+      const manifest: FontManifest = await response.json();
+      this.fonts = manifest.fonts || [];
+      this.fontsInitialized = true;
+
+      logger.info('OverlayScene', `Loaded ${this.fonts.length} fonts`, { fonts: this.fonts.map(f => f.name) });
+    } catch (error) {
+      logger.warn('OverlayScene', `Error loading fonts manifest: ${error}`);
+      this.fonts = [];
+      this.fontsInitialized = true;
+    }
+  }
+
+  /**
+   * Get list of available fonts.
+   * Returns empty array if fonts have not been initialized.
+   */
+  getAvailableFonts(): FontInfo[] {
+    return [...this.fonts];
+  }
+
+  /**
+   * Get font by index. Returns undefined if index is out of bounds.
+   * @param index Font index (0-based)
+   */
+  getFontByIndex(index: number): FontInfo | undefined {
+    return this.fonts[index];
+  }
+
+  /**
+   * Get font by name. Returns undefined if font not found.
+   * @param name Font name to find
+   */
+  getFontByName(name: string): FontInfo | undefined {
+    return this.fonts.find(f => f.name === name);
+  }
+
+  /**
+   * Get the default font (first available font).
+   * Returns undefined if no fonts are available.
+   */
+  getDefaultFont(): FontInfo | undefined {
+    return this.fonts[0];
+  }
+
+  /**
+   * Check if fonts have been initialized.
+   */
+  areFontsInitialized(): boolean {
+    return this.fontsInitialized;
+  }
+
   // ==================== TEXT OBSTACLE METHODS ====================
 
   /**
@@ -486,8 +564,9 @@ export class OverlayScene {
     const text = config.text.toUpperCase();
     const letterSize = config.letterSize;
     const letterSpacing = config.letterSpacing ?? letterSize * 0.8;
-    const fontName = config.fontName ?? 'handwritten';
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
+    // Use provided fontName, or first available font if initialized, or fallback to 'handwritten'
+    const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
     const isStatic = config.isStatic ?? true;

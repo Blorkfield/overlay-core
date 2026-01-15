@@ -26,5 +26,8 @@ export type {
   StreamEffectConfig,
   // Text obstacle types
   TextObstacleConfig,
-  TextObstacleResult
+  TextObstacleResult,
+  // Font types
+  FontInfo,
+  FontManifest
 } from './types';

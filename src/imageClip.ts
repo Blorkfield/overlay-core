@@ -163,25 +163,44 @@ function perpendicularDistance(point: Vector2D, lineStart: Vector2D, lineEnd: Ve
 }
 
 // Scale and center vertices for Matter.js body creation
-export function normalizeVertices(vertices: Vector2D[], targetSize: number): Vector2D[] {
+// When imageWidth/imageHeight are provided, centers based on image dimensions (for consistent alignment)
+// Otherwise falls back to centering based on shape bounding box
+export function normalizeVertices(
+  vertices: Vector2D[],
+  targetSize: number,
+  imageWidth?: number,
+  imageHeight?: number
+): Vector2D[] {
   if (vertices.length === 0) return [];
 
-  // Find bounding box
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const v of vertices) {
-    minX = Math.min(minX, v.x);
-    minY = Math.min(minY, v.y);
-    maxX = Math.max(maxX, v.x);
-    maxY = Math.max(maxY, v.y);
+  // Use image dimensions if provided, otherwise calculate from shape bounds
+  let centerX: number;
+  let centerY: number;
+  let refWidth: number;
+  let refHeight: number;
+
+  if (imageWidth !== undefined && imageHeight !== undefined) {
+    // Center based on image dimensions - all same-size images will align
+    centerX = imageWidth / 2;
+    centerY = imageHeight / 2;
+    refWidth = imageWidth;
+    refHeight = imageHeight;
+  } else {
+    // Fallback: center based on shape bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const v of vertices) {
+      minX = Math.min(minX, v.x);
+      minY = Math.min(minY, v.y);
+      maxX = Math.max(maxX, v.x);
+      maxY = Math.max(maxY, v.y);
+    }
+    centerX = (minX + maxX) / 2;
+    centerY = (minY + maxY) / 2;
+    refWidth = maxX - minX;
+    refHeight = maxY - minY;
   }
 
-  const width = maxX - minX;
-  const height = maxY - minY;
-  const scale = targetSize / Math.max(width, height);
-
-  // Center at origin and scale
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
+  const scale = targetSize / Math.max(refWidth, refHeight);
 
   return vertices.map(v => ({
     x: (v.x - centerX) * scale,
@@ -271,8 +290,9 @@ export async function getVerticesAndDimensionsFromImage(imageUrl: string, target
       return { vertices: [], imageWidth: width, imageHeight: height };
     }
 
-    // Normalize to unit size (vertices centered at origin, fitting in -0.5 to 0.5 range)
-    const unitVertices = normalizeVertices(simplified, 1);
+    // Normalize to unit size, centered on IMAGE dimensions (not shape bounds)
+    // This ensures all same-size images align consistently
+    const unitVertices = normalizeVertices(simplified, 1, width, height);
 
     // Cache the unit-sized vertices along with image dimensions
     contourCache.set(imageUrl, {

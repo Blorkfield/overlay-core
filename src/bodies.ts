@@ -303,7 +303,7 @@ export async function createObstacleAsync(id: string, config: ObstacleConfig, is
       }
     });
 
-    // Ensure correct position (fromVertices can shift center)
+    // Vertices are now centered on image dimensions, so setPosition aligns correctly
     Matter.Body.setPosition(body, { x: config.x, y: config.y });
     return body;
   }

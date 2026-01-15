@@ -110,7 +110,7 @@ function getContainerSize(): { width: number; height: number } {
   };
 }
 
-function createScene(width: number, height: number): void {
+async function createScene(width: number, height: number): Promise<void> {
   // Cleanup existing scene
   if (scene) {
     scene.destroy();
@@ -187,12 +187,42 @@ function createScene(width: number, height: number): void {
 
   scene.start();
 
+  // Initialize fonts and populate dropdown
+  await scene.initializeFonts();
+  populateFontDropdown();
+
   // Re-initialize effects with new scene
   updateBurstEffect();
   updateRainEffect();
   updateStreamEffect();
 
   console.log('Overlay scene started!');
+}
+
+function populateFontDropdown(): void {
+  if (!scene) return;
+
+  const fonts = scene.getAvailableFonts();
+
+  // Clear existing options
+  selectFont.innerHTML = '';
+
+  if (fonts.length === 0) {
+    // Fallback if no fonts found
+    const option = document.createElement('option');
+    option.value = 'handwritten';
+    option.textContent = 'handwritten';
+    selectFont.appendChild(option);
+    return;
+  }
+
+  // Add options for each available font
+  fonts.forEach((font, index) => {
+    const option = document.createElement('option');
+    option.value = font.name;
+    option.textContent = font.name;
+    selectFont.appendChild(option);
+  });
 }
 
 function setFullscreenMode(): void {

@@ -1,0 +1,12 @@
+{
+  "fonts": [
+    {
+      "name": "block",
+      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    },
+    {
+      "name": "handwritten",
+      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    }
+  ]
+}

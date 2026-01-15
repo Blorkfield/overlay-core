@@ -243,3 +243,20 @@ export interface TextObstacleResult {
   /** Map of character to obstacle ID for individual control */
   letterMap: Map<string, string>;
 }
+
+/**
+ * Information about an available font
+ */
+export interface FontInfo {
+  /** Font name (directory name under /fonts/) */
+  name: string;
+  /** Available characters in this font (e.g., "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") */
+  characters: string;
+}
+
+/**
+ * Font manifest structure loaded from fonts.json
+ */
+export interface FontManifest {
+  fonts: FontInfo[];
+}
