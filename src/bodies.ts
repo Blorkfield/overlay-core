@@ -132,24 +132,33 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
 }
 
 /**
- * Create render options for entity
+ * Create render options for entity (non-image)
  */
-function createRenderOptions(config: EntityConfig): Matter.IBodyRenderOptions {
-  return config.imageUrl
-    ? {
-        sprite: {
-          texture: config.imageUrl,
-          xScale: (config.radius * 2) / 512,
-          yScale: (config.radius * 2) / 512
-        }
-      }
-    : {
-        fillStyle: config.fillStyle ?? '#ff0000'
-      };
+function createFillRenderOptions(config: EntityConfig): Matter.IBodyRenderOptions {
+  return {
+    fillStyle: config.fillStyle ?? '#ff0000'
+  };
 }
 
 /**
- * Create a circle body (default fallback)
+ * Create render options for entity with sprite, using actual image dimensions
+ */
+function createSpriteRenderOptions(config: EntityConfig, imageWidth: number, imageHeight: number): Matter.IBodyRenderOptions {
+  const targetSize = config.radius * 2;
+  const maxDim = Math.max(imageWidth, imageHeight);
+  const spriteScale = targetSize / maxDim;
+
+  return {
+    sprite: {
+      texture: config.imageUrl!,
+      xScale: spriteScale,
+      yScale: spriteScale
+    }
+  };
+}
+
+/**
+ * Create a circle body (default fallback) - no image
  */
 function createCircleEntity(id: string, config: EntityConfig): Matter.Body {
   logger.debug(LOG_PREFIX, `Creating circle entity`, { id, radius: config.radius });
@@ -158,7 +167,21 @@ function createCircleEntity(id: string, config: EntityConfig): Matter.Body {
     friction: 0.1,
     frictionAir: 0.01,
     label: `entity:${id}`,
-    render: createRenderOptions(config)
+    render: createFillRenderOptions(config)
+  });
+}
+
+/**
+ * Create a circle body with sprite - requires image dimensions
+ */
+function createCircleEntityWithSprite(id: string, config: EntityConfig, imageWidth: number, imageHeight: number): Matter.Body {
+  logger.debug(LOG_PREFIX, `Creating circle entity with sprite`, { id, radius: config.radius, imageWidth, imageHeight });
+  return Matter.Bodies.circle(config.x, config.y, config.radius, {
+    restitution: 0.3,
+    friction: 0.1,
+    frictionAir: 0.01,
+    label: `entity:${id}`,
+    render: createSpriteRenderOptions(config, imageWidth, imageHeight)
   });
 }
 
@@ -187,7 +210,7 @@ export function createEntity(id: string, config: EntityConfig): Matter.Body {
   }
 
   logger.info(LOG_PREFIX, `Creating polygon entity`, { id, type: shape.type, vertices: vertices.length });
-  return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+  return createBodyFromVertices(id, config.x, config.y, vertices, createFillRenderOptions(config));
 }
 
 /**
@@ -206,15 +229,16 @@ export async function createEntityAsync(id: string, config: EntityConfig): Promi
   // If imageUrl provided, try to extract shape from it
   if (config.imageUrl) {
     logger.info(LOG_PREFIX, `Attempting to extract shape from image`, { id, imageUrl: config.imageUrl });
-    const vertices = await getVerticesFromImage(config.imageUrl, config.radius * 2);
+    const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl, config.radius * 2);
 
     if (vertices.length >= 3) {
-      logger.info(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length });
-      return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+      logger.info(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
+      return createBodyFromVertices(id, config.x, config.y, vertices, createSpriteRenderOptions(config, imageWidth, imageHeight));
     }
 
     logger.warn(LOG_PREFIX, `Image shape extraction failed, falling back to circle`, { id, verticesFound: vertices.length });
-    return createCircleEntity(id, config);
+    // Still use sprite for the circle fallback
+    return createCircleEntityWithSprite(id, config, imageWidth, imageHeight);
   }
 
   // No image - check for shape config (polygon presets, custom vertices)
@@ -222,7 +246,7 @@ export async function createEntityAsync(id: string, config: EntityConfig): Promi
     const vertices = getShapeVertices(shape, config.radius);
     if (vertices) {
       logger.info(LOG_PREFIX, `Creating polygon entity`, { id, type: shape.type, vertices: vertices.length });
-      return createBodyFromVertices(id, config.x, config.y, vertices, createRenderOptions(config));
+      return createBodyFromVertices(id, config.x, config.y, vertices, createFillRenderOptions(config));
     }
     logger.warn(LOG_PREFIX, `Failed to get vertices from shape config, falling back to circle`, { type: shape.type });
   }
@@ -264,7 +288,6 @@ export async function createObstacleAsync(id: string, config: ObstacleConfig, is
     logger.info(LOG_PREFIX, `Image obstacle shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
     const matterVertices = vertices.map(v => ({ x: v.x, y: v.y }));
 
-    // Scale sprite based on actual image dimensions
     const maxDim = Math.max(imageWidth, imageHeight);
     const spriteScale = size / maxDim;
 

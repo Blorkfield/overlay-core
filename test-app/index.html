@@ -405,12 +405,26 @@
             <input type="text" id="input-text-obstacle" value="HELLO" style="width:120px" placeholder="A-Z, 0-9">
           </div>
           <div class="param-row">
+            <label>Font:</label>
+            <select id="select-font" class="select-input">
+              <option value="handwritten">handwritten</option>
+            </select>
+          </div>
+          <div class="param-row">
             <label>Letter Size:</label>
             <input type="number" id="input-letter-size" value="60" min="20" max="200">
           </div>
           <div class="param-row">
             <label>Spacing:</label>
             <input type="number" id="input-letter-spacing" value="50" min="10" max="200">
+          </div>
+          <div class="param-row">
+            <label>Letter Color:</label>
+            <input type="color" id="input-letter-color" value="#ffffff" style="width:50px;height:28px;padding:2px;cursor:pointer">
+            <label class="toggle-switch" style="margin-left:8px">
+              <input type="checkbox" id="checkbox-use-letter-color">
+              <span class="toggle-slider"></span>
+            </label>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">

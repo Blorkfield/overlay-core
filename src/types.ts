@@ -216,10 +216,10 @@ export interface TextObstacleConfig {
   letterSize: number;
   /** Spacing between letter centers (default: letterSize * 0.8) */
   letterSpacing?: number;
-  /** Base URL path for letter images (default: '/') */
-  basePath?: string;
-  /** Fill color for letters (default: '#ffffff') */
-  fillStyle?: string;
+  /** Font name - corresponds to directory under /fonts/ (default: 'handwritten') */
+  fontName?: string;
+  /** Base URL path for fonts directory (default: '/fonts/') */
+  fontsBasePath?: string;
   /** Tags to apply to all letters */
   tags?: string[];
   /** Additional tag for the word group (for releasing whole word) */
@@ -228,6 +228,8 @@ export interface TextObstacleConfig {
   isStatic?: boolean;
   /** Time-to-live in milliseconds */
   ttl?: number;
+  /** Color to tint the letters (CSS color string). If not set, original image colors are used */
+  letterColor?: string;
 }
 
 /**

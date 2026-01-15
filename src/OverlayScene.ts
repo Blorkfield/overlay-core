@@ -1,6 +1,7 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
 import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync } from './bodies';
+import { tintImage } from './imageClip';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
@@ -485,9 +486,12 @@ export class OverlayScene {
     const text = config.text.toUpperCase();
     const letterSize = config.letterSize;
     const letterSpacing = config.letterSpacing ?? letterSize * 0.8;
-    const basePath = config.basePath ?? '/';
+    const fontName = config.fontName ?? 'handwritten';
+    const fontsBasePath = config.fontsBasePath ?? '/fonts/';
+    const basePath = `${fontsBasePath}${fontName}/`;
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
     const isStatic = config.isStatic ?? true;
+    const letterColor = config.letterColor;
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
@@ -508,7 +512,11 @@ export class OverlayScene {
         continue;
       }
 
-      const imageUrl = `${basePath}${char}.png`;
+      const originalImageUrl = `${basePath}${char}.png`;
+      // Apply tinting if color is specified
+      const imageUrl = letterColor
+        ? await tintImage(originalImageUrl, letterColor)
+        : originalImageUrl;
       const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
 
       const obstacleConfig: ObstacleConfig = {
@@ -516,7 +524,6 @@ export class OverlayScene {
         y: config.y,
         imageUrl,
         size: letterSize,
-        fillStyle: config.fillStyle,
         tags,
         ttl: config.ttl
       };
@@ -531,7 +538,7 @@ export class OverlayScene {
       currentX += letterSpacing;
     }
 
-    logger.info('OverlayScene', `Created text obstacles`, { text, letterCount: letterIds.length, wordTag });
+    logger.info('OverlayScene', `Created text obstacles`, { text, fontName, letterCount: letterIds.length, wordTag, letterColor });
 
     return {
       letterIds,

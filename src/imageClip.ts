@@ -311,3 +311,107 @@ export function clearVertexCache(): void {
 export function getVertexCacheStats(): { size: number; maxSize: number } {
   return { size: contourCache.size, maxSize: CACHE_MAX_SIZE };
 }
+
+// Cache for tinted images - keyed by "imageUrl:color"
+const tintedImageCache: Map<string, string> = new Map();
+const TINTED_CACHE_MAX_SIZE = 200;
+
+/**
+ * Parse a CSS color string to RGB values
+ */
+function parseColor(color: string): { r: number; g: number; b: number } | null {
+  // Create a temporary canvas to parse the color
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const data = ctx.getImageData(0, 0, 1, 1).data;
+  return { r: data[0], g: data[1], b: data[2] };
+}
+
+/**
+ * Tint an image by replacing all non-transparent pixels with the specified color,
+ * preserving the original alpha values.
+ *
+ * @param imageUrl - URL of the image to tint
+ * @param color - CSS color string (e.g., '#ff0000', 'red', 'rgb(255,0,0)')
+ * @returns Data URL of the tinted image
+ */
+export async function tintImage(imageUrl: string, color: string): Promise<string> {
+  const cacheKey = `${imageUrl}:${color}`;
+
+  // Check cache first
+  const cached = tintedImageCache.get(cacheKey);
+  if (cached) {
+    logger.debug(LOG_PREFIX, `Tinted image cache hit`, { imageUrl, color });
+    return cached;
+  }
+
+  logger.debug(LOG_PREFIX, `Tinting image`, { imageUrl, color });
+
+  try {
+    const img = await loadImage(imageUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+
+    // Draw original image
+    ctx.drawImage(img, 0, 0);
+
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Parse the target color
+    const rgb = parseColor(color);
+    if (!rgb) {
+      logger.warn(LOG_PREFIX, `Failed to parse color, returning original image`, { color });
+      return imageUrl;
+    }
+
+    // Replace colors while preserving alpha
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha > 0) {
+        data[i] = rgb.r;     // R
+        data[i + 1] = rgb.g; // G
+        data[i + 2] = rgb.b; // B
+        // data[i + 3] stays the same (alpha)
+      }
+    }
+
+    // Put modified data back
+    ctx.putImageData(imageData, 0, 0);
+
+    // Convert to data URL
+    const dataUrl = canvas.toDataURL('image/png');
+
+    // Cache the result
+    tintedImageCache.set(cacheKey, dataUrl);
+
+    // Clean up cache if too large
+    if (tintedImageCache.size > TINTED_CACHE_MAX_SIZE) {
+      const firstKey = tintedImageCache.keys().next().value;
+      if (firstKey) {
+        tintedImageCache.delete(firstKey);
+      }
+    }
+
+    logger.debug(LOG_PREFIX, `Image tinted successfully`, { imageUrl, color });
+    return dataUrl;
+  } catch (error) {
+    logger.error(LOG_PREFIX, `Failed to tint image`, { error: String(error) });
+    return imageUrl; // Return original on error
+  }
+}
+
+/**
+ * Clear the tinted image cache
+ */
+export function clearTintedImageCache(): void {
+  tintedImageCache.clear();
+  logger.debug(LOG_PREFIX, `Tinted image cache cleared`);
+}
