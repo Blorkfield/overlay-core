@@ -30,7 +30,6 @@ const selectFont = document.getElementById('select-font') as HTMLSelectElement;
 const inputLetterSize = document.getElementById('input-letter-size') as HTMLInputElement;
 const inputLetterSpacing = document.getElementById('input-letter-spacing') as HTMLInputElement;
 const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
-const checkboxUseLetterColor = document.getElementById('checkbox-use-letter-color') as HTMLInputElement;
 const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
 const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
 
@@ -333,7 +332,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const fontName = selectFont.value;
   const letterSize = parseInt(inputLetterSize.value) || 60;
   const letterSpacing = parseInt(inputLetterSpacing.value) || 50;
-  const letterColor = checkboxUseLetterColor.checked ? inputLetterColor.value : undefined;
+  const letterColor = inputLetterColor.value.trim() || undefined;
 
   // Calculate starting X to center the text
   const totalWidth = text.replace(/[^A-Za-z0-9]/g, '').length * letterSpacing;
