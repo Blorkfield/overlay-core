@@ -2,6 +2,7 @@ import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
 import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacle } from './bodies';
 import { tintImage } from './imageClip';
+import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
@@ -20,6 +21,7 @@ import type {
   DespawnEffectConfig,
   TextObstacleConfig,
   TextObstacleResult,
+  TTFTextObstacleConfig,
   FontInfo,
   FontManifest
 } from './types';
@@ -614,15 +616,16 @@ export class OverlayScene {
 
       const body = await createBoxObstacle(id, obstacleConfig, isStatic);
 
-      this.obstacles.set(id, { body, config: obstacleConfig });
+      const entry: ObstacleEntry = {
+        id,
+        body,
+        isStatic,
+        tags,
+        spawnTime: performance.now(),
+        ttl: config.ttl
+      };
+      this.obstacles.set(id, entry);
       Matter.Composite.add(this.engine.world, body);
-
-      if (obstacleConfig.ttl !== undefined) {
-        this.ttlTimers.set(id, {
-          expiresAt: Date.now() + obstacleConfig.ttl,
-          type: 'obstacle'
-        });
-      }
 
       letterIds.push(id);
       letterMap.set(`${char}-${i}`, id);
@@ -669,6 +672,127 @@ export class OverlayScene {
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
+  }
+
+  // ==================== TTF FONT TEXT METHODS ====================
+
+  /**
+   * Create text obstacles from a TTF/OTF font file.
+   * Uses proper font metrics for spacing, kerning, and glyph outlines for collision.
+   */
+  async addTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
+    const { text, x, y, fontSize, fontUrl } = config;
+    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
+    const isStatic = config.isStatic ?? true;
+    const fillColor = config.fillColor ?? '#ffffff';
+
+    const letterIds: string[] = [];
+    const letterMap = new Map<string, string>();
+
+    // Load the font
+    const loadedFont = await loadFont(fontUrl);
+
+    // Track current X position as we place each glyph
+    let currentX = x;
+
+    const chars = text.split('');
+
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+
+      // Get glyph data (vertices, advance width, etc.)
+      const glyphData = getGlyphData(loadedFont, char, fontSize);
+
+      // Skip if no vertices (space or unsupported char)
+      if (glyphData.vertices.length < 3) {
+        // Still advance by the glyph's advance width
+        currentX += glyphData.advanceWidth;
+
+        // Add kerning with next character
+        if (i < chars.length - 1) {
+          currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
+        }
+        continue;
+      }
+
+      const id = crypto.randomUUID();
+      const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
+
+      // Calculate glyph center position based on bounding box
+      const bbox = glyphData.boundingBox;
+      const glyphWidth = bbox ? bbox.x2 - bbox.x1 : glyphData.advanceWidth;
+      const glyphHeight = bbox ? bbox.y2 - bbox.y1 : fontSize;
+      const glyphCenterX = currentX + (bbox ? bbox.x1 + glyphWidth / 2 : glyphData.advanceWidth / 2);
+      const glyphCenterY = y - (bbox ? (bbox.y1 + glyphHeight / 2) : fontSize / 2);
+
+      // Create rectangle body first - this positions correctly
+      const body = Matter.Bodies.rectangle(glyphCenterX, glyphCenterY, glyphWidth, glyphHeight, {
+        isStatic,
+        label: `obstacle:${id}`,
+        render: {
+          fillStyle: fillColor,
+          strokeStyle: fillColor,
+          lineWidth: 1
+        }
+      });
+
+      // Translate vertices to world position and replace collision shape
+      const worldVertices = glyphData.vertices.map(v => ({
+        x: currentX + v.x,
+        y: y - v.y  // Flip Y because font coords are Y-up, screen is Y-down
+      }));
+
+      if (worldVertices.length >= 3) {
+        Matter.Body.setVertices(body, worldVertices);
+        // setVertices may have moved body - force it back
+        Matter.Body.setPosition(body, { x: glyphCenterX, y: glyphCenterY });
+      }
+
+      // Store and add to world
+      const entry: ObstacleEntry = {
+        id,
+        body,
+        isStatic,
+        tags,
+        spawnTime: performance.now(),
+        ttl: config.ttl
+      };
+      this.obstacles.set(id, entry);
+      Matter.Composite.add(this.engine.world, body);
+
+      letterIds.push(id);
+      letterMap.set(`${char}-${i}`, id);
+
+      // Advance X position by glyph's advance width
+      currentX += glyphData.advanceWidth;
+
+      // Add kerning with next character
+      if (i < chars.length - 1) {
+        currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
+      }
+    }
+
+    logger.info('OverlayScene', `Created TTF text obstacles`, {
+      text,
+      fontUrl,
+      fontSize,
+      letterCount: letterIds.length,
+      wordTag
+    });
+
+    return {
+      letterIds,
+      wordTag,
+      letterMap
+    };
+  }
+
+  /**
+   * Spawn falling TTF text obstacles.
+   * Same as addTTFTextObstacles but obstacles are non-static (fall with gravity).
+   */
+  async spawnFallingTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
+    return this.addTTFTextObstacles({ ...config, isStatic: false });
   }
 
   // ==================== COMBINED TAG METHODS ====================

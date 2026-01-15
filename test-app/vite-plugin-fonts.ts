@@ -38,6 +38,8 @@ interface AsepriteData {
 interface FontInfo {
   name: string;
   characters: string;
+  type: 'png' | 'ttf';
+  fontUrl?: string;
 }
 
 /**
@@ -188,6 +190,49 @@ function scanFontsDirectory(fontsDir: string): FontInfo[] {
     const fontDir = path.join(fontsDir, entry.name);
     const files = fs.readdirSync(fontDir);
 
+    // Check for TTF fonts first
+    const ttfFiles = files.filter(f => f.endsWith('.ttf') || f.endsWith('.otf'));
+    if (ttfFiles.length > 0) {
+      // Use the first TTF file found, or look for common variants
+      const preferredNames = ['Regular', 'Medium', 'Bold'];
+      let selectedTtf = ttfFiles[0];
+
+      for (const pref of preferredNames) {
+        const match = ttfFiles.find(f => f.includes(pref) && !f.includes('Italic'));
+        if (match) {
+          selectedTtf = match;
+          break;
+        }
+      }
+
+      fonts.push({
+        name: entry.name,
+        characters: '*', // TTF fonts support all characters
+        type: 'ttf',
+        fontUrl: `/fonts/${entry.name}/${selectedTtf}`
+      });
+
+      // Also check for a 'static' subdirectory (common in Google Fonts)
+      const staticDir = path.join(fontDir, 'static');
+      if (fs.existsSync(staticDir)) {
+        const staticFiles = fs.readdirSync(staticDir).filter(f => f.endsWith('.ttf') || f.endsWith('.otf'));
+        if (staticFiles.length > 0) {
+          let selectedStaticTtf = staticFiles[0];
+          for (const pref of preferredNames) {
+            const match = staticFiles.find(f => f.includes(pref) && !f.includes('Italic'));
+            if (match) {
+              selectedStaticTtf = match;
+              break;
+            }
+          }
+          // Update the fontUrl to use the static version
+          fonts[fonts.length - 1].fontUrl = `/fonts/${entry.name}/static/${selectedStaticTtf}`;
+        }
+      }
+
+      continue; // Skip PNG check for TTF font directories
+    }
+
     // Check which valid characters have PNGs
     const validChars: string[] = [];
     for (const char of VALID_CHARACTERS) {
@@ -200,6 +245,7 @@ function scanFontsDirectory(fontsDir: string): FontInfo[] {
     if (validChars.length > 0) {
       fonts.push({
         name: entry.name,
+        type: 'png',
         characters: validChars.join('')
       });
     }

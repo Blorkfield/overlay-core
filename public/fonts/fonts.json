@@ -2,11 +2,19 @@
   "fonts": [
     {
       "name": "block",
+      "type": "png",
       "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     },
     {
       "name": "handwritten",
+      "type": "png",
       "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    },
+    {
+      "name": "Roboto",
+      "characters": "*",
+      "type": "ttf",
+      "fontUrl": "/fonts/Roboto/static/Roboto-Regular.ttf"
     }
   ]
 }

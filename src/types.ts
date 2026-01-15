@@ -245,6 +245,32 @@ export interface TextObstacleResult {
 }
 
 /**
+ * Configuration for creating text obstacles from a TTF font
+ */
+export interface TTFTextObstacleConfig {
+  /** Text to display */
+  text: string;
+  /** X position of the start of text */
+  x: number;
+  /** Y position of the text baseline */
+  y: number;
+  /** Font size in pixels */
+  fontSize: number;
+  /** URL path to the TTF/OTF font file */
+  fontUrl: string;
+  /** Tags to apply to all letters */
+  tags?: string[];
+  /** Additional tag for the word group (for releasing whole word) */
+  wordTag?: string;
+  /** Whether obstacles are static (default: true) */
+  isStatic?: boolean;
+  /** Time-to-live in milliseconds */
+  ttl?: number;
+  /** Fill color for the letters (CSS color string, default: '#ffffff') */
+  fillColor?: string;
+}
+
+/**
  * Information about an available font
  */
 export interface FontInfo {
@@ -252,6 +278,10 @@ export interface FontInfo {
   name: string;
   /** Available characters in this font (e.g., "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") */
   characters: string;
+  /** Font type: 'png' for image-based, 'ttf' for TrueType fonts */
+  type: 'png' | 'ttf';
+  /** For TTF fonts: relative URL path to the font file */
+  fontUrl?: string;
 }
 
 /**

@@ -364,22 +364,43 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const letterSpacing = parseInt(inputLetterSpacing.value) || 50;
   const letterColor = inputLetterColor.value.trim() || undefined;
 
+  // Find the selected font info
+  const fonts = scene.getAvailableFonts();
+  const selectedFont = fonts.find(f => f.name === fontName);
+
   // Calculate starting X to center the text
   const totalWidth = text.replace(/[^A-Za-z0-9]/g, '').length * letterSpacing;
   const startX = (canvas.width - totalWidth) / 2 + letterSpacing / 2;
   const y = falling ? 50 : canvas.height * 0.3;
 
-  const result = await scene.addTextObstacles({
-    text,
-    x: startX,
-    y,
-    letterSize,
-    letterSpacing,
-    fontName,
-    isStatic: !falling,
-    tags: ['text-obstacle'],
-    letterColor
-  });
+  let result;
+
+  if (selectedFont?.type === 'ttf' && selectedFont.fontUrl) {
+    // Use TTF text obstacles for TrueType fonts
+    result = await scene.addTTFTextObstacles({
+      text,
+      x: startX,
+      y,
+      fontSize: letterSize,
+      fontUrl: selectedFont.fontUrl,
+      isStatic: !falling,
+      tags: ['text-obstacle'],
+      fillColor: letterColor || '#6495ED'
+    });
+  } else {
+    // Use PNG-based text obstacles
+    result = await scene.addTextObstacles({
+      text,
+      x: startX,
+      y,
+      letterSize,
+      letterSpacing,
+      fontName,
+      isStatic: !falling,
+      tags: ['text-obstacle'],
+      letterColor
+    });
+  }
 
   console.log('Created text obstacle:', { text, fontName, letterColor, wordTag: result.wordTag, letterIds: result.letterIds });
 }
