@@ -270,6 +270,50 @@ export function createObstacle(id: string, config: ObstacleConfig, isStatic: boo
 }
 
 /**
+ * Create an image-clipped obstacle centered at (config.x, config.y).
+ * Image center goes at that position, not the shape centroid.
+ */
+export async function createBoxObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<Matter.Body> {
+  const size = config.size ?? 50;
+
+  const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl!, size);
+
+  const maxDim = Math.max(imageWidth, imageHeight);
+  const spriteScale = size / maxDim;
+
+  // Create rectangle first - this positions correctly at (x, y)
+  const body = Matter.Bodies.rectangle(config.x, config.y, size, size, {
+    isStatic,
+    label: `obstacle:${id}`,
+    render: {
+      sprite: {
+        texture: config.imageUrl!,
+        xScale: spriteScale,
+        yScale: spriteScale
+      }
+    }
+  });
+
+  // If we have clipped vertices, replace the collision shape
+  if (vertices.length >= 3) {
+    const targetX = config.x;
+    const targetY = config.y;
+
+    // Translate vertices to body position
+    const translatedVertices = vertices.map(v => ({
+      x: targetX + v.x,
+      y: targetY + v.y
+    }));
+    Matter.Body.setVertices(body, translatedVertices);
+
+    // setVertices may have moved body - force it back
+    Matter.Body.setPosition(body, { x: targetX, y: targetY });
+  }
+
+  return body;
+}
+
+/**
  * Create an image-based obstacle asynchronously.
  * Extracts shape from image alpha channel.
  */

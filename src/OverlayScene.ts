@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync } from './bodies';
+import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacle } from './bodies';
 import { tintImage } from './imageClip';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
@@ -563,9 +563,7 @@ export class OverlayScene {
   async addTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
     const text = config.text.toUpperCase();
     const letterSize = config.letterSize;
-    const letterSpacing = config.letterSpacing ?? letterSize * 0.8;
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
-    // Use provided fontName, or first available font if initialized, or fallback to 'handwritten'
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
@@ -575,14 +573,18 @@ export class OverlayScene {
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
 
-    let currentX = config.x;
+    // Step 1: Create X boxes for X letters (including spaces)
+    const chars = text.split('');
 
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
 
-      // Skip spaces but add spacing
+      // Box center position
+      const boxCenterX = config.x + (i * letterSize) + (letterSize / 2);
+      const boxCenterY = config.y;
+
+      // Skip spaces
       if (char === ' ') {
-        currentX += letterSpacing;
         continue;
       }
 
@@ -591,30 +593,39 @@ export class OverlayScene {
         continue;
       }
 
+      // Step 2: Put clipped letter inside this box at dead center
       const originalImageUrl = `${basePath}${char}.png`;
-      // Apply tinting if color is specified
       const imageUrl = letterColor
         ? await tintImage(originalImageUrl, letterColor)
         : originalImageUrl;
       const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
 
+      const id = crypto.randomUUID();
+
+      // Create clipped letter body at box center
       const obstacleConfig: ObstacleConfig = {
-        x: currentX,
-        y: config.y,
+        x: boxCenterX,
+        y: boxCenterY,
         imageUrl,
         size: letterSize,
         tags,
         ttl: config.ttl
       };
 
-      const id = isStatic
-        ? await this.addObstacleAsync(obstacleConfig)
-        : await this.spawnFallingObstacleAsync(obstacleConfig);
+      const body = await createBoxObstacle(id, obstacleConfig, isStatic);
+
+      this.obstacles.set(id, { body, config: obstacleConfig });
+      Matter.Composite.add(this.engine.world, body);
+
+      if (obstacleConfig.ttl !== undefined) {
+        this.ttlTimers.set(id, {
+          expiresAt: Date.now() + obstacleConfig.ttl,
+          type: 'obstacle'
+        });
+      }
 
       letterIds.push(id);
       letterMap.set(`${char}-${i}`, id);
-
-      currentX += letterSpacing;
     }
 
     logger.info('OverlayScene', `Created text obstacles`, { text, fontName, letterCount: letterIds.length, wordTag, letterColor });
