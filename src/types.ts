@@ -206,7 +206,7 @@ export type EffectType = EffectConfig['type'];
  * Configuration for creating text obstacles from strings
  */
 export interface TextObstacleConfig {
-  /** The text to create obstacles from (A-Z, 0-9 supported) */
+  /** The text to create obstacles from (A-Z, 0-9 supported, supports \n for multiline) */
   text: string;
   /** X position of the first letter's center */
   x: number;
@@ -214,7 +214,7 @@ export interface TextObstacleConfig {
   y: number;
   /** Size of each letter (width/height) */
   letterSize: number;
-  /** Spacing between letter centers (default: letterSize * 0.8) */
+  /** Spacing between letter centers (default: letterSize) */
   letterSpacing?: number;
   /** Font name - corresponds to directory under /fonts/ (default: 'handwritten') */
   fontName?: string;
@@ -230,6 +230,30 @@ export interface TextObstacleConfig {
   ttl?: number;
   /** Color to tint the letters (CSS color string). If not set, original image colors are used */
   letterColor?: string;
+  /** Line height for multiline text (default: letterSize * 1.2) */
+  lineHeight?: number;
+}
+
+/**
+ * Debug information for a single letter's positioning
+ */
+export interface LetterDebugInfo {
+  /** Letter character */
+  char: string;
+  /** Obstacle ID */
+  id: string;
+  /** Original PNG dimensions (before scaling) */
+  originalWidth: number;
+  originalHeight: number;
+  /** Scaled dimensions at letterSize */
+  scaledWidth: number;
+  scaledHeight: number;
+  /** Position of the letter's original dimension box (top-left corner) */
+  boxX: number;
+  boxY: number;
+  /** Center position of the letter */
+  centerX: number;
+  centerY: number;
 }
 
 /**
@@ -242,13 +266,15 @@ export interface TextObstacleResult {
   wordTag: string;
   /** Map of character to obstacle ID for individual control */
   letterMap: Map<string, string>;
+  /** Debug info for each letter (for drawing original dimension boxes) */
+  letterDebugInfo: LetterDebugInfo[];
 }
 
 /**
  * Configuration for creating text obstacles from a TTF font
  */
 export interface TTFTextObstacleConfig {
-  /** Text to display */
+  /** Text to display (supports \n for multiline) */
   text: string;
   /** X position of the start of text */
   x: number;
@@ -268,6 +294,8 @@ export interface TTFTextObstacleConfig {
   ttl?: number;
   /** Fill color for the letters (CSS color string, default: '#ffffff') */
   fillColor?: string;
+  /** Line height for multiline text (default: fontSize * 1.2) */
+  lineHeight?: number;
 }
 
 /**

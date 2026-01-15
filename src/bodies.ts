@@ -1,7 +1,10 @@
 import Matter from 'matter-js';
 import type { Bounds, EntityConfig, ObstacleConfig, ShapeConfig } from './types';
-import { getVerticesFromImage, getVerticesAndDimensionsFromImage, Vector2D } from './imageClip';
+import { getVerticesFromImage, getVerticesAndDimensionsFromImage, loadImage, Vector2D, ImageClipResult, ClipBounds } from './imageClip';
 import { logger } from './logger';
+
+// Re-export for convenience
+export type { ImageClipResult, ClipBounds };
 
 const BOUNDARY_THICKNESS = 50;
 const LOG_PREFIX = 'Bodies';
@@ -270,16 +273,53 @@ export function createObstacle(id: string, config: ObstacleConfig, isStatic: boo
 }
 
 /**
+ * Get image dimensions without extracting vertices.
+ * Useful for calculating letter spacing before creating obstacles.
+ */
+export async function getImageDimensions(imageUrl: string): Promise<{ width: number; height: number }> {
+  const img = await loadImage(imageUrl);
+  return { width: img.width, height: img.height };
+}
+
+/**
+ * Result from createBoxObstacleWithInfo
+ */
+export interface BoxObstacleResult {
+  body: Matter.Body;
+  /** Original image dimensions */
+  imageWidth: number;
+  imageHeight: number;
+  /** Scaled dimensions (how large the image appears at target size) */
+  scaledWidth: number;
+  scaledHeight: number;
+  /** Clip bounds within the original image */
+  clipBounds: ClipBounds;
+  /** Offset from image center to clip center (in scaled coordinates) */
+  clipOffset: Vector2D;
+}
+
+/**
  * Create an image-clipped obstacle centered at (config.x, config.y).
  * Image center goes at that position, not the shape centroid.
  */
 export async function createBoxObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<Matter.Body> {
+  const result = await createBoxObstacleWithInfo(id, config, isStatic);
+  return result.body;
+}
+
+/**
+ * Create an image-clipped obstacle with full positioning info.
+ * Returns the body plus dimension info for debug rendering.
+ */
+export async function createBoxObstacleWithInfo(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<BoxObstacleResult> {
   const size = config.size ?? 50;
 
-  const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl!, size);
+  const { vertices, imageWidth, imageHeight, clipBounds, clipOffset } = await getVerticesAndDimensionsFromImage(config.imageUrl!, size);
 
   const maxDim = Math.max(imageWidth, imageHeight);
   const spriteScale = size / maxDim;
+  const scaledWidth = imageWidth * spriteScale;
+  const scaledHeight = imageHeight * spriteScale;
 
   // Create rectangle first - this positions correctly at (x, y)
   const body = Matter.Bodies.rectangle(config.x, config.y, size, size, {
@@ -310,7 +350,15 @@ export async function createBoxObstacle(id: string, config: ObstacleConfig, isSt
     Matter.Body.setPosition(body, { x: targetX, y: targetY });
   }
 
-  return body;
+  return {
+    body,
+    imageWidth,
+    imageHeight,
+    scaledWidth,
+    scaledHeight,
+    clipBounds,
+    clipOffset
+  };
 }
 
 /**

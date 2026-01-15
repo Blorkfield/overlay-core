@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacle } from './bodies';
+import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
 import { tintImage } from './imageClip';
 import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
@@ -23,7 +23,8 @@ import type {
   TextObstacleResult,
   TTFTextObstacleConfig,
   FontInfo,
-  FontManifest
+  FontManifest,
+  LetterDebugInfo
 } from './types';
 
 interface EntityEntry {
@@ -64,6 +65,7 @@ export class OverlayScene {
   private effectManager: EffectManager;
   private fonts: FontInfo[] = [];
   private fontsInitialized: boolean = false;
+  private letterDebugInfo: Map<string, LetterDebugInfo[]> = new Map(); // wordTag -> debug info
 
   static createContainer(
     parent: HTMLElement,
@@ -465,6 +467,8 @@ export class OverlayScene {
       }
     }
     toRemove.forEach((id) => this.obstacles.delete(id));
+    // Clean up letter debug info if this was a word tag
+    this.letterDebugInfo.delete(tag);
   }
 
   getObstacleIds(): string[] {
@@ -561,10 +565,18 @@ export class OverlayScene {
    * Create text obstacles from a string. Each character becomes an individual obstacle
    * with shape extracted from the corresponding letter PNG image.
    * Supported characters: A-Z, 0-9 (case insensitive, spaces ignored)
+   * Supports multiline text with \n characters.
+   *
+   * Letter positioning is based on original PNG dimensions:
+   * - Each letter's PNG width controls its horizontal spacing
+   * - The clipped shape is positioned correctly within the original bounds
+   * - This allows fine control of letter spacing via PNG canvas size
    */
   async addTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    const text = config.text.toUpperCase();
+    // Convert literal \n strings to actual newlines, then uppercase
+    const text = config.text.replace(/\\n/g, '\n').toUpperCase();
     const letterSize = config.letterSize;
+    const lineHeight = config.lineHeight ?? letterSize * 1.2;
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
@@ -574,69 +586,163 @@ export class OverlayScene {
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
+    const debugInfo: LetterDebugInfo[] = [];
 
-    // Step 1: Create X boxes for X letters (including spaces)
-    const chars = text.split('');
+    // Split text into lines
+    const lines = text.split('\n');
 
-    for (let i = 0; i < chars.length; i++) {
-      const char = chars[i];
-
-      // Box center position
-      const boxCenterX = config.x + (i * letterSize) + (letterSize / 2);
-      const boxCenterY = config.y;
-
-      // Skip spaces
-      if (char === ' ') {
-        continue;
+    // First pass: collect all unique characters and load their image dimensions
+    const uniqueChars = new Set<string>();
+    for (const line of lines) {
+      for (const char of line) {
+        if (/^[A-Z0-9]$/.test(char)) {
+          uniqueChars.add(char);
+        }
       }
-
-      // Only process A-Z and 0-9
-      if (!/^[A-Z0-9]$/.test(char)) {
-        continue;
-      }
-
-      // Step 2: Put clipped letter inside this box at dead center
-      const originalImageUrl = `${basePath}${char}.png`;
-      const imageUrl = letterColor
-        ? await tintImage(originalImageUrl, letterColor)
-        : originalImageUrl;
-      const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
-
-      const id = crypto.randomUUID();
-
-      // Create clipped letter body at box center
-      const obstacleConfig: ObstacleConfig = {
-        x: boxCenterX,
-        y: boxCenterY,
-        imageUrl,
-        size: letterSize,
-        tags,
-        ttl: config.ttl
-      };
-
-      const body = await createBoxObstacle(id, obstacleConfig, isStatic);
-
-      const entry: ObstacleEntry = {
-        id,
-        body,
-        isStatic,
-        tags,
-        spawnTime: performance.now(),
-        ttl: config.ttl
-      };
-      this.obstacles.set(id, entry);
-      Matter.Composite.add(this.engine.world, body);
-
-      letterIds.push(id);
-      letterMap.set(`${char}-${i}`, id);
     }
 
-    logger.info('OverlayScene', `Created text obstacles`, { text, fontName, letterCount: letterIds.length, wordTag, letterColor });
+    // Load dimensions for all unique characters in parallel
+    const charDimensions = new Map<string, { width: number; height: number }>();
+    await Promise.all(
+      Array.from(uniqueChars).map(async (char) => {
+        const imageUrl = `${basePath}${char}.png`;
+        try {
+          const dims = await getImageDimensions(imageUrl);
+          charDimensions.set(char, dims);
+        } catch (error) {
+          logger.warn('OverlayScene', `Failed to load dimensions for char ${char}`, { error: String(error) });
+          // Use square fallback
+          charDimensions.set(char, { width: 100, height: 100 });
+        }
+      })
+    );
+
+    // Calculate the scale factor: letterSize is the target max dimension
+    // Find the max dimension among all letters to determine base scale
+    let maxDimension = 0;
+    for (const dims of charDimensions.values()) {
+      maxDimension = Math.max(maxDimension, dims.width, dims.height);
+    }
+    // If no letters found, default to 100
+    if (maxDimension === 0) maxDimension = 100;
+
+    // Track Y position for each line
+    let currentY = config.y;
+    let globalCharIndex = 0;
+
+    for (const line of lines) {
+      const chars = line.split('');
+      let currentX = config.x;
+
+      for (let i = 0; i < chars.length; i++) {
+        const char = chars[i];
+
+        // Handle spaces - use average letter width or letterSpacing config
+        if (char === ' ') {
+          // Use explicit letterSpacing if provided, otherwise use letterSize as space width
+          const spaceWidth = config.letterSpacing ?? letterSize;
+          currentX += spaceWidth;
+          globalCharIndex++;
+          continue;
+        }
+
+        // Only process A-Z and 0-9
+        if (!/^[A-Z0-9]$/.test(char)) {
+          globalCharIndex++;
+          continue;
+        }
+
+        // Get this letter's original dimensions
+        const dims = charDimensions.get(char)!;
+        const scale = letterSize / Math.max(dims.width, dims.height);
+        const scaledWidth = dims.width * scale;
+        const scaledHeight = dims.height * scale;
+
+        // Letter box position (top-left of the original dimension box)
+        const boxX = currentX;
+        const boxY = currentY - scaledHeight / 2; // Center vertically on currentY
+
+        // Letter center position (center of the original dimension box)
+        const centerX = currentX + scaledWidth / 2;
+        const centerY = currentY;
+
+        // Prepare image URL (with optional tinting)
+        const originalImageUrl = `${basePath}${char}.png`;
+        const imageUrl = letterColor
+          ? await tintImage(originalImageUrl, letterColor)
+          : originalImageUrl;
+        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+
+        const id = crypto.randomUUID();
+
+        // Create clipped letter body at the center position
+        const obstacleConfig: ObstacleConfig = {
+          x: centerX,
+          y: centerY,
+          imageUrl,
+          size: letterSize,
+          tags,
+          ttl: config.ttl
+        };
+
+        const result = await createBoxObstacleWithInfo(id, obstacleConfig, isStatic);
+
+        const entry: ObstacleEntry = {
+          id,
+          body: result.body,
+          isStatic,
+          tags,
+          spawnTime: performance.now(),
+          ttl: config.ttl
+        };
+        this.obstacles.set(id, entry);
+        Matter.Composite.add(this.engine.world, result.body);
+
+        letterIds.push(id);
+        letterMap.set(`${char}-${globalCharIndex}`, id);
+
+        // Store debug info
+        debugInfo.push({
+          char,
+          id,
+          originalWidth: dims.width,
+          originalHeight: dims.height,
+          scaledWidth,
+          scaledHeight,
+          boxX,
+          boxY,
+          centerX,
+          centerY
+        });
+
+        // Advance X by this letter's scaled width (plus optional extra spacing)
+        const extraSpacing = config.letterSpacing !== undefined ? config.letterSpacing - scaledWidth : 0;
+        currentX += scaledWidth + Math.max(0, extraSpacing);
+
+        globalCharIndex++;
+      }
+
+      // Move to next line
+      currentY += lineHeight;
+    }
+
+    // Store debug info for this word
+    this.letterDebugInfo.set(wordTag, debugInfo);
+
+    logger.info('OverlayScene', `Created text obstacles`, {
+      text: text.replace(/\n/g, '\\n'),
+      fontName,
+      letterCount: letterIds.length,
+      wordTag,
+      letterColor,
+      lineCount: lines.length
+    });
 
     return {
       letterIds,
       wordTag,
-      letterMap
+      letterMap,
+      letterDebugInfo: debugInfo
     };
   }
 
@@ -674,17 +780,38 @@ export class OverlayScene {
     }
   }
 
+  /**
+   * Get letter debug info for a word.
+   * Returns the debug info array for the given word tag, or undefined if not found.
+   * Debug info includes original dimension boxes for each letter.
+   */
+  getLetterDebugInfo(wordTag: string): LetterDebugInfo[] | undefined {
+    return this.letterDebugInfo.get(wordTag);
+  }
+
+  /**
+   * Get all stored letter debug info (all words).
+   * Returns a map of wordTag -> debug info array.
+   */
+  getAllLetterDebugInfo(): Map<string, LetterDebugInfo[]> {
+    return new Map(this.letterDebugInfo);
+  }
+
   // ==================== TTF FONT TEXT METHODS ====================
 
   /**
    * Create text obstacles from a TTF/OTF font file.
    * Uses proper font metrics for spacing, kerning, and glyph outlines for collision.
+   * Supports multiline text with \n characters.
    */
   async addTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
-    const { text, x, y, fontSize, fontUrl } = config;
+    const { x, y, fontSize, fontUrl } = config;
+    // Convert literal \n strings to actual newlines
+    const text = config.text.replace(/\\n/g, '\n');
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
     const isStatic = config.isStatic ?? true;
     const fillColor = config.fillColor ?? '#ffffff';
+    const lineHeight = config.lineHeight ?? fontSize * 1.2;
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
@@ -692,98 +819,116 @@ export class OverlayScene {
     // Load the font
     const loadedFont = await loadFont(fontUrl);
 
-    // Track current X position as we place each glyph
-    let currentX = x;
+    // Split text into lines
+    const lines = text.split('\n');
 
-    const chars = text.split('');
+    // Track current Y position for each line
+    let currentY = y;
+    let globalCharIndex = 0;
 
-    for (let i = 0; i < chars.length; i++) {
-      const char = chars[i];
+    for (const line of lines) {
+      // Track current X position as we place each glyph
+      let currentX = x;
 
-      // Get glyph data (vertices, advance width, etc.)
-      const glyphData = getGlyphData(loadedFont, char, fontSize);
+      const chars = line.split('');
 
-      // Skip if no vertices (space or unsupported char)
-      if (glyphData.vertices.length < 3) {
-        // Still advance by the glyph's advance width
+      for (let i = 0; i < chars.length; i++) {
+        const char = chars[i];
+
+        // Get glyph data (vertices, advance width, etc.)
+        const glyphData = getGlyphData(loadedFont, char, fontSize);
+
+        // Skip if no vertices (space or unsupported char)
+        if (glyphData.vertices.length < 3) {
+          // Still advance by the glyph's advance width
+          currentX += glyphData.advanceWidth;
+
+          // Add kerning with next character
+          if (i < chars.length - 1) {
+            currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
+          }
+          globalCharIndex++;
+          continue;
+        }
+
+        const id = crypto.randomUUID();
+        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+
+        // Calculate glyph center position based on bounding box
+        const bbox = glyphData.boundingBox;
+        const glyphWidth = bbox ? bbox.x2 - bbox.x1 : glyphData.advanceWidth;
+        const glyphHeight = bbox ? bbox.y2 - bbox.y1 : fontSize;
+        const glyphCenterX = currentX + (bbox ? bbox.x1 + glyphWidth / 2 : glyphData.advanceWidth / 2);
+        const glyphCenterY = currentY - (bbox ? (bbox.y1 + glyphHeight / 2) : fontSize / 2);
+
+        // Create rectangle body first - this positions correctly
+        const body = Matter.Bodies.rectangle(glyphCenterX, glyphCenterY, glyphWidth, glyphHeight, {
+          isStatic,
+          label: `obstacle:${id}`,
+          render: {
+            fillStyle: fillColor,
+            strokeStyle: fillColor,
+            lineWidth: 1
+          }
+        });
+
+        // Translate vertices to world position and replace collision shape
+        const worldVertices = glyphData.vertices.map(v => ({
+          x: currentX + v.x,
+          y: currentY - v.y  // Flip Y because font coords are Y-up, screen is Y-down
+        }));
+
+        if (worldVertices.length >= 3) {
+          Matter.Body.setVertices(body, worldVertices);
+          // setVertices may have moved body - force it back
+          Matter.Body.setPosition(body, { x: glyphCenterX, y: glyphCenterY });
+        }
+
+        // Store and add to world
+        const entry: ObstacleEntry = {
+          id,
+          body,
+          isStatic,
+          tags,
+          spawnTime: performance.now(),
+          ttl: config.ttl
+        };
+        this.obstacles.set(id, entry);
+        Matter.Composite.add(this.engine.world, body);
+
+        letterIds.push(id);
+        letterMap.set(`${char}-${globalCharIndex}`, id);
+
+        // Advance X position by glyph's advance width
         currentX += glyphData.advanceWidth;
 
         // Add kerning with next character
         if (i < chars.length - 1) {
           currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
         }
-        continue;
+
+        globalCharIndex++;
       }
 
-      const id = crypto.randomUUID();
-      const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${i}`];
-
-      // Calculate glyph center position based on bounding box
-      const bbox = glyphData.boundingBox;
-      const glyphWidth = bbox ? bbox.x2 - bbox.x1 : glyphData.advanceWidth;
-      const glyphHeight = bbox ? bbox.y2 - bbox.y1 : fontSize;
-      const glyphCenterX = currentX + (bbox ? bbox.x1 + glyphWidth / 2 : glyphData.advanceWidth / 2);
-      const glyphCenterY = y - (bbox ? (bbox.y1 + glyphHeight / 2) : fontSize / 2);
-
-      // Create rectangle body first - this positions correctly
-      const body = Matter.Bodies.rectangle(glyphCenterX, glyphCenterY, glyphWidth, glyphHeight, {
-        isStatic,
-        label: `obstacle:${id}`,
-        render: {
-          fillStyle: fillColor,
-          strokeStyle: fillColor,
-          lineWidth: 1
-        }
-      });
-
-      // Translate vertices to world position and replace collision shape
-      const worldVertices = glyphData.vertices.map(v => ({
-        x: currentX + v.x,
-        y: y - v.y  // Flip Y because font coords are Y-up, screen is Y-down
-      }));
-
-      if (worldVertices.length >= 3) {
-        Matter.Body.setVertices(body, worldVertices);
-        // setVertices may have moved body - force it back
-        Matter.Body.setPosition(body, { x: glyphCenterX, y: glyphCenterY });
-      }
-
-      // Store and add to world
-      const entry: ObstacleEntry = {
-        id,
-        body,
-        isStatic,
-        tags,
-        spawnTime: performance.now(),
-        ttl: config.ttl
-      };
-      this.obstacles.set(id, entry);
-      Matter.Composite.add(this.engine.world, body);
-
-      letterIds.push(id);
-      letterMap.set(`${char}-${i}`, id);
-
-      // Advance X position by glyph's advance width
-      currentX += glyphData.advanceWidth;
-
-      // Add kerning with next character
-      if (i < chars.length - 1) {
-        currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
-      }
+      // Move to next line
+      currentY += lineHeight;
     }
 
     logger.info('OverlayScene', `Created TTF text obstacles`, {
-      text,
+      text: text.replace(/\n/g, '\\n'),
       fontUrl,
       fontSize,
       letterCount: letterIds.length,
-      wordTag
+      wordTag,
+      lineCount: lines.length
     });
 
+    // TTF fonts use font metrics, not PNG dimensions, so debug info is empty
     return {
       letterIds,
       wordTag,
-      letterMap
+      letterMap,
+      letterDebugInfo: []
     };
   }
 
@@ -877,9 +1022,52 @@ export class OverlayScene {
         wrapHorizontal(entry.body, this.config.bounds);
       }
     }
+
+    // Draw debug overlays after Matter.js renders
+    if (this.config.debug) {
+      this.drawDebugOverlays();
+    }
+
     this.fireUpdateCallbacks();
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
+
+  /**
+   * Draw debug overlays for letter original dimension boxes
+   */
+  private drawDebugOverlays(): void {
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Draw original dimension boxes for all letters
+    for (const [, debugInfos] of this.letterDebugInfo) {
+      for (const info of debugInfos) {
+        // Check if the obstacle still exists
+        const obstacle = this.obstacles.get(info.id);
+        if (!obstacle) continue;
+
+        // Get current body position (letters may have moved if not static)
+        const body = obstacle.body;
+
+        // Draw the original dimension box (cyan dashed outline)
+        ctx.save();
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+
+        // Translate and rotate with the body
+        ctx.translate(body.position.x, body.position.y);
+        ctx.rotate(body.angle);
+
+        // Draw rectangle centered on body (box dimensions relative to center)
+        const halfWidth = info.scaledWidth / 2;
+        const halfHeight = info.scaledHeight / 2;
+        ctx.strokeRect(-halfWidth, -halfHeight, info.scaledWidth, info.scaledHeight);
+
+        ctx.restore();
+      }
+    }
+  }
 
   private checkTTLExpiration(): void {
     const now = performance.now();

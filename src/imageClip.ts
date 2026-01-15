@@ -8,12 +8,21 @@ export interface Vector2D {
 const LOG_PREFIX = 'ImageClip';
 const ALPHA_THRESHOLD = 128;
 
+// Bounding box of the clipped content within the original image
+export interface ClipBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 // Cache for extracted vertices - keyed by imageUrl
 // We cache the raw contour data (before scaling) so it can be reused at different sizes
 interface ContourCacheEntry {
-  vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range)
+  vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range), centered on clip bounds
   imageWidth: number;
   imageHeight: number;
+  clipBounds: ClipBounds;  // Bounding box of non-transparent content
   timestamp: number;
 }
 
@@ -162,6 +171,24 @@ function perpendicularDistance(point: Vector2D, lineStart: Vector2D, lineEnd: Ve
   return Math.sqrt((point.x - closestX) ** 2 + (point.y - closestY) ** 2);
 }
 
+/**
+ * Calculate the bounding box of a set of vertices (the clipped content bounds)
+ */
+export function getClipBounds(vertices: Vector2D[]): ClipBounds {
+  if (vertices.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const v of vertices) {
+    minX = Math.min(minX, v.x);
+    minY = Math.min(minY, v.y);
+    maxX = Math.max(maxX, v.x);
+    maxY = Math.max(maxY, v.y);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 // Scale and center vertices for Matter.js body creation
 // When imageWidth/imageHeight are provided, centers based on image dimensions (for consistent alignment)
 // Otherwise falls back to centering based on shape bounding box
@@ -240,6 +267,22 @@ function cleanupCache(): void {
 }
 
 /**
+ * Result from getVerticesAndDimensionsFromImage
+ */
+export interface ImageClipResult {
+  /** Collision vertices, scaled to targetSize and centered on image center */
+  vertices: Vector2D[];
+  /** Original image width in pixels */
+  imageWidth: number;
+  /** Original image height in pixels */
+  imageHeight: number;
+  /** Bounding box of the non-transparent content within the original image */
+  clipBounds: ClipBounds;
+  /** Offset from image center to clip center (in target size coordinates) */
+  clipOffset: Vector2D;
+}
+
+/**
  * Extract vertices from image, with caching for repeated calls.
  * Vertices are cached normalized to unit size and scaled to targetSize on retrieval.
  */
@@ -249,10 +292,10 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
 }
 
 /**
- * Extract vertices from image along with original image dimensions.
- * Useful when you need to know the source image size for sprite scaling.
+ * Extract vertices from image along with original image dimensions and clip bounds.
+ * Returns information needed for proper letter spacing and positioning.
  */
-export async function getVerticesAndDimensionsFromImage(imageUrl: string, targetSize: number): Promise<{ vertices: Vector2D[]; imageWidth: number; imageHeight: number }> {
+export async function getVerticesAndDimensionsFromImage(imageUrl: string, targetSize: number): Promise<ImageClipResult> {
   logger.info(LOG_PREFIX, `Getting vertices from image`, { imageUrl, targetSize });
 
   // Check cache first
@@ -260,10 +303,23 @@ export async function getVerticesAndDimensionsFromImage(imageUrl: string, target
   if (cached) {
     logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, cachedVertices: cached.vertices.length });
     cached.timestamp = Date.now(); // Refresh TTL on access
+
+    // Calculate clip offset in target coordinates
+    const scale = targetSize / Math.max(cached.imageWidth, cached.imageHeight);
+    const imageCenterX = cached.imageWidth / 2;
+    const imageCenterY = cached.imageHeight / 2;
+    const clipCenterX = (cached.clipBounds.minX + cached.clipBounds.maxX) / 2;
+    const clipCenterY = (cached.clipBounds.minY + cached.clipBounds.maxY) / 2;
+
     return {
       vertices: scaleVertices(cached.vertices, targetSize),
       imageWidth: cached.imageWidth,
-      imageHeight: cached.imageHeight
+      imageHeight: cached.imageHeight,
+      clipBounds: cached.clipBounds,
+      clipOffset: {
+        x: (clipCenterX - imageCenterX) * scale,
+        y: (clipCenterY - imageCenterY) * scale
+      }
     };
   }
 
@@ -276,8 +332,18 @@ export async function getVerticesAndDimensionsFromImage(imageUrl: string, target
     const contour = extractContour(data, width, height);
     if (contour.length < 3) {
       logger.warn(LOG_PREFIX, `Contour has insufficient points`, { pointCount: contour.length });
-      return { vertices: [], imageWidth: width, imageHeight: height };
+      const emptyClipBounds = { minX: 0, minY: 0, maxX: width, maxY: height };
+      return {
+        vertices: [],
+        imageWidth: width,
+        imageHeight: height,
+        clipBounds: emptyClipBounds,
+        clipOffset: { x: 0, y: 0 }
+      };
     }
+
+    // Calculate clip bounds before simplification (for accurate bounds)
+    const clipBounds = getClipBounds(contour);
 
     // Simplify based on image size - larger images need more aggressive simplification
     const epsilon = Math.max(width, height) / 50;
@@ -287,33 +353,64 @@ export async function getVerticesAndDimensionsFromImage(imageUrl: string, target
     // Ensure we have at least 3 vertices for a valid polygon
     if (simplified.length < 3) {
       logger.warn(LOG_PREFIX, `Simplified contour has insufficient points`, { pointCount: simplified.length });
-      return { vertices: [], imageWidth: width, imageHeight: height };
+      return {
+        vertices: [],
+        imageWidth: width,
+        imageHeight: height,
+        clipBounds,
+        clipOffset: { x: 0, y: 0 }
+      };
     }
 
     // Normalize to unit size, centered on IMAGE dimensions (not shape bounds)
     // This ensures all same-size images align consistently
     const unitVertices = normalizeVertices(simplified, 1, width, height);
 
-    // Cache the unit-sized vertices along with image dimensions
+    // Cache the unit-sized vertices along with image dimensions and clip bounds
     contourCache.set(imageUrl, {
       vertices: unitVertices,
       imageWidth: width,
       imageHeight: height,
+      clipBounds,
       timestamp: Date.now()
     });
     cleanupCache();
 
-    logger.info(LOG_PREFIX, `Vertices extracted and cached`, { imageUrl, vertexCount: unitVertices.length, width, height });
+    logger.info(LOG_PREFIX, `Vertices extracted and cached`, {
+      imageUrl,
+      vertexCount: unitVertices.length,
+      width,
+      height,
+      clipBounds
+    });
+
+    // Calculate clip offset in target coordinates
+    const scale = targetSize / Math.max(width, height);
+    const imageCenterX = width / 2;
+    const imageCenterY = height / 2;
+    const clipCenterX = (clipBounds.minX + clipBounds.maxX) / 2;
+    const clipCenterY = (clipBounds.minY + clipBounds.maxY) / 2;
 
     // Scale to requested size and return
     return {
       vertices: scaleVertices(unitVertices, targetSize),
       imageWidth: width,
-      imageHeight: height
+      imageHeight: height,
+      clipBounds,
+      clipOffset: {
+        x: (clipCenterX - imageCenterX) * scale,
+        y: (clipCenterY - imageCenterY) * scale
+      }
     };
   } catch (error) {
     logger.error(LOG_PREFIX, `Failed to extract vertices from image`, { error: String(error) });
-    return { vertices: [], imageWidth: 0, imageHeight: 0 };
+    return {
+      vertices: [],
+      imageWidth: 0,
+      imageHeight: 0,
+      clipBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      clipOffset: { x: 0, y: 0 }
+    };
   }
 }
 
