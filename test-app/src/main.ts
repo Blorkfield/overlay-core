@@ -1,4 +1,4 @@
-import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig } from '@blorkfield/overlay-core';
+import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig } from '@blorkfield/overlay-core';
 import { TabManager } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
@@ -80,17 +80,17 @@ const availableImages = [
   { value: '/bf_koban_512.png', label: 'bf_koban_512.png' }
 ];
 
-// Available entity types
-const availableEntityTypes: { value: EntityType; label: string }[] = [
-  { value: 'GROUNDED_FOLLOW', label: 'Follow' },
-  { value: 'GROUNDED_STATIC', label: 'Static' }
+// Available behavior modes for spawned objects
+const availableBehaviorModes: { value: string; label: string }[] = [
+  { value: 'follow', label: 'Follow' },
+  { value: 'no-follow', label: 'No Follow' }
 ];
 
-// Effect entity configs storage
-interface EffectEntityUI {
+// Effect object configs storage
+interface EffectObjectUI {
   id: string;
   imageUrl: string;
-  entityType: EntityType;
+  behaviorMode: string;
   probability: number;
   minScale: number;
   maxScale: number;
@@ -98,9 +98,9 @@ interface EffectEntityUI {
   ttl?: number;
 }
 
-const burstEntities: EffectEntityUI[] = [];
-const rainEntities: EffectEntityUI[] = [];
-const streamEntities: EffectEntityUI[] = [];
+const burstEntities: EffectObjectUI[] = [];
+const rainEntities: EffectObjectUI[] = [];
+const streamEntities: EffectObjectUI[] = [];
 
 let scene: OverlayScene | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -147,17 +147,17 @@ async function createScene(width: number, height: number): Promise<void> {
     scene.setMousePosition(x, y);
   });
 
-  // Spawn initial entity
-  scene.spawnEntity({
+  // Spawn initial dynamic object
+  scene.spawnObject({
     x: width / 2,
     y: 100,
     radius: 25,
     fillStyle: '#e94560',
-    tags: ['player']
+    tags: ['falling', 'follow', 'grabable', 'player']
   });
 
-  // Add some initial obstacles with tags
-  scene.addObstacle({
+  // Add some initial static platforms
+  scene.spawnObject({
     x: width * 0.25,
     y: height * 0.66,
     width: 150,
@@ -165,7 +165,7 @@ async function createScene(width: number, height: number): Promise<void> {
     tags: ['platforms', 'left']
   });
 
-  scene.addObstacle({
+  scene.spawnObject({
     x: width * 0.75,
     y: height * 0.58,
     width: 150,
@@ -173,7 +173,7 @@ async function createScene(width: number, height: number): Promise<void> {
     tags: ['platforms', 'right']
   });
 
-  scene.addObstacle({
+  scene.spawnObject({
     x: width * 0.5,
     y: height * 0.42,
     width: 100,
@@ -183,9 +183,9 @@ async function createScene(width: number, height: number): Promise<void> {
 
   // Update stats on each frame
   scene.onUpdate((data) => {
-    const entityCount = data.entities.length;
-    const obstacleCount = scene?.getObstacleIds().length ?? 0;
-    statsEl.textContent = `Entities: ${entityCount} | Obstacles: ${obstacleCount}`;
+    const dynamicCount = data.objects.length;
+    const totalCount = scene?.getObjectIds().length ?? 0;
+    statsEl.textContent = `Dynamic: ${dynamicCount} | Total: ${totalCount}`;
   });
 
   scene.start();
@@ -269,9 +269,15 @@ async function spawnRandomEntity(): Promise<void> {
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
-  const selectedType = selectEntityType.value as EntityType;
+  const selectedType = selectEntityType.value;
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType, 'ttl:', ttlValue ?? '∞');
+
+  // Build tags based on selected type
+  const tags: string[] = ['spawned', 'falling', 'grabable'];
+  if (selectedType === 'GROUNDED_FOLLOW') {
+    tags.push('follow');
+  }
+  console.log('Spawning object with image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞');
 
   const config = {
     x,
@@ -279,16 +285,15 @@ async function spawnRandomEntity(): Promise<void> {
     radius: 20 + Math.random() * 15,
     fillStyle: color,
     imageUrl: selectedImage || undefined,
-    tags: ['spawned'],
-    entityType: selectedType,
+    tags,
     ttl: ttlValue
   };
 
-  // Use async for image entities (extracts shape from alpha), sync otherwise
+  // Use async for image objects (extracts shape from alpha), sync otherwise
   if (selectedImage) {
-    await scene.spawnEntityAsync(config);
+    await scene.spawnObjectAsync(config);
   } else {
-    scene.spawnEntity(config);
+    scene.spawnObject(config);
   }
 }
 
@@ -297,7 +302,7 @@ function spawnRandomObstacle(): void {
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = Math.random() * canvas.height * 0.5 + canvas.height * 0.2;
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.addObstacle({
+  scene.spawnObject({
     x,
     y,
     width: 80 + Math.random() * 100,
@@ -312,12 +317,12 @@ function spawnFallingObstacle(): void {
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = 50;
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.spawnFallingObstacle({
+  scene.spawnObject({
     x,
     y,
     width: 60 + Math.random() * 60,
     height: 15 + Math.random() * 10,
-    tags: ['falling'],
+    tags: ['falling', 'grabable'],
     ttl: ttlValue
   });
 }
@@ -331,19 +336,23 @@ btnSpawnObstacle.addEventListener('click', spawnRandomObstacle);
 btnSpawnFalling.addEventListener('click', spawnFallingObstacle);
 
 btnReleaseGroup.addEventListener('click', () => {
-  scene?.releaseObstaclesByTag('platforms');
+  scene?.releaseObjectsByTag('platforms');
 });
 
 btnReleaseAll.addEventListener('click', () => {
-  scene?.releaseAllObstacles();
+  scene?.releaseAllObjects();
 });
 
 btnRemoveEntities.addEventListener('click', () => {
-  scene?.removeAllEntities();
+  scene?.removeObjectsByTag('falling');
 });
 
 btnRemoveObstacles.addEventListener('click', () => {
-  scene?.removeAllObstacles();
+  // Remove static objects (those without 'falling' tag)
+  const allIds = scene?.getObjectIds() ?? [];
+  const dynamicIds = scene?.getObjectIdsByTag('falling') ?? [];
+  const staticIds = allIds.filter(id => !dynamicIds.includes(id));
+  scene?.removeObjects(staticIds);
 });
 
 btnRemoveAll.addEventListener('click', () => {
@@ -473,21 +482,27 @@ requestAnimationFrame(() => {
 // ==================== EFFECTS LOGIC ====================
 
 // Convert UI entities to EffectEntityConfig[]
-function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] {
+function uiToEffectObjects(uiObjects: EffectObjectUI[]): EffectObjectConfig[] {
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
-  return uiEntities.map((ui) => ({
-    entityConfig: {
-      fillStyle: colors[Math.floor(Math.random() * colors.length)],
-      imageUrl: ui.imageUrl || undefined,
-      tags: ['effect-spawned'],
-      entityType: ui.entityType,
-      ttl: ui.ttl
-    },
-    probability: ui.probability,
-    minScale: ui.minScale,
-    maxScale: ui.maxScale,
-    baseRadius: ui.baseRadius
-  }));
+  return uiObjects.map((ui) => {
+    // Build tags based on behavior mode
+    const tags = ['effect-spawned', 'grabable'];
+    if (ui.behaviorMode === 'follow') {
+      tags.push('follow');
+    }
+    return {
+      objectConfig: {
+        fillStyle: colors[Math.floor(Math.random() * colors.length)],
+        imageUrl: ui.imageUrl || undefined,
+        tags,
+        ttl: ui.ttl
+      },
+      probability: ui.probability,
+      minScale: ui.minScale,
+      maxScale: ui.maxScale,
+      baseRadius: ui.baseRadius
+    };
+  });
 }
 
 // Update burst effect config
@@ -501,7 +516,7 @@ function updateBurstEffect(): void {
     burstInterval: parseInt(burstInterval.value) || 2000,
     burstCount: parseInt(burstCount.value) || 8,
     burstForce: parseInt(burstForce.value) || 15,
-    entityConfigs: uiToEffectEntities(burstEntities)
+    objectConfigs: uiToEffectObjects(burstEntities)
   };
 
   scene.setEffect(config);
@@ -518,7 +533,7 @@ function updateRainEffect(): void {
     enabled: checkboxRain.checked,
     spawnRate: parseFloat(rainSpawnRate.value) || 5,
     spawnWidth: parseFloat(rainSpawnWidth.value) || 1,
-    entityConfigs: uiToEffectEntities(rainEntities)
+    objectConfigs: uiToEffectObjects(rainEntities)
   };
 
   scene.setEffect(config);
@@ -555,61 +570,61 @@ function updateStreamEffect(): void {
     spawnRate: parseFloat(streamSpawnRate.value) || 10,
     force: parseFloat(streamForce.value) || 15,
     coneAngle: coneAngleRad,
-    entityConfigs: uiToEffectEntities(streamEntities)
+    objectConfigs: uiToEffectObjects(streamEntities)
   };
 
   scene.setEffect(config);
   console.log('Stream effect updated:', config.enabled ? 'enabled' : 'disabled');
 }
 
-// Render entity list UI
-function renderEntityList(
+// Render object list UI for effects
+function renderObjectList(
   container: HTMLDivElement,
-  entities: EffectEntityUI[],
+  objects: EffectObjectUI[],
   onUpdate: () => void
 ): void {
   container.innerHTML = '';
 
-  if (entities.length === 0) {
-    container.innerHTML = '<div class="empty-message">No entity types added. Click "+ Add" to add one.</div>';
+  if (objects.length === 0) {
+    container.innerHTML = '<div class="empty-message">No object types added. Click "+ Add" to add one.</div>';
     return;
   }
 
-  entities.forEach((entity, index) => {
+  objects.forEach((obj, index) => {
     const item = document.createElement('div');
     item.className = 'entity-item';
     item.innerHTML = `
       <div class="entity-row entity-row-header">
-        <span style="font-size:11px;color:#aaa">Entity ${index + 1}</span>
+        <span style="font-size:11px;color:#aaa">Object ${index + 1}</span>
         <button class="remove-btn" data-index="${index}">Remove</button>
       </div>
       <div class="entity-row">
         <label>Image</label>
         <select class="entity-image" data-index="${index}">
-          ${availableImages.map((img) => `<option value="${img.value}" ${entity.imageUrl === img.value ? 'selected' : ''}>${img.label}</option>`).join('')}
+          ${availableImages.map((img) => `<option value="${img.value}" ${obj.imageUrl === img.value ? 'selected' : ''}>${img.label}</option>`).join('')}
         </select>
       </div>
       <div class="entity-row">
-        <label>Type</label>
+        <label>Behavior</label>
         <select class="entity-type" data-index="${index}">
-          ${availableEntityTypes.map((t) => `<option value="${t.value}" ${entity.entityType === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+          ${availableBehaviorModes.map((t) => `<option value="${t.value}" ${obj.behaviorMode === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
         </select>
       </div>
       <div class="entity-row">
         <label>Scale</label>
-        <input type="number" class="entity-min-scale" data-index="${index}" value="${entity.minScale}" min="0.1" step="0.1">
+        <input type="number" class="entity-min-scale" data-index="${index}" value="${obj.minScale}" min="0.1" step="0.1">
         <span style="color:#666">to</span>
-        <input type="number" class="entity-max-scale" data-index="${index}" value="${entity.maxScale}" min="0.1" step="0.1">
+        <input type="number" class="entity-max-scale" data-index="${index}" value="${obj.maxScale}" min="0.1" step="0.1">
       </div>
       <div class="entity-row">
         <label>Prob</label>
-        <input type="number" class="entity-prob" data-index="${index}" value="${entity.probability}" min="0.1" step="0.1">
+        <input type="number" class="entity-prob" data-index="${index}" value="${obj.probability}" min="0.1" step="0.1">
         <label style="margin-left:12px">Radius</label>
-        <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
+        <input type="number" class="entity-radius" data-index="${index}" value="${obj.baseRadius}" min="5">
       </div>
       <div class="entity-row">
         <label>TTL (ms)</label>
-        <input type="number" class="entity-ttl" data-index="${index}" value="${entity.ttl ?? ''}" placeholder="∞" min="0" step="100">
+        <input type="number" class="entity-ttl" data-index="${index}" value="${obj.ttl ?? ''}" placeholder="∞" min="0" step="100">
       </div>
     `;
     container.appendChild(item);
@@ -619,7 +634,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-image').forEach((select) => {
     select.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
-      entities[idx].imageUrl = (e.target as HTMLSelectElement).value;
+      objects[idx].imageUrl = (e.target as HTMLSelectElement).value;
       onUpdate();
     });
   });
@@ -627,7 +642,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-type').forEach((select) => {
     select.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
-      entities[idx].entityType = (e.target as HTMLSelectElement).value as EntityType;
+      objects[idx].behaviorMode = (e.target as HTMLSelectElement).value;
       onUpdate();
     });
   });
@@ -635,7 +650,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-prob').forEach((input) => {
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
-      entities[idx].probability = parseFloat((e.target as HTMLInputElement).value) || 1;
+      objects[idx].probability = parseFloat((e.target as HTMLInputElement).value) || 1;
       onUpdate();
     });
   });
@@ -643,7 +658,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-min-scale').forEach((input) => {
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
-      entities[idx].minScale = parseFloat((e.target as HTMLInputElement).value) || 0.5;
+      objects[idx].minScale = parseFloat((e.target as HTMLInputElement).value) || 0.5;
       onUpdate();
     });
   });
@@ -651,7 +666,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-max-scale').forEach((input) => {
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
-      entities[idx].maxScale = parseFloat((e.target as HTMLInputElement).value) || 1.5;
+      objects[idx].maxScale = parseFloat((e.target as HTMLInputElement).value) || 1.5;
       onUpdate();
     });
   });
@@ -659,7 +674,7 @@ function renderEntityList(
   container.querySelectorAll('.entity-radius').forEach((input) => {
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
-      entities[idx].baseRadius = parseInt((e.target as HTMLInputElement).value) || 20;
+      objects[idx].baseRadius = parseInt((e.target as HTMLInputElement).value) || 20;
       onUpdate();
     });
   });
@@ -668,7 +683,7 @@ function renderEntityList(
     input.addEventListener('change', (e) => {
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
       const value = (e.target as HTMLInputElement).value;
-      entities[idx].ttl = value ? parseInt(value) : undefined;
+      objects[idx].ttl = value ? parseInt(value) : undefined;
       onUpdate();
     });
   });
@@ -676,25 +691,25 @@ function renderEntityList(
   container.querySelectorAll('.remove-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt((e.target as HTMLButtonElement).dataset.index!);
-      entities.splice(idx, 1);
-      renderEntityList(container, entities, onUpdate);
+      objects.splice(idx, 1);
+      renderObjectList(container, objects, onUpdate);
       onUpdate();
     });
   });
 }
 
-// Add entity to effect
-function addEffectEntity(entities: EffectEntityUI[], container: HTMLDivElement, onUpdate: () => void): void {
-  entities.push({
+// Add object to effect
+function addEffectObject(objects: EffectObjectUI[], container: HTMLDivElement, onUpdate: () => void): void {
+  objects.push({
     id: crypto.randomUUID(),
     imageUrl: '',
-    entityType: 'GROUNDED_FOLLOW',
+    behaviorMode: 'follow',
     probability: 1,
     minScale: 0.8,
     maxScale: 1.2,
     baseRadius: 20
   });
-  renderEntityList(container, entities, onUpdate);
+  renderObjectList(container, objects, onUpdate);
   onUpdate();
 }
 
@@ -717,21 +732,21 @@ streamForce.addEventListener('change', updateStreamEffect);
 streamConeAngle.addEventListener('change', updateStreamEffect);
 
 burstAddEntity.addEventListener('click', () => {
-  addEffectEntity(burstEntities, burstEntityList, updateBurstEffect);
+  addEffectObject(burstEntities, burstEntityList, updateBurstEffect);
 });
 
 rainAddEntity.addEventListener('click', () => {
-  addEffectEntity(rainEntities, rainEntityList, updateRainEffect);
+  addEffectObject(rainEntities, rainEntityList, updateRainEffect);
 });
 
 streamAddEntity.addEventListener('click', () => {
-  addEffectEntity(streamEntities, streamEntityList, updateStreamEffect);
+  addEffectObject(streamEntities, streamEntityList, updateStreamEffect);
 });
 
-// Initialize entity lists with empty state
-renderEntityList(burstEntityList, burstEntities, updateBurstEffect);
-renderEntityList(rainEntityList, rainEntities, updateRainEffect);
-renderEntityList(streamEntityList, streamEntities, updateStreamEffect);
+// Initialize object lists with empty state
+renderObjectList(burstEntityList, burstEntities, updateBurstEffect);
+renderObjectList(rainEntityList, rainEntities, updateRainEffect);
+renderObjectList(streamEntityList, streamEntities, updateStreamEffect);
 
 // Initialize effects after scene creation
 function initializeEffects(): void {

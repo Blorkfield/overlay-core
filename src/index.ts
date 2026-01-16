@@ -27,12 +27,6 @@ export type {
   TTFTextObstacleConfig,
   // Font types
   FontInfo,
-  FontManifest,
-  // Legacy type aliases (deprecated, for backwards compatibility)
-  EntityConfig,
-  ObstacleConfig,
-  DynamicEntity,
-  DynamicObstacle,
-  EffectEntityConfig
+  FontManifest
 } from './types';
 export type { LoadedFont, GlyphData } from './fontLoader';

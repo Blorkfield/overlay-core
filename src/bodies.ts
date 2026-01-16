@@ -1,5 +1,5 @@
 import Matter from 'matter-js';
-import type { Bounds, EntityConfig, ObstacleConfig, ShapeConfig } from './types';
+import type { Bounds, ObjectConfig, ShapeConfig } from './types';
 import { getVerticesFromImage, getVerticesAndDimensionsFromImage, loadImage, Vector2D, ImageClipResult, ClipBounds } from './imageClip';
 import { logger } from './logger';
 
@@ -137,7 +137,7 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
 /**
  * Create render options for entity (non-image)
  */
-function createFillRenderOptions(config: EntityConfig): Matter.IBodyRenderOptions {
+function createFillRenderOptions(config: ObjectConfig): Matter.IBodyRenderOptions {
   return {
     fillStyle: config.fillStyle ?? '#ff0000'
   };
@@ -146,7 +146,7 @@ function createFillRenderOptions(config: EntityConfig): Matter.IBodyRenderOption
 /**
  * Create render options for entity with sprite, using actual image dimensions
  */
-function createSpriteRenderOptions(config: EntityConfig, imageWidth: number, imageHeight: number): Matter.IBodyRenderOptions {
+function createSpriteRenderOptions(config: ObjectConfig, imageWidth: number, imageHeight: number): Matter.IBodyRenderOptions {
   const targetSize = config.radius * 2;
   const maxDim = Math.max(imageWidth, imageHeight);
   const spriteScale = targetSize / maxDim;
@@ -163,7 +163,7 @@ function createSpriteRenderOptions(config: EntityConfig, imageWidth: number, ima
 /**
  * Create a circle body (default fallback) - no image
  */
-function createCircleEntity(id: string, config: EntityConfig): Matter.Body {
+function createCircleEntity(id: string, config: ObjectConfig): Matter.Body {
   logger.debug(LOG_PREFIX, `Creating circle entity`, { id, radius: config.radius });
   return Matter.Bodies.circle(config.x, config.y, config.radius, {
     restitution: 0.3,
@@ -177,7 +177,7 @@ function createCircleEntity(id: string, config: EntityConfig): Matter.Body {
 /**
  * Create a circle body with sprite - requires image dimensions
  */
-function createCircleEntityWithSprite(id: string, config: EntityConfig, imageWidth: number, imageHeight: number): Matter.Body {
+function createCircleEntityWithSprite(id: string, config: ObjectConfig, imageWidth: number, imageHeight: number): Matter.Body {
   logger.debug(LOG_PREFIX, `Creating circle entity with sprite`, { id, radius: config.radius, imageWidth, imageHeight });
   return Matter.Bodies.circle(config.x, config.y, config.radius, {
     restitution: 0.3,
@@ -192,7 +192,7 @@ function createCircleEntityWithSprite(id: string, config: EntityConfig, imageWid
  * Synchronous entity creation - handles circles and preset polygon shapes
  * For image-based shape extraction, use createEntityAsync instead
  */
-export function createEntity(id: string, config: EntityConfig): Matter.Body {
+export function createEntity(id: string, config: ObjectConfig): Matter.Body {
   const shape = config.shape;
 
   // No shape config or circle - use circle
@@ -220,7 +220,7 @@ export function createEntity(id: string, config: EntityConfig): Matter.Body {
  * Async entity creation - automatically extracts shape from image if imageUrl provided
  * Falls back to circle if extraction fails
  */
-export async function createEntityAsync(id: string, config: EntityConfig): Promise<Matter.Body> {
+export async function createEntityAsync(id: string, config: ObjectConfig): Promise<Matter.Body> {
   const shape = config.shape;
 
   // If explicit circle requested, use circle
@@ -259,7 +259,7 @@ export async function createEntityAsync(id: string, config: EntityConfig): Promi
   return createCircleEntity(id, config);
 }
 
-export function createObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Matter.Body {
+export function createObstacle(id: string, config: ObjectConfig, isStatic: boolean = true): Matter.Body {
   const width = config.width ?? 100;
   const height = config.height ?? 20;
   return Matter.Bodies.rectangle(config.x, config.y, width, height, {
@@ -302,7 +302,7 @@ export interface BoxObstacleResult {
  * Create an image-clipped obstacle centered at (config.x, config.y).
  * Image center goes at that position, not the shape centroid.
  */
-export async function createBoxObstacle(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<Matter.Body> {
+export async function createBoxObstacle(id: string, config: ObjectConfig, isStatic: boolean = true): Promise<Matter.Body> {
   const result = await createBoxObstacleWithInfo(id, config, isStatic);
   return result.body;
 }
@@ -311,7 +311,7 @@ export async function createBoxObstacle(id: string, config: ObstacleConfig, isSt
  * Create an image-clipped obstacle with full positioning info.
  * Returns the body plus dimension info for debug rendering.
  */
-export async function createBoxObstacleWithInfo(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<BoxObstacleResult> {
+export async function createBoxObstacleWithInfo(id: string, config: ObjectConfig, isStatic: boolean = true): Promise<BoxObstacleResult> {
   const size = config.size ?? 50;
 
   const { vertices, imageWidth, imageHeight, clipBounds, clipOffset } = await getVerticesAndDimensionsFromImage(config.imageUrl!, size);
@@ -365,7 +365,7 @@ export async function createBoxObstacleWithInfo(id: string, config: ObstacleConf
  * Create an image-based obstacle asynchronously.
  * Extracts shape from image alpha channel.
  */
-export async function createObstacleAsync(id: string, config: ObstacleConfig, isStatic: boolean = true): Promise<Matter.Body> {
+export async function createObstacleAsync(id: string, config: ObjectConfig, isStatic: boolean = true): Promise<Matter.Body> {
   // If no imageUrl, fall back to rectangle
   if (!config.imageUrl) {
     return createObstacle(id, config, isStatic);

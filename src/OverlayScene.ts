@@ -45,8 +45,6 @@ interface ObjectEntry {
   id: string;
   body: Matter.Body;
   tags: string[];
-  /** Grounded state for 'follow' behavior */
-  grounded: boolean;
   spawnTime: number;
   ttl?: number;
   despawnEffect?: DespawnEffectConfig;
@@ -136,10 +134,6 @@ export class OverlayScene {
     // Keep render in sync with mouse for pixel ratio
     this.render.mouse = this.mouse;
 
-    // Setup collision detection for grounded state
-    Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
-    Matter.Events.on(this.engine, 'collisionEnd', this.handleCollisionEnd);
-
     // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
       this.config.bounds,
@@ -174,49 +168,9 @@ export class OverlayScene {
     return null;
   }
 
-  private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      // Only track grounded state for objects with 'follow' tag
-      const entry = this.findFollowObjectInCollision(pair);
-      if (entry && this.isObjectOnTop(entry.body, pair)) {
-        entry.grounded = true;
-      }
-    }
-  };
-
-  private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      const entry = this.findFollowObjectInCollision(pair);
-      if (entry) {
-        entry.grounded = this.checkObjectStillGrounded(entry.body);
-      }
-    }
-  };
-
-  /** Find an object with 'follow' tag in a collision pair */
-  private findFollowObjectInCollision(pair: Matter.Pair): ObjectEntry | null {
-    for (const entry of this.objects.values()) {
-      if (entry.tags.includes('follow') && (pair.bodyA === entry.body || pair.bodyB === entry.body)) {
-        return entry;
-      }
-    }
-    return null;
-  }
-
-  private isObjectOnTop(object: Matter.Body, pair: Matter.Pair): boolean {
-    const other = pair.bodyA === object ? pair.bodyB : pair.bodyA;
-    return object.position.y < other.position.y;
-  }
-
-  private checkObjectStillGrounded(object: Matter.Body): boolean {
-    const collisions = Matter.Query.collides(object, Matter.Composite.allBodies(this.engine.world));
-    for (const collision of collisions) {
-      const other: Matter.Body = collision.bodyA === object ? collision.bodyB : collision.bodyA;
-      if (other !== object && object.position.y < other.position.y) {
-        return true;
-      }
-    }
-    return false;
+  /** Check if a body is grounded (low vertical velocity indicates resting on something) */
+  private isGrounded(body: Matter.Body): boolean {
+    return Math.abs(body.velocity.y) < 0.5;
   }
 
   start(): void {
@@ -236,8 +190,6 @@ export class OverlayScene {
 
   destroy(): void {
     this.stop();
-    Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
-    Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
     if (this.mouseConstraint) {
       Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
     }
@@ -322,7 +274,6 @@ export class OverlayScene {
       id,
       body,
       tags,
-      grounded: false,
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect
@@ -363,7 +314,6 @@ export class OverlayScene {
       id,
       body,
       tags,
-      grounded: false,
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect
@@ -507,129 +457,6 @@ export class OverlayScene {
 
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
-  }
-
-  // ==================== LEGACY METHODS (backwards compatibility) ====================
-
-  /** @deprecated Use spawnObject instead */
-  spawnEntity(config: ObjectConfig): string {
-    // Add default tags for entity-like behavior
-    const tags = config.tags ?? [];
-    if (!tags.includes('falling')) tags.push('falling');
-    if (!tags.includes('follow')) tags.push('follow');
-    if (!tags.includes('grabable')) tags.push('grabable');
-    return this.spawnObject({ ...config, tags });
-  }
-
-  /** @deprecated Use spawnObjectAsync instead */
-  async spawnEntityAsync(config: ObjectConfig): Promise<string> {
-    const tags = config.tags ?? [];
-    if (!tags.includes('falling')) tags.push('falling');
-    if (!tags.includes('follow')) tags.push('follow');
-    if (!tags.includes('grabable')) tags.push('grabable');
-    return this.spawnObjectAsync({ ...config, tags });
-  }
-
-  /** @deprecated Use removeObject instead */
-  removeEntity(id: string): void {
-    this.removeObject(id);
-  }
-
-  /** @deprecated Use removeAllObjects instead */
-  removeAllEntities(): void {
-    this.removeAllObjects();
-  }
-
-  /** @deprecated Use removeObjectsByTag instead */
-  removeEntitiesByTag(tag: string): void {
-    this.removeObjectsByTag(tag);
-  }
-
-  /** @deprecated Use getObjectIds instead */
-  getEntityIds(): string[] {
-    return this.getObjectIds();
-  }
-
-  /** @deprecated Use getObjectIdsByTag instead */
-  getEntityIdsByTag(tag: string): string[] {
-    return this.getObjectIdsByTag(tag);
-  }
-
-  /** @deprecated Use spawnObject instead (static object has no 'falling' tag) */
-  addObstacle(config: ObjectConfig): string {
-    // Ensure no 'falling' tag for static obstacle behavior
-    const tags = (config.tags ?? []).filter(t => t !== 'falling');
-    return this.spawnObject({ ...config, tags });
-  }
-
-  /** @deprecated Use spawnObjectAsync instead */
-  async addObstacleAsync(config: ObjectConfig): Promise<string> {
-    const tags = (config.tags ?? []).filter(t => t !== 'falling');
-    return this.spawnObjectAsync({ ...config, tags });
-  }
-
-  /** @deprecated Use spawnObject with 'falling' tag instead */
-  spawnFallingObstacle(config: ObjectConfig): string {
-    const tags = config.tags ?? [];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.spawnObject({ ...config, tags });
-  }
-
-  /** @deprecated Use spawnObjectAsync with 'falling' tag instead */
-  async spawnFallingObstacleAsync(config: ObjectConfig): Promise<string> {
-    const tags = config.tags ?? [];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.spawnObjectAsync({ ...config, tags });
-  }
-
-  /** @deprecated Use releaseObject instead */
-  releaseObstacle(id: string): void {
-    this.releaseObject(id);
-  }
-
-  /** @deprecated Use releaseObjects instead */
-  releaseObstacles(ids: string[]): void {
-    this.releaseObjects(ids);
-  }
-
-  /** @deprecated Use releaseAllObjects instead */
-  releaseAllObstacles(): void {
-    this.releaseAllObjects();
-  }
-
-  /** @deprecated Use releaseObjectsByTag instead */
-  releaseObstaclesByTag(tag: string): void {
-    this.releaseObjectsByTag(tag);
-  }
-
-  /** @deprecated Use removeObject instead */
-  removeObstacle(id: string): void {
-    this.removeObject(id);
-  }
-
-  /** @deprecated Use removeObjects instead */
-  removeObstacles(ids: string[]): void {
-    this.removeObjects(ids);
-  }
-
-  /** @deprecated Use removeAllObjects instead */
-  removeAllObstacles(): void {
-    this.removeAllObjects();
-  }
-
-  /** @deprecated Use removeObjectsByTag instead */
-  removeObstaclesByTag(tag: string): void {
-    this.removeObjectsByTag(tag);
-  }
-
-  /** @deprecated Use getObjectIds instead */
-  getObstacleIds(): string[] {
-    return this.getObjectIds();
-  }
-
-  /** @deprecated Use getObjectIdsByTag instead */
-  getObstacleIdsByTag(tag: string): string[] {
-    return this.getObjectIdsByTag(tag);
   }
 
   // ==================== FONT MANAGEMENT METHODS ====================
@@ -876,8 +703,7 @@ export class OverlayScene {
           id,
           body: result.body,
           tags,
-          grounded: false,
-          spawnTime: performance.now(),
+              spawnTime: performance.now(),
           ttl: config.ttl
         };
         this.objects.set(id, entry);
@@ -1080,8 +906,7 @@ export class OverlayScene {
           id,
           body,
           tags,
-          grounded: false,
-          spawnTime: performance.now(),
+              spawnTime: performance.now(),
           ttl: config.ttl,
           ttfGlyph: {
             char,
@@ -1218,7 +1043,7 @@ export class OverlayScene {
       // Only apply mouse force to objects with 'follow' tag, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
       if (!isDragging && entry.tags.includes('follow')) {
-        applyMouseForce(entry.body, mouseX, entry.grounded);
+        applyMouseForce(entry.body, mouseX, this.isGrounded(entry.body));
       }
 
       // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)

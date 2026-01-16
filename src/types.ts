@@ -92,20 +92,6 @@ export interface UpdateCallbackData {
 
 export type UpdateCallback = (data: UpdateCallbackData) => void;
 
-// ==================== LEGACY TYPE ALIASES (for backwards compatibility) ====================
-
-/** @deprecated Use ObjectConfig instead */
-export type EntityConfig = ObjectConfig;
-
-/** @deprecated Use ObjectConfig instead */
-export type ObstacleConfig = ObjectConfig;
-
-/** @deprecated Use DynamicObject instead */
-export type DynamicEntity = DynamicObject;
-
-/** @deprecated Use DynamicObject instead */
-export type DynamicObstacle = DynamicObject;
-
 export interface ContainerOptions {
   width?: number;
   height?: number;
@@ -130,9 +116,6 @@ export interface EffectObjectConfig {
   /** Base radius for the object (default: 20) */
   baseRadius?: number;
 }
-
-/** @deprecated Use EffectObjectConfig instead */
-export type EffectEntityConfig = EffectObjectConfig;
 
 /**
  * Base configuration shared by all effect types
