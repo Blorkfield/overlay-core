@@ -148,40 +148,6 @@ async function createScene(width: number, height: number): Promise<void> {
     scene.setMousePosition(x, y);
   });
 
-  // Spawn initial dynamic object
-  scene.spawnObject({
-    x: width / 2,
-    y: 100,
-    radius: 25,
-    fillStyle: '#e94560',
-    tags: ['falling', 'follow', 'grabable', 'player']
-  });
-
-  // Add some initial static platforms
-  scene.spawnObject({
-    x: width * 0.25,
-    y: height * 0.66,
-    width: 150,
-    height: 20,
-    tags: ['platforms', 'left']
-  });
-
-  scene.spawnObject({
-    x: width * 0.75,
-    y: height * 0.58,
-    width: 150,
-    height: 20,
-    tags: ['platforms', 'right']
-  });
-
-  scene.spawnObject({
-    x: width * 0.5,
-    y: height * 0.42,
-    width: 100,
-    height: 20,
-    tags: ['platforms', 'center']
-  });
-
   // Update stats on each frame
   scene.onUpdate((data) => {
     const dynamicCount = data.objects.length;
@@ -194,6 +160,50 @@ async function createScene(width: number, height: number): Promise<void> {
   // Initialize fonts and populate dropdown
   await scene.initializeFonts();
   populateFontDropdown();
+
+  // Add initial text obstacles
+  const welcomeX = width * 0.3;
+  const welcomeY = height * 0.3;
+
+  // "Welcome to Blorkfield" - default font, default color (#6495ED)
+  const welcomeResult = await scene.addTextObstacles({
+    text: 'Welcome to Blorkfield',
+    x: welcomeX,
+    y: welcomeY,
+    letterSize: 60,
+    tags: ['welcome-text']
+  });
+  console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
+
+  // "Build Stuff" - Roboto font, lighter gray-blue, 40px below
+  const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
+  if (robotoFont?.fontUrl) {
+    const buildResult = await scene.addTTFTextObstacles({
+      text: 'Build Stuff',
+      x: welcomeX,
+      y: welcomeY + 60 + 40, // 60 (letter size) + 40px gap
+      fontSize: 40,
+      fontUrl: robotoFont.fontUrl,
+      fillColor: '#8BA4C7',
+      tags: ['build-text']
+    });
+    console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
+  }
+
+  // Set up initial Rain effect
+  rainEntities.push({
+    id: crypto.randomUUID(),
+    imageUrl: '/bf_koban_512.png',
+    behaviorMode: 'no-follow',
+    probability: 1,
+    minScale: 0.8,
+    maxScale: 1,
+    baseRadius: 3,
+    ttl: 6000
+  });
+  checkboxRain.checked = true;
+  rainSpawnRate.value = '15';
+  renderObjectList(rainEntityList, rainEntities, updateRainEffect);
 
   // Re-initialize effects with new scene
   updateBurstEffect();
