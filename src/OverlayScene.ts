@@ -38,6 +38,16 @@ interface EntityEntry {
   despawnEffect?: DespawnEffectConfig;
 }
 
+interface TTFGlyphRenderInfo {
+  char: string;
+  fontSize: number;
+  fontFamily: string;
+  fillColor: string;
+  // Offset from body center to baseline position for fillText
+  offsetX: number;
+  offsetY: number;
+}
+
 interface ObstacleEntry {
   id: string;
   body: Matter.Body;
@@ -46,6 +56,7 @@ interface ObstacleEntry {
   spawnTime: number;
   ttl?: number;
   despawnEffect?: DespawnEffectConfig;
+  ttfGlyph?: TTFGlyphRenderInfo;
 }
 
 export class OverlayScene {
@@ -210,6 +221,13 @@ export class OverlayScene {
   setDebug(enabled: boolean): void {
     this.config.debug = enabled;
     this.render.options.wireframes = enabled;
+
+    // Toggle TTF glyph body visibility (show collision shapes in debug mode)
+    for (const [, entry] of this.obstacles) {
+      if (entry.ttfGlyph && entry.body.render) {
+        entry.body.render.visible = enabled;
+      }
+    }
   }
 
   resize(width: number, height: number): void {
@@ -510,6 +528,21 @@ export class OverlayScene {
 
       const manifest: FontManifest = await response.json();
       this.fonts = manifest.fonts || [];
+
+      // Load TTF fonts via FontFace API so they're available for canvas fillText
+      for (const font of this.fonts) {
+        if (font.type === 'ttf' && font.fontUrl) {
+          try {
+            const fontFace = new FontFace(font.name, `url(${font.fontUrl})`);
+            await fontFace.load();
+            document.fonts.add(fontFace);
+            logger.debug('OverlayScene', `Loaded TTF font: ${font.name}`);
+          } catch (err) {
+            logger.warn('OverlayScene', `Failed to load TTF font ${font.name}: ${err}`);
+          }
+        }
+      }
+
       this.fontsInitialized = true;
 
       logger.info('OverlayScene', `Loaded ${this.fonts.length} fonts`, { fonts: this.fonts.map(f => f.name) });
@@ -840,6 +873,10 @@ export class OverlayScene {
     // Load the font
     const loadedFont = await loadFont(fontUrl);
 
+    // Find font family name for canvas rendering
+    const fontInfo = this.fonts.find(f => f.fontUrl === fontUrl);
+    const fontFamily = fontInfo?.name ?? 'sans-serif';
+
     // Split text into lines
     const lines = text.split('\n');
 
@@ -875,44 +912,50 @@ export class OverlayScene {
         const id = crypto.randomUUID();
         const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
-        // Calculate glyph center position based on bounding box
+        // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
         const glyphWidth = bbox ? bbox.x2 - bbox.x1 : glyphData.advanceWidth;
         const glyphHeight = bbox ? bbox.y2 - bbox.y1 : fontSize;
         const glyphCenterX = currentX + (bbox ? bbox.x1 + glyphWidth / 2 : glyphData.advanceWidth / 2);
-        const glyphCenterY = currentY - (bbox ? (bbox.y1 + glyphHeight / 2) : fontSize / 2);
+        const glyphCenterY = currentY - (bbox ? (bbox.y1 + bbox.y2) / 2 : fontSize / 2);
 
-        // Create rectangle body first - this positions correctly
-        const body = Matter.Bodies.rectangle(glyphCenterX, glyphCenterY, glyphWidth, glyphHeight, {
+        // Create world-positioned vertices
+        const worldVertices = glyphData.vertices.map(v => ({
+          x: currentX + v.x,
+          y: currentY + v.y
+        }));
+
+        // Create body from vertices at the target position
+        // fromVertices will calculate centroid and position body there
+        const body = Matter.Bodies.fromVertices(glyphCenterX, glyphCenterY, [worldVertices], {
           isStatic,
           label: `obstacle:${id}`,
           render: {
-            fillStyle: fillColor,
-            strokeStyle: fillColor,
-            lineWidth: 1
+            visible: false
           }
         });
 
-        // Translate vertices to world position and replace collision shape
-        const worldVertices = glyphData.vertices.map(v => ({
-          x: currentX + v.x,
-          y: currentY - v.y  // Flip Y because font coords are Y-up, screen is Y-down
-        }));
-
-        if (worldVertices.length >= 3) {
-          Matter.Body.setVertices(body, worldVertices);
-          // setVertices may have moved body - force it back
-          Matter.Body.setPosition(body, { x: glyphCenterX, y: glyphCenterY });
-        }
-
         // Store and add to world
+        // Calculate offset from ACTUAL body position to baseline for fillText rendering
+        // (fromVertices positions body at vertex centroid, not where we specified)
+        const offsetX = currentX - body.position.x;
+        const offsetY = currentY - body.position.y;
+
         const entry: ObstacleEntry = {
           id,
           body,
           isStatic,
           tags,
           spawnTime: performance.now(),
-          ttl: config.ttl
+          ttl: config.ttl,
+          ttfGlyph: {
+            char,
+            fontSize,
+            fontFamily,
+            fillColor,
+            offsetX,
+            offsetY
+          }
         };
         this.obstacles.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
@@ -1044,6 +1087,12 @@ export class OverlayScene {
       }
     }
 
+    // Draw TTF glyphs using canvas fillText (clean text rendering)
+    // Only when not in debug mode - debug mode shows collision shapes instead
+    if (!this.config.debug) {
+      this.drawTTFGlyphs();
+    }
+
     // Draw debug overlays after Matter.js renders
     if (this.config.debug) {
       this.drawDebugOverlays();
@@ -1087,6 +1136,37 @@ export class OverlayScene {
 
         ctx.restore();
       }
+    }
+  }
+
+  /**
+   * Draw TTF glyphs using canvas fillText for clean text rendering
+   */
+  private drawTTFGlyphs(): void {
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+
+    for (const [, entry] of this.obstacles) {
+      if (!entry.ttfGlyph) continue;
+
+      const { char, fontSize, fontFamily, fillColor, offsetX, offsetY } = entry.ttfGlyph;
+      const body = entry.body;
+
+      ctx.save();
+
+      // Move to body position and rotate
+      ctx.translate(body.position.x, body.position.y);
+      ctx.rotate(body.angle);
+
+      // Set up font
+      ctx.font = `${fontSize}px "${fontFamily}"`;
+      ctx.fillStyle = fillColor;
+      ctx.textBaseline = 'alphabetic';
+
+      // Draw at offset from body center (offset points to baseline position)
+      ctx.fillText(char, offsetX, offsetY);
+
+      ctx.restore();
     }
   }
 
