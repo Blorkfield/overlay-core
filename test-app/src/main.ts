@@ -364,7 +364,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const letterSize = parseInt(inputLetterSize.value) || 60;
   const letterSpacing = parseInt(inputLetterSpacing.value);
   const letterColor = inputLetterColor.value.trim() || undefined;
-  const lineSpacing = inputLineSpacing.value || 30;
+  const lineSpacing = parseInt(inputLineSpacing.value) || 30;
 
   // Find the selected font info
   const fonts = scene.getAvailableFonts();

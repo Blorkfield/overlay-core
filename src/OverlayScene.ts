@@ -564,7 +564,8 @@ export class OverlayScene {
   /**
    * Create text obstacles from a string. Each character becomes an individual obstacle
    * with shape extracted from the corresponding letter PNG image.
-   * Supported characters: A-Z, 0-9 (case insensitive, spaces ignored)
+   * Supported characters: A-Z, a-z, 0-9 (spaces handled, unsupported chars skipped)
+   * Case is preserved: uses lowercase PNG if available, falls back to uppercase (and vice versa).
    * Supports multiline text with \n characters.
    *
    * Letter positioning is based on original PNG dimensions:
@@ -573,8 +574,8 @@ export class OverlayScene {
    * - This allows fine control of letter spacing via PNG canvas size
    */
   async addTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    // Convert literal \n strings to actual newlines, then uppercase
-    const text = config.text.replace(/\\n/g, '\n').toUpperCase();
+    // Convert literal \n strings to actual newlines (preserve case for lowercase support)
+    const text = config.text.replace(/\\n/g, '\n');
     const letterSize = config.letterSize;
     const lineHeight = config.lineHeight ?? letterSize * 1.2;
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
@@ -595,24 +596,43 @@ export class OverlayScene {
     const uniqueChars = new Set<string>();
     for (const line of lines) {
       for (const char of line) {
-        if (/^[A-Z0-9]$/.test(char)) {
+        if (/^[A-Za-z0-9]$/.test(char)) {
           uniqueChars.add(char);
         }
       }
     }
 
     // Load dimensions for all unique characters in parallel
+    // Try exact case first, then fallback to opposite case (a->A or A->a)
     const charDimensions = new Map<string, { width: number; height: number }>();
+    const charFileNames = new Map<string, string>(); // Maps input char to resolved filename char
     await Promise.all(
       Array.from(uniqueChars).map(async (char) => {
         const imageUrl = `${basePath}${char}.png`;
         try {
           const dims = await getImageDimensions(imageUrl);
           charDimensions.set(char, dims);
-        } catch (error) {
-          logger.warn('OverlayScene', `Failed to load dimensions for char ${char}`, { error: String(error) });
-          // Use square fallback
-          charDimensions.set(char, { width: 100, height: 100 });
+          charFileNames.set(char, char);
+        } catch {
+          // Try opposite case for letters (not digits)
+          if (/^[A-Za-z]$/.test(char)) {
+            const fallbackChar = char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase();
+            const fallbackUrl = `${basePath}${fallbackChar}.png`;
+            try {
+              const dims = await getImageDimensions(fallbackUrl);
+              charDimensions.set(char, dims);
+              charFileNames.set(char, fallbackChar);
+              logger.debug('OverlayScene', `Using fallback ${fallbackChar} for ${char}`);
+            } catch (fallbackError) {
+              logger.warn('OverlayScene', `Failed to load char ${char} (tried ${fallbackChar} too)`, { error: String(fallbackError) });
+              charDimensions.set(char, { width: 100, height: 100 });
+              charFileNames.set(char, char);
+            }
+          } else {
+            logger.warn('OverlayScene', `Failed to load dimensions for char ${char}`);
+            charDimensions.set(char, { width: 100, height: 100 });
+            charFileNames.set(char, char);
+          }
         }
       })
     );
@@ -646,8 +666,8 @@ export class OverlayScene {
           continue;
         }
 
-        // Only process A-Z and 0-9
-        if (!/^[A-Z0-9]$/.test(char)) {
+        // Only process A-Z, a-z, and 0-9
+        if (!/^[A-Za-z0-9]$/.test(char)) {
           globalCharIndex++;
           continue;
         }
@@ -666,8 +686,9 @@ export class OverlayScene {
         const centerX = currentX + scaledWidth / 2;
         const centerY = currentY;
 
-        // Prepare image URL (with optional tinting)
-        const originalImageUrl = `${basePath}${char}.png`;
+        // Prepare image URL (with optional tinting), using resolved filename with fallback
+        const resolvedChar = charFileNames.get(char) ?? char;
+        const originalImageUrl = `${basePath}${resolvedChar}.png`;
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
