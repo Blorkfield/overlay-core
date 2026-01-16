@@ -31,6 +31,8 @@ const inputLetterSize = document.getElementById('input-letter-size') as HTMLInpu
 const inputLetterSpacing = document.getElementById('input-letter-spacing') as HTMLInputElement;
 const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
 const inputLineSpacing = document.getElementById('input-line-spacing') as HTMLInputElement;
+const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLInputElement;
+const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
 const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
 const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
 
@@ -370,10 +372,11 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const fonts = scene.getAvailableFonts();
   const selectedFont = fonts.find(f => f.name === fontName);
 
-  // Calculate starting X to center the text
-  const totalWidth = text.replace(/[^A-Za-z0-9]/g, '').length * letterSpacing;
-  const startX = (canvas.width) / 5;
-  const y = falling ? 50 : canvas.height * 0.3;
+  // Convert origin percentages to pixels
+  const originXPercent = parseFloat(inputTextOriginX.value) || 20;
+  const originYPercent = parseFloat(inputTextOriginY.value) || 30;
+  const startX = (originXPercent / 100) * canvas.width;
+  const y = (originYPercent / 100) * canvas.height;
 
   let result;
 
