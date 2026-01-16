@@ -41,81 +41,70 @@ export interface DespawnEffectConfig {
   type?: string;
 }
 
-export interface EntityConfig {
+/**
+ * Unified configuration for spawning scene objects.
+ * Objects are configured via tags that define their behavior:
+ * - 'falling': Object is dynamic and affected by gravity (without this tag, object is static)
+ * - 'follow': Object follows mouse position when grounded
+ * - 'grabable': Object can be dragged via mouse constraint
+ */
+export interface ObjectConfig {
   x: number;
   y: number;
-  radius: number;
-  fillStyle?: string;
-  imageUrl?: string;
-  tags?: string[];
-  /** Shape configuration. Defaults to circle if not specified */
-  shape?: ShapeConfig;
-  /** Entity behavior type. Defaults to GROUNDED_FOLLOW */
-  entityType?: EntityType;
-  /** Time-to-live in milliseconds. If not set, entity lives forever */
-  ttl?: number;
-  /** Configuration for despawn effect (future use) */
-  despawnEffect?: DespawnEffectConfig;
-}
-
-export interface ObstacleConfig {
-  x: number;
-  y: number;
-  /** Width for rectangle obstacles (ignored if imageUrl is provided) */
+  /** Radius for circle/polygon shapes */
+  radius?: number;
+  /** Width for rectangle objects (ignored if imageUrl is provided) */
   width?: number;
-  /** Height for rectangle obstacles (ignored if imageUrl is provided) */
+  /** Height for rectangle objects (ignored if imageUrl is provided) */
   height?: number;
-  /** Image URL for image-based obstacle shapes */
+  /** Image URL for image-based shapes */
   imageUrl?: string;
-  /** Size of the obstacle when using imageUrl (diameter) */
+  /** Size of the object when using imageUrl (diameter) */
   size?: number;
   /** Fill style color */
   fillStyle?: string;
+  /** Tags that define object behavior */
   tags?: string[];
-  /** Time-to-live in milliseconds. If not set, obstacle lives forever */
+  /** Shape configuration. Defaults to circle if radius provided, rectangle otherwise */
+  shape?: ShapeConfig;
+  /** Time-to-live in milliseconds. If not set, object lives forever */
   ttl?: number;
   /** Configuration for despawn effect (future use) */
   despawnEffect?: DespawnEffectConfig;
 }
 
-export interface DynamicObstacle {
+/**
+ * Dynamic object data passed to update callbacks.
+ * Only objects with the 'falling' tag (dynamic objects) are included.
+ */
+export interface DynamicObject {
   id: string;
   x: number;
   y: number;
   angle: number;
   tags: string[];
-}
-
-export interface DynamicEntity {
-  id: string;
-  x: number;
-  y: number;
-  angle: number;
-  tags: string[];
-  entityType: EntityType;
 }
 
 export interface UpdateCallbackData {
-  dynamicObstacles: DynamicObstacle[];
-  entities: DynamicEntity[];
+  /** All dynamic objects (objects with 'falling' tag) */
+  objects: DynamicObject[];
 }
 
 export type UpdateCallback = (data: UpdateCallbackData) => void;
 
-export type EntityState = 'idle' | 'moving' | 'falling' | 'grounded';
+// ==================== LEGACY TYPE ALIASES (for backwards compatibility) ====================
 
-/**
- * Entity behavior types
- * - GROUNDED_FOLLOW: Entity follows mouse position when grounded (default)
- * - GROUNDED_STATIC: Entity does not follow mouse but can still be bumped/dragged
- */
-export type EntityType = 'GROUNDED_FOLLOW' | 'GROUNDED_STATIC';
+/** @deprecated Use ObjectConfig instead */
+export type EntityConfig = ObjectConfig;
 
-/** Debug outline colors per entity type */
-export const ENTITY_TYPE_DEBUG_COLORS: Record<EntityType, string> = {
-  GROUNDED_FOLLOW: '#ff0000', // red
-  GROUNDED_STATIC: '#00ffff'  // cyan
-};
+/** @deprecated Use ObjectConfig instead */
+export type ObstacleConfig = ObjectConfig;
+
+/** @deprecated Use DynamicObject instead */
+export type DynamicEntity = DynamicObject;
+
+/** @deprecated Use DynamicObject instead */
+export type DynamicObstacle = DynamicObject;
 
 export interface ContainerOptions {
   width?: number;
@@ -126,21 +115,24 @@ export interface ContainerOptions {
 // ==================== EFFECT TYPES ====================
 
 /**
- * Configuration for an entity type that can be spawned by an effect.
- * Effects can spawn multiple entity types with different probabilities.
+ * Configuration for an object type that can be spawned by an effect.
+ * Effects can spawn multiple object types with different probabilities.
  */
-export interface EffectEntityConfig {
-  /** Partial entity config - x, y will be set by the effect */
-  entityConfig: Omit<EntityConfig, 'x' | 'y' | 'radius'> & { radius?: number };
-  /** Probability weight for this entity type (relative to other entities in the effect) */
+export interface EffectObjectConfig {
+  /** Partial object config - x, y will be set by the effect */
+  objectConfig: Omit<ObjectConfig, 'x' | 'y' | 'radius'> & { radius?: number };
+  /** Probability weight for this object type (relative to others in the effect) */
   probability: number;
   /** Minimum scale multiplier for radius */
   minScale: number;
   /** Maximum scale multiplier for radius */
   maxScale: number;
-  /** Base radius for the entity (default: 20) */
+  /** Base radius for the object (default: 20) */
   baseRadius?: number;
 }
+
+/** @deprecated Use EffectObjectConfig instead */
+export type EffectEntityConfig = EffectObjectConfig;
 
 /**
  * Base configuration shared by all effect types
@@ -150,8 +142,8 @@ export interface BaseEffectConfig {
   id: string;
   /** Whether the effect is currently active */
   enabled: boolean;
-  /** Entity configurations with their spawn probabilities */
-  entityConfigs: EffectEntityConfig[];
+  /** Object configurations with their spawn probabilities */
+  objectConfigs: EffectObjectConfig[];
 }
 
 /**
@@ -203,10 +195,10 @@ export type EffectType = EffectConfig['type'];
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
- * Configuration for creating text obstacles from strings
+ * Configuration for creating text objects from strings
  */
 export interface TextObstacleConfig {
-  /** The text to create obstacles from (A-Z, 0-9 supported, supports \n for multiline) */
+  /** The text to create objects from (A-Z, 0-9 supported, supports \n for multiline) */
   text: string;
   /** X position of the first letter's center */
   x: number;
@@ -220,12 +212,10 @@ export interface TextObstacleConfig {
   fontName?: string;
   /** Base URL path for fonts directory (default: '/fonts/') */
   fontsBasePath?: string;
-  /** Tags to apply to all letters */
+  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
   /** Additional tag for the word group (for releasing whole word) */
   wordTag?: string;
-  /** Whether obstacles are static (default: true) */
-  isStatic?: boolean;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Color to tint the letters (CSS color string). If not set, original image colors are used */
@@ -271,7 +261,7 @@ export interface TextObstacleResult {
 }
 
 /**
- * Configuration for creating text obstacles from a TTF font
+ * Configuration for creating text objects from a TTF font
  */
 export interface TTFTextObstacleConfig {
   /** Text to display (supports \n for multiline) */
@@ -284,12 +274,10 @@ export interface TTFTextObstacleConfig {
   fontSize: number;
   /** URL path to the TTF/OTF font file */
   fontUrl: string;
-  /** Tags to apply to all letters */
+  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
   /** Additional tag for the word group (for releasing whole word) */
   wordTag?: string;
-  /** Whether obstacles are static (default: true) */
-  isStatic?: boolean;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Fill color for the letters (CSS color string, default: '#ffffff') */

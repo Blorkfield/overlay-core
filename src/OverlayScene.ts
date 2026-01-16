@@ -8,15 +8,12 @@ import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
 import type {
   OverlaySceneConfig,
-  EntityConfig,
-  ObstacleConfig,
+  ObjectConfig,
   UpdateCallback,
   UpdateCallbackData,
-  DynamicObstacle,
-  DynamicEntity,
+  DynamicObject,
   ContainerOptions,
   Bounds,
-  EntityType,
   EffectConfig,
   DespawnEffectConfig,
   TextObstacleConfig,
@@ -26,17 +23,6 @@ import type {
   FontManifest,
   LetterDebugInfo
 } from './types';
-
-interface EntityEntry {
-  id: string;
-  body: Matter.Body;
-  tags: string[];
-  grounded: boolean;
-  entityType: EntityType;
-  spawnTime: number;
-  ttl?: number;
-  despawnEffect?: DespawnEffectConfig;
-}
 
 interface TTFGlyphRenderInfo {
   char: string;
@@ -48,14 +34,23 @@ interface TTFGlyphRenderInfo {
   offsetY: number;
 }
 
-interface ObstacleEntry {
+/**
+ * Internal representation of a scene object.
+ * Behavior is determined by tags:
+ * - 'falling': Object is dynamic (not static), affected by gravity
+ * - 'follow': Object follows mouse when grounded
+ * - 'grabable': Object can be dragged via mouse constraint
+ */
+interface ObjectEntry {
   id: string;
   body: Matter.Body;
-  isStatic: boolean;
   tags: string[];
+  /** Grounded state for 'follow' behavior */
+  grounded: boolean;
   spawnTime: number;
   ttl?: number;
   despawnEffect?: DespawnEffectConfig;
+  /** TTF glyph rendering info (for text objects) */
   ttfGlyph?: TTFGlyphRenderInfo;
 }
 
@@ -64,8 +59,8 @@ export class OverlayScene {
   private render: Matter.Render;
   private runner: Matter.Runner;
   private canvas: HTMLCanvasElement;
-  private entities: Map<string, EntityEntry> = new Map();
-  private obstacles: Map<string, ObstacleEntry> = new Map();
+  /** All scene objects (unified - no more entity/obstacle distinction) */
+  private objects: Map<string, ObjectEntry> = new Map();
   private boundaries: Matter.Body[] = [];
   private updateCallbacks: UpdateCallback[] = [];
   private mouseX: number = 0;
@@ -135,6 +130,9 @@ export class OverlayScene {
     });
     Matter.Composite.add(this.engine.world, this.mouseConstraint);
 
+    // Filter grabbing based on 'grabable' tag
+    Matter.Events.on(this.mouseConstraint, 'startdrag', this.handleStartDrag);
+
     // Keep render in sync with mouse for pixel ratio
     this.render.mouse = this.mouse;
 
@@ -145,48 +143,76 @@ export class OverlayScene {
     // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
       this.config.bounds,
-      (cfg) => this.spawnEntityAsync(cfg),
-      (id) => this.entities.get(id)?.body ?? null
+      (cfg) => this.spawnObjectAsync(cfg),
+      (id) => this.objects.get(id)?.body ?? null
     );
   }
 
-  private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      const entityEntry = this.findEntityInCollision(pair);
-      if (entityEntry && this.isEntityOnTop(entityEntry.body, pair)) {
-        entityEntry.grounded = true;
+  /** Filter drag events - only allow grabbing objects with 'grabable' tag */
+  private handleStartDrag = (event: Matter.IEvent<Matter.MouseConstraint> & { body?: Matter.Body }): void => {
+    const body = event.body;
+    if (!body) return;
+
+    // Find the object entry for this body
+    const entry = this.findObjectByBody(body);
+
+    // If object doesn't have 'grabable' tag, release the constraint immediately
+    if (!entry || !entry.tags.includes('grabable')) {
+      if (this.mouseConstraint) {
+        this.mouseConstraint.constraint.bodyB = null;
       }
     }
   };
 
-  private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      const entityEntry = this.findEntityInCollision(pair);
-      if (entityEntry) {
-        entityEntry.grounded = this.checkEntityStillGrounded(entityEntry.body);
-      }
-    }
-  };
-
-  private findEntityInCollision(pair: Matter.Pair): EntityEntry | null {
-    for (const entry of this.entities.values()) {
-      if (pair.bodyA === entry.body || pair.bodyB === entry.body) {
+  /** Find an object entry by its Matter.js body */
+  private findObjectByBody(body: Matter.Body): ObjectEntry | null {
+    for (const entry of this.objects.values()) {
+      if (entry.body === body) {
         return entry;
       }
     }
     return null;
   }
 
-  private isEntityOnTop(entity: Matter.Body, pair: Matter.Pair): boolean {
-    const other = pair.bodyA === entity ? pair.bodyB : pair.bodyA;
-    return entity.position.y < other.position.y;
+  private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
+    for (const pair of event.pairs) {
+      // Only track grounded state for objects with 'follow' tag
+      const entry = this.findFollowObjectInCollision(pair);
+      if (entry && this.isObjectOnTop(entry.body, pair)) {
+        entry.grounded = true;
+      }
+    }
+  };
+
+  private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
+    for (const pair of event.pairs) {
+      const entry = this.findFollowObjectInCollision(pair);
+      if (entry) {
+        entry.grounded = this.checkObjectStillGrounded(entry.body);
+      }
+    }
+  };
+
+  /** Find an object with 'follow' tag in a collision pair */
+  private findFollowObjectInCollision(pair: Matter.Pair): ObjectEntry | null {
+    for (const entry of this.objects.values()) {
+      if (entry.tags.includes('follow') && (pair.bodyA === entry.body || pair.bodyB === entry.body)) {
+        return entry;
+      }
+    }
+    return null;
   }
 
-  private checkEntityStillGrounded(entity: Matter.Body): boolean {
-    const collisions = Matter.Query.collides(entity, Matter.Composite.allBodies(this.engine.world));
+  private isObjectOnTop(object: Matter.Body, pair: Matter.Pair): boolean {
+    const other = pair.bodyA === object ? pair.bodyB : pair.bodyA;
+    return object.position.y < other.position.y;
+  }
+
+  private checkObjectStillGrounded(object: Matter.Body): boolean {
+    const collisions = Matter.Query.collides(object, Matter.Composite.allBodies(this.engine.world));
     for (const collision of collisions) {
-      const other: Matter.Body = collision.bodyA === entity ? collision.bodyB : collision.bodyA;
-      if (other !== entity && entity.position.y < other.position.y) {
+      const other: Matter.Body = collision.bodyA === object ? collision.bodyB : collision.bodyA;
+      if (other !== object && object.position.y < other.position.y) {
         return true;
       }
     }
@@ -212,9 +238,11 @@ export class OverlayScene {
     this.stop();
     Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
+    if (this.mouseConstraint) {
+      Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
+    }
     Matter.Engine.clear(this.engine);
-    this.entities.clear();
-    this.obstacles.clear();
+    this.objects.clear();
     this.updateCallbacks = [];
   }
 
@@ -223,7 +251,7 @@ export class OverlayScene {
     this.render.options.wireframes = enabled;
 
     // Toggle TTF glyph body visibility (show collision shapes in debug mode)
-    for (const [, entry] of this.obstacles) {
+    for (const [, entry] of this.objects) {
       if (entry.ttfGlyph && entry.body.render) {
         entry.body.render.visible = enabled;
       }
@@ -255,88 +283,221 @@ export class OverlayScene {
     this.effectManager.setBounds(this.config.bounds);
   }
 
-  // ==================== ENTITY METHODS ====================
+  // ==================== OBJECT METHODS ====================
 
   /**
-   * Spawn an entity synchronously. For 'fromImage' shapes, use spawnEntityAsync instead.
-   * If fromImage is used here, it will fall back to circle shape.
+   * Spawn an object synchronously.
+   * Object behavior is determined by tags:
+   * - 'falling': Object is dynamic (affected by gravity)
+   * - 'follow': Object follows mouse when grounded
+   * - 'grabable': Object can be dragged
+   * Without 'falling' tag, object is static.
    */
-  spawnEntity(config: EntityConfig): string {
+  spawnObject(config: ObjectConfig): string {
     const id = crypto.randomUUID();
-    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
-    const body = createEntity(id, config);
-    const entry: EntityEntry = {
+    const tags = config.tags ?? [];
+    const isStatic = !tags.includes('falling');
+
+    logger.debug('OverlayScene', `Spawning object`, {
+      id,
+      tags,
+      isStatic,
+      shape: config.shape?.type ?? (config.radius ? 'circle' : 'rectangle'),
+      ttl: config.ttl
+    });
+
+    // Determine if this is an "entity-style" object (has radius) or "obstacle-style" (has width/height)
+    let body: Matter.Body;
+    if (config.radius) {
+      body = createEntity(id, config);
+      // If it should be static, set it
+      if (isStatic) {
+        Matter.Body.setStatic(body, true);
+      }
+    } else {
+      body = createObstacle(id, config, isStatic);
+    }
+
+    const entry: ObjectEntry = {
       id,
       body,
-      tags: config.tags ?? [],
+      tags,
       grounded: false,
-      entityType,
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect
     };
-    this.entities.set(id, entry);
+    this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
     return id;
   }
 
   /**
-   * Spawn an entity asynchronously. Required for 'fromImage' shapes that need to
-   * extract shape from image alpha channel.
+   * Spawn an object asynchronously. Required for image-based shapes that need
+   * shape extraction from image alpha channel.
    */
-  async spawnEntityAsync(config: EntityConfig): Promise<string> {
+  async spawnObjectAsync(config: ObjectConfig): Promise<string> {
     const id = crypto.randomUUID();
-    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
-    const body = await createEntityAsync(id, config);
-    const entry: EntityEntry = {
+    const tags = config.tags ?? [];
+    const isStatic = !tags.includes('falling');
+
+    logger.debug('OverlayScene', `Spawning object async`, {
+      id,
+      tags,
+      isStatic,
+      shape: config.shape?.type ?? (config.radius ? 'circle' : 'rectangle'),
+      ttl: config.ttl
+    });
+
+    let body: Matter.Body;
+    if (config.radius) {
+      body = await createEntityAsync(id, config);
+      if (isStatic) {
+        Matter.Body.setStatic(body, true);
+      }
+    } else {
+      body = await createObstacleAsync(id, config, isStatic);
+    }
+
+    const entry: ObjectEntry = {
       id,
       body,
-      tags: config.tags ?? [],
+      tags,
       grounded: false,
-      entityType,
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect
     };
-    this.entities.set(id, entry);
+    this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
     return id;
   }
 
-  removeEntity(id: string): void {
-    const entry = this.entities.get(id);
+  /**
+   * Add 'falling' tag to an object, making it dynamic (affected by gravity).
+   * Also adds 'grabable' tag so released objects can be dragged.
+   * This is the tag-based replacement for releaseObstacle().
+   */
+  addFallingTag(id: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (!entry.tags.includes('falling')) {
+      entry.tags.push('falling');
+      Matter.Body.setStatic(entry.body, false);
+    }
+    if (!entry.tags.includes('grabable')) {
+      entry.tags.push('grabable');
+    }
+  }
+
+  /**
+   * Add a tag to an object.
+   */
+  addTag(id: string, tag: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (!entry.tags.includes(tag)) {
+      entry.tags.push(tag);
+      // Handle special tag behaviors
+      if (tag === 'falling') {
+        Matter.Body.setStatic(entry.body, false);
+      }
+    }
+  }
+
+  /**
+   * Remove a tag from an object.
+   */
+  removeTag(id: string, tag: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    const index = entry.tags.indexOf(tag);
+    if (index !== -1) {
+      entry.tags.splice(index, 1);
+      // Handle special tag behaviors
+      if (tag === 'falling') {
+        Matter.Body.setStatic(entry.body, true);
+      }
+    }
+  }
+
+  /**
+   * Release an object (add 'falling' tag to make it dynamic).
+   * Convenience method - equivalent to addFallingTag().
+   */
+  releaseObject(id: string): void {
+    this.addFallingTag(id);
+  }
+
+  /**
+   * Release multiple objects by their IDs.
+   */
+  releaseObjects(ids: string[]): void {
+    for (const id of ids) {
+      this.releaseObject(id);
+    }
+  }
+
+  /**
+   * Release all static objects (add 'falling' and 'grabable' tags).
+   */
+  releaseAllObjects(): void {
+    for (const [id] of this.objects) {
+      this.addFallingTag(id);
+    }
+  }
+
+  /**
+   * Release objects by tag (add 'falling' and 'grabable' tags to matching objects).
+   */
+  releaseObjectsByTag(tag: string): void {
+    for (const [id, entry] of this.objects) {
+      if (entry.tags.includes(tag)) {
+        this.addFallingTag(id);
+      }
+    }
+  }
+
+  removeObject(id: string): void {
+    const entry = this.objects.get(id);
     if (!entry) return;
     Matter.Composite.remove(this.engine.world, entry.body);
-    this.entities.delete(id);
+    this.objects.delete(id);
   }
 
-  removeAllEntities(): void {
-    for (const entry of this.entities.values()) {
+  removeObjects(ids: string[]): void {
+    for (const id of ids) {
+      this.removeObject(id);
+    }
+  }
+
+  removeAllObjects(): void {
+    for (const entry of this.objects.values()) {
       Matter.Composite.remove(this.engine.world, entry.body);
     }
-    this.entities.clear();
+    this.objects.clear();
   }
 
-  removeEntitiesByTag(tag: string): void {
+  removeObjectsByTag(tag: string): void {
     const toRemove: string[] = [];
-    for (const [id, entry] of this.entities) {
+    for (const [id, entry] of this.objects) {
       if (entry.tags.includes(tag)) {
         Matter.Composite.remove(this.engine.world, entry.body);
         toRemove.push(id);
       }
     }
-    toRemove.forEach((id) => this.entities.delete(id));
+    toRemove.forEach((id) => this.objects.delete(id));
+    // Clean up letter debug info if this was a word tag
+    this.letterDebugInfo.delete(tag);
   }
 
-  getEntityIds(): string[] {
-    return Array.from(this.entities.keys());
+  getObjectIds(): string[] {
+    return Array.from(this.objects.keys());
   }
 
-  getEntityIdsByTag(tag: string): string[] {
+  getObjectIdsByTag(tag: string): string[] {
     const ids: string[] = [];
-    for (const [id, entry] of this.entities) {
+    for (const [id, entry] of this.objects) {
       if (entry.tags.includes(tag)) {
         ids.push(id);
       }
@@ -348,159 +509,127 @@ export class OverlayScene {
     this.mouseX = x;
   }
 
-  // ==================== OBSTACLE METHODS ====================
+  // ==================== LEGACY METHODS (backwards compatibility) ====================
 
-  addObstacle(config: ObstacleConfig): string {
-    const id = crypto.randomUUID();
-    const body = createObstacle(id, config, true);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: true,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  /** @deprecated Use spawnObject instead */
+  spawnEntity(config: ObjectConfig): string {
+    // Add default tags for entity-like behavior
+    const tags = config.tags ?? [];
+    if (!tags.includes('falling')) tags.push('falling');
+    if (!tags.includes('follow')) tags.push('follow');
+    if (!tags.includes('grabable')) tags.push('grabable');
+    return this.spawnObject({ ...config, tags });
   }
 
-  /**
-   * Add an obstacle asynchronously. Required for image-based obstacles that need
-   * shape extraction from image alpha channel.
-   */
-  async addObstacleAsync(config: ObstacleConfig): Promise<string> {
-    const id = crypto.randomUUID();
-    const body = await createObstacleAsync(id, config, true);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: true,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  /** @deprecated Use spawnObjectAsync instead */
+  async spawnEntityAsync(config: ObjectConfig): Promise<string> {
+    const tags = config.tags ?? [];
+    if (!tags.includes('falling')) tags.push('falling');
+    if (!tags.includes('follow')) tags.push('follow');
+    if (!tags.includes('grabable')) tags.push('grabable');
+    return this.spawnObjectAsync({ ...config, tags });
   }
 
-  spawnFallingObstacle(config: ObstacleConfig): string {
-    const id = crypto.randomUUID();
-    const body = createObstacle(id, config, false);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: false,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  /** @deprecated Use removeObject instead */
+  removeEntity(id: string): void {
+    this.removeObject(id);
   }
 
-  /**
-   * Spawn a falling obstacle asynchronously. Required for image-based obstacles.
-   */
-  async spawnFallingObstacleAsync(config: ObstacleConfig): Promise<string> {
-    const id = crypto.randomUUID();
-    const body = await createObstacleAsync(id, config, false);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: false,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  /** @deprecated Use removeAllObjects instead */
+  removeAllEntities(): void {
+    this.removeAllObjects();
   }
 
+  /** @deprecated Use removeObjectsByTag instead */
+  removeEntitiesByTag(tag: string): void {
+    this.removeObjectsByTag(tag);
+  }
+
+  /** @deprecated Use getObjectIds instead */
+  getEntityIds(): string[] {
+    return this.getObjectIds();
+  }
+
+  /** @deprecated Use getObjectIdsByTag instead */
+  getEntityIdsByTag(tag: string): string[] {
+    return this.getObjectIdsByTag(tag);
+  }
+
+  /** @deprecated Use spawnObject instead (static object has no 'falling' tag) */
+  addObstacle(config: ObjectConfig): string {
+    // Ensure no 'falling' tag for static obstacle behavior
+    const tags = (config.tags ?? []).filter(t => t !== 'falling');
+    return this.spawnObject({ ...config, tags });
+  }
+
+  /** @deprecated Use spawnObjectAsync instead */
+  async addObstacleAsync(config: ObjectConfig): Promise<string> {
+    const tags = (config.tags ?? []).filter(t => t !== 'falling');
+    return this.spawnObjectAsync({ ...config, tags });
+  }
+
+  /** @deprecated Use spawnObject with 'falling' tag instead */
+  spawnFallingObstacle(config: ObjectConfig): string {
+    const tags = config.tags ?? [];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.spawnObject({ ...config, tags });
+  }
+
+  /** @deprecated Use spawnObjectAsync with 'falling' tag instead */
+  async spawnFallingObstacleAsync(config: ObjectConfig): Promise<string> {
+    const tags = config.tags ?? [];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.spawnObjectAsync({ ...config, tags });
+  }
+
+  /** @deprecated Use releaseObject instead */
   releaseObstacle(id: string): void {
-    const entry = this.obstacles.get(id);
-    if (!entry) return;
-    Matter.Body.setStatic(entry.body, false);
-    entry.isStatic = false;
+    this.releaseObject(id);
   }
 
+  /** @deprecated Use releaseObjects instead */
   releaseObstacles(ids: string[]): void {
-    for (const id of ids) {
-      this.releaseObstacle(id);
-    }
+    this.releaseObjects(ids);
   }
 
+  /** @deprecated Use releaseAllObjects instead */
   releaseAllObstacles(): void {
-    for (const entry of this.obstacles.values()) {
-      if (entry.isStatic) {
-        Matter.Body.setStatic(entry.body, false);
-        entry.isStatic = false;
-      }
-    }
+    this.releaseAllObjects();
   }
 
+  /** @deprecated Use releaseObjectsByTag instead */
   releaseObstaclesByTag(tag: string): void {
-    for (const entry of this.obstacles.values()) {
-      if (entry.tags.includes(tag) && entry.isStatic) {
-        Matter.Body.setStatic(entry.body, false);
-        entry.isStatic = false;
-      }
-    }
+    this.releaseObjectsByTag(tag);
   }
 
+  /** @deprecated Use removeObject instead */
   removeObstacle(id: string): void {
-    const entry = this.obstacles.get(id);
-    if (!entry) return;
-    Matter.Composite.remove(this.engine.world, entry.body);
-    this.obstacles.delete(id);
+    this.removeObject(id);
   }
 
+  /** @deprecated Use removeObjects instead */
   removeObstacles(ids: string[]): void {
-    for (const id of ids) {
-      this.removeObstacle(id);
-    }
+    this.removeObjects(ids);
   }
 
+  /** @deprecated Use removeAllObjects instead */
   removeAllObstacles(): void {
-    for (const entry of this.obstacles.values()) {
-      Matter.Composite.remove(this.engine.world, entry.body);
-    }
-    this.obstacles.clear();
+    this.removeAllObjects();
   }
 
+  /** @deprecated Use removeObjectsByTag instead */
   removeObstaclesByTag(tag: string): void {
-    const toRemove: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.tags.includes(tag)) {
-        Matter.Composite.remove(this.engine.world, entry.body);
-        toRemove.push(id);
-      }
-    }
-    toRemove.forEach((id) => this.obstacles.delete(id));
-    // Clean up letter debug info if this was a word tag
-    this.letterDebugInfo.delete(tag);
+    this.removeObjectsByTag(tag);
   }
 
+  /** @deprecated Use getObjectIds instead */
   getObstacleIds(): string[] {
-    return Array.from(this.obstacles.keys());
+    return this.getObjectIds();
   }
 
+  /** @deprecated Use getObjectIdsByTag instead */
   getObstacleIdsByTag(tag: string): string[] {
-    const ids: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.tags.includes(tag)) {
-        ids.push(id);
-      }
-    }
-    return ids;
+    return this.getObjectIdsByTag(tag);
   }
 
   // ==================== FONT MANAGEMENT METHODS ====================
@@ -615,7 +744,9 @@ export class OverlayScene {
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
-    const isStatic = config.isStatic ?? true;
+    // Determine if static based on tags (no 'falling' tag = static)
+    const baseTags = config.tags ?? [];
+    const isStatic = !baseTags.includes('falling');
     const letterColor = config.letterColor;
 
     const letterIds: string[] = [];
@@ -730,7 +861,7 @@ export class OverlayScene {
         const id = crypto.randomUUID();
 
         // Create clipped letter body at the center position
-        const obstacleConfig: ObstacleConfig = {
+        const objectConfig: ObjectConfig = {
           x: centerX,
           y: centerY,
           imageUrl,
@@ -739,17 +870,17 @@ export class OverlayScene {
           ttl: config.ttl
         };
 
-        const result = await createBoxObstacleWithInfo(id, obstacleConfig, isStatic);
+        const result = await createBoxObstacleWithInfo(id, objectConfig, isStatic);
 
-        const entry: ObstacleEntry = {
+        const entry: ObjectEntry = {
           id,
           body: result.body,
-          isStatic,
           tags,
+          grounded: false,
           spawnTime: performance.now(),
           ttl: config.ttl
         };
-        this.obstacles.set(id, entry);
+        this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
 
         letterIds.push(id);
@@ -801,19 +932,21 @@ export class OverlayScene {
   }
 
   /**
-   * Spawn falling text obstacles from a string.
-   * Same as addTextObstacles but obstacles are non-static (fall with gravity).
+   * Spawn falling text objects from a string.
+   * Same as addTextObstacles but with 'falling' tag (objects fall with gravity).
    */
   async spawnFallingTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    return this.addTextObstacles({ ...config, isStatic: false });
+    const tags = [...(config.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.addTextObstacles({ ...config, tags });
   }
 
   /**
-   * Release all letters in a word (make them non-static so they fall).
+   * Release all letters in a word (add 'falling' tag so they fall).
    * @param wordTag - The word tag returned from addTextObstacles
    */
   releaseTextObstacles(wordTag: string): void {
-    this.releaseObstaclesByTag(wordTag);
+    this.releaseObjectsByTag(wordTag);
   }
 
   /**
@@ -823,11 +956,11 @@ export class OverlayScene {
    * @param reverse - If true, release from end to start (default: false)
    */
   async releaseTextObstaclesSequentially(wordTag: string, delayMs: number = 100, reverse: boolean = false): Promise<void> {
-    const ids = this.getObstacleIdsByTag(wordTag);
+    const ids = this.getObjectIdsByTag(wordTag);
     if (reverse) ids.reverse();
 
     for (const id of ids) {
-      this.releaseObstacle(id);
+      this.releaseObject(id);
       if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
@@ -863,7 +996,9 @@ export class OverlayScene {
     // Convert literal \n strings to actual newlines
     const text = config.text.replace(/\\n/g, '\n');
     const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
-    const isStatic = config.isStatic ?? true;
+    // Determine if static based on tags (no 'falling' tag = static)
+    const baseTags = config.tags ?? [];
+    const isStatic = !baseTags.includes('falling');
     const fillColor = config.fillColor ?? '#ffffff';
     const lineHeight = config.lineHeight ?? fontSize * 1.2;
 
@@ -941,11 +1076,11 @@ export class OverlayScene {
         const offsetX = currentX - body.position.x;
         const offsetY = currentY - body.position.y;
 
-        const entry: ObstacleEntry = {
+        const entry: ObjectEntry = {
           id,
           body,
-          isStatic,
           tags,
+          grounded: false,
           spawnTime: performance.now(),
           ttl: config.ttl,
           ttfGlyph: {
@@ -957,7 +1092,7 @@ export class OverlayScene {
             offsetY
           }
         };
-        this.obstacles.set(id, entry);
+        this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
 
         letterIds.push(id);
@@ -997,23 +1132,23 @@ export class OverlayScene {
   }
 
   /**
-   * Spawn falling TTF text obstacles.
-   * Same as addTTFTextObstacles but obstacles are non-static (fall with gravity).
+   * Spawn falling TTF text objects.
+   * Same as addTTFTextObstacles but with 'falling' tag (objects fall with gravity).
    */
   async spawnFallingTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
-    return this.addTTFTextObstacles({ ...config, isStatic: false });
+    const tags = [...(config.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.addTTFTextObstacles({ ...config, tags });
   }
 
   // ==================== COMBINED TAG METHODS ====================
 
   removeAllByTag(tag: string): void {
-    this.removeEntitiesByTag(tag);
-    this.removeObstaclesByTag(tag);
+    this.removeObjectsByTag(tag);
   }
 
   removeAll(): void {
-    this.removeAllEntities();
-    this.removeAllObstacles();
+    this.removeAllObjects();
   }
 
   // ==================== CALLBACKS ====================
@@ -1070,19 +1205,24 @@ export class OverlayScene {
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
-    // Update effects (spawn entities)
+    // Update effects (spawn objects)
     this.effectManager.update();
 
     // Check for TTL expiration
     this.checkTTLExpiration();
 
-    for (const entry of this.entities.values()) {
-      // Only apply mouse force to GROUNDED_FOLLOW entities, and not if being dragged
+    // Apply tag-based behaviors to all objects
+    const mouseX = this.mouse?.position.x ?? this.mouseX;
+
+    for (const entry of this.objects.values()) {
+      // Only apply mouse force to objects with 'follow' tag, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
-      if (!isDragging && entry.entityType === 'GROUNDED_FOLLOW') {
-        applyMouseForce(entry.body, this.mouseX, entry.grounded);
+      if (!isDragging && entry.tags.includes('follow')) {
+        applyMouseForce(entry.body, mouseX, entry.grounded);
       }
-      if (this.config.wrapHorizontal) {
+
+      // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)
+      if (this.config.wrapHorizontal && entry.tags.includes('falling')) {
         wrapHorizontal(entry.body, this.config.bounds);
       }
     }
@@ -1112,12 +1252,12 @@ export class OverlayScene {
     // Draw original dimension boxes for all letters
     for (const [, debugInfos] of this.letterDebugInfo) {
       for (const info of debugInfos) {
-        // Check if the obstacle still exists
-        const obstacle = this.obstacles.get(info.id);
-        if (!obstacle) continue;
+        // Check if the object still exists
+        const object = this.objects.get(info.id);
+        if (!object) continue;
 
-        // Get current body position (letters may have moved if not static)
-        const body = obstacle.body;
+        // Get current body position (letters may have moved if dynamic)
+        const body = object.body;
 
         // Draw the original dimension box (cyan dashed outline)
         ctx.save();
@@ -1146,7 +1286,7 @@ export class OverlayScene {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
 
-    for (const [, entry] of this.obstacles) {
+    for (const [, entry] of this.objects) {
       if (!entry.ttfGlyph) continue;
 
       const { char, fontSize, fontFamily, fillColor, offsetX, offsetY } = entry.ttfGlyph;
@@ -1173,38 +1313,26 @@ export class OverlayScene {
   private checkTTLExpiration(): void {
     const now = performance.now();
 
-    // Check entities
-    const expiredEntities: string[] = [];
-    for (const [id, entry] of this.entities) {
+    // Check all objects for expiration
+    const expiredObjects: string[] = [];
+    for (const [id, entry] of this.objects) {
       if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
         // TODO: Trigger despawn effect when implemented
         // if (entry.despawnEffect) { ... }
-        expiredEntities.push(id);
+        expiredObjects.push(id);
       }
     }
-    for (const id of expiredEntities) {
-      this.removeEntity(id);
-    }
-
-    // Check obstacles
-    const expiredObstacles: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
-        // TODO: Trigger despawn effect when implemented
-        // if (entry.despawnEffect) { ... }
-        expiredObstacles.push(id);
-      }
-    }
-    for (const id of expiredObstacles) {
-      this.removeObstacle(id);
+    for (const id of expiredObjects) {
+      this.removeObject(id);
     }
   }
 
   private fireUpdateCallbacks(): void {
-    const dynamicObstacles: DynamicObstacle[] = [];
-    this.obstacles.forEach((entry) => {
-      if (!entry.isStatic) {
-        dynamicObstacles.push({
+    // Collect all dynamic objects (objects with 'falling' tag)
+    const objects: DynamicObject[] = [];
+    this.objects.forEach((entry) => {
+      if (entry.tags.includes('falling')) {
+        objects.push({
           id: entry.id,
           x: entry.body.position.x,
           y: entry.body.position.y,
@@ -1214,19 +1342,7 @@ export class OverlayScene {
       }
     });
 
-    const entities: DynamicEntity[] = [];
-    this.entities.forEach((entry) => {
-      entities.push({
-        id: entry.id,
-        x: entry.body.position.x,
-        y: entry.body.position.y,
-        angle: entry.body.angle,
-        tags: entry.tags,
-        entityType: entry.entityType
-      });
-    });
-
-    const data: UpdateCallbackData = { dynamicObstacles, entities };
+    const data: UpdateCallbackData = { objects };
     this.updateCallbacks.forEach((cb) => cb(data));
   }
 

@@ -4,13 +4,13 @@ import type {
   BurstEffectConfig,
   RainEffectConfig,
   StreamEffectConfig,
-  EffectEntityConfig,
-  EntityConfig,
+  EffectObjectConfig,
+  ObjectConfig,
   Bounds
 } from './types';
 import { logger } from './logger';
 
-type SpawnEntityAsyncFn = (config: EntityConfig) => Promise<string>;
+type SpawnObjectAsyncFn = (config: ObjectConfig) => Promise<string>;
 type GetBodyFn = (id: string) => Matter.Body | null;
 
 interface EffectState {
@@ -21,18 +21,18 @@ interface EffectState {
 }
 
 /**
- * Manages spawning effects (burst, rain) that create entities over time.
+ * Manages spawning effects (burst, rain, stream) that create objects over time.
  * Effects are persistent and run until disabled.
  */
 export class EffectManager {
   private effects: Map<string, EffectState> = new Map();
   private bounds: Bounds;
-  private spawnEntityAsync: SpawnEntityAsyncFn;
+  private spawnObjectAsync: SpawnObjectAsyncFn;
   private getBody: GetBodyFn;
 
-  constructor(bounds: Bounds, spawnEntityAsync: SpawnEntityAsyncFn, getBody: GetBodyFn) {
+  constructor(bounds: Bounds, spawnObjectAsync: SpawnObjectAsyncFn, getBody: GetBodyFn) {
     this.bounds = bounds;
-    this.spawnEntityAsync = spawnEntityAsync;
+    this.spawnObjectAsync = spawnObjectAsync;
     this.getBody = getBody;
   }
 
@@ -114,7 +114,7 @@ export class EffectManager {
   }
 
   /**
-   * Called each frame to update effects and spawn entities
+   * Called each frame to update effects and spawn objects
    */
   update(): void {
     const now = Date.now();
@@ -153,14 +153,14 @@ export class EffectManager {
     const elapsed = Math.min(now - state.lastSpawnTime, 100);
     state.lastSpawnTime = now;
 
-    // Calculate how many entities to spawn this frame
+    // Calculate how many objects to spawn this frame
     const deltaSeconds = elapsed / 1000;
     state.spawnAccumulator += config.spawnRate * deltaSeconds;
 
-    // Spawn whole entities
+    // Spawn whole objects
     while (state.spawnAccumulator >= 1) {
       state.spawnAccumulator -= 1;
-      this.spawnRainEntity(config);
+      this.spawnRainObject(config);
     }
   }
 
@@ -174,17 +174,22 @@ export class EffectManager {
     logger.debug('EffectManager', `Spawning burst at (${originX.toFixed(0)}, ${originY.toFixed(0)})`, { count: config.burstCount });
 
     // Prepare all spawn configs with their random angles
-    const spawnData: Array<{ config: EntityConfig; angle: number }> = [];
+    const spawnData: Array<{ config: ObjectConfig; angle: number }> = [];
     for (let i = 0; i < config.burstCount; i++) {
-      const entityConfig = this.selectEntityConfig(config.entityConfigs);
-      if (!entityConfig) continue;
+      const objectConfig = this.selectObjectConfig(config.objectConfigs);
+      if (!objectConfig) continue;
 
-      const radius = this.calculateRadius(entityConfig);
-      const fullConfig: EntityConfig = {
-        ...entityConfig.entityConfig,
+      const radius = this.calculateRadius(objectConfig);
+      // Ensure 'falling' tag is present for dynamic behavior
+      const tags = [...(objectConfig.objectConfig.tags ?? [])];
+      if (!tags.includes('falling')) tags.push('falling');
+
+      const fullConfig: ObjectConfig = {
+        ...objectConfig.objectConfig,
         x: originX,
         y: originY,
-        radius
+        radius,
+        tags
       };
 
       spawnData.push({
@@ -193,12 +198,12 @@ export class EffectManager {
       });
     }
 
-    // Spawn all entities in parallel (uses cached image clipping for same images)
+    // Spawn all objects in parallel (uses cached image clipping for same images)
     const ids = await Promise.all(
-      spawnData.map(data => this.spawnEntityAsync(data.config))
+      spawnData.map(data => this.spawnObjectAsync(data.config))
     );
 
-    // Apply forces to all spawned entities
+    // Apply forces to all spawned objects
     for (let i = 0; i < ids.length; i++) {
       const body = this.getBody(ids[i]);
       if (body) {
@@ -212,7 +217,7 @@ export class EffectManager {
     }
   }
 
-  private spawnRainEntity(config: RainEffectConfig): void {
+  private spawnRainObject(config: RainEffectConfig): void {
     const { bounds } = this;
     const spawnWidth = config.spawnWidth ?? 1;
 
@@ -221,22 +226,27 @@ export class EffectManager {
     const spawnAreaWidth = totalWidth * spawnWidth;
     const spawnAreaStart = bounds.left + (totalWidth - spawnAreaWidth) / 2;
 
-    const entityConfig = this.selectEntityConfig(config.entityConfigs);
-    if (!entityConfig) return;
+    const objectConfig = this.selectObjectConfig(config.objectConfigs);
+    if (!objectConfig) return;
 
-    const radius = this.calculateRadius(entityConfig);
+    const radius = this.calculateRadius(objectConfig);
     const x = this.randomInRange(spawnAreaStart + radius, spawnAreaStart + spawnAreaWidth - radius);
     const y = bounds.top - radius; // Spawn just above visible area
 
-    const fullConfig: EntityConfig = {
-      ...entityConfig.entityConfig,
+    // Ensure 'falling' tag is present for dynamic behavior
+    const tags = [...(objectConfig.objectConfig.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
+
+    const fullConfig: ObjectConfig = {
+      ...objectConfig.objectConfig,
       x,
       y,
-      radius
+      radius,
+      tags
     };
 
     // Fire-and-forget async spawn (no force needed for rain)
-    this.spawnEntityAsync(fullConfig);
+    this.spawnObjectAsync(fullConfig);
   }
 
   private updateStreamEffect(state: EffectState, now: number): void {
@@ -245,29 +255,34 @@ export class EffectManager {
     const elapsed = Math.min(now - state.lastSpawnTime, 100);
     state.lastSpawnTime = now;
 
-    // Calculate how many entities to spawn this frame
+    // Calculate how many objects to spawn this frame
     const deltaSeconds = elapsed / 1000;
     state.spawnAccumulator += config.spawnRate * deltaSeconds;
 
-    // Spawn whole entities
+    // Spawn whole objects
     while (state.spawnAccumulator >= 1) {
       state.spawnAccumulator -= 1;
-      this.spawnStreamEntity(config);
+      this.spawnStreamObject(config);
     }
   }
 
-  private async spawnStreamEntity(config: StreamEffectConfig): Promise<void> {
-    const entityConfig = this.selectEntityConfig(config.entityConfigs);
-    if (!entityConfig) return;
+  private async spawnStreamObject(config: StreamEffectConfig): Promise<void> {
+    const objectConfig = this.selectObjectConfig(config.objectConfigs);
+    if (!objectConfig) return;
 
-    const radius = this.calculateRadius(entityConfig);
+    const radius = this.calculateRadius(objectConfig);
+
+    // Ensure 'falling' tag is present for dynamic behavior
+    const tags = [...(objectConfig.objectConfig.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
 
     // Spawn at origin
-    const fullConfig: EntityConfig = {
-      ...entityConfig.entityConfig,
+    const fullConfig: ObjectConfig = {
+      ...objectConfig.objectConfig,
       x: config.origin.x,
       y: config.origin.y,
-      radius
+      radius,
+      tags
     };
 
     // Normalize the direction vector
@@ -283,8 +298,8 @@ export class EffectManager {
     const spreadAngle = (Math.random() * 2 - 1) * config.coneAngle;
     const finalAngle = baseAngle + spreadAngle;
 
-    // Spawn entity and apply velocity
-    const id = await this.spawnEntityAsync(fullConfig);
+    // Spawn object and apply velocity
+    const id = await this.spawnObjectAsync(fullConfig);
     const body = this.getBody(id);
     if (body) {
       Matter.Body.setVelocity(body, {
@@ -295,9 +310,9 @@ export class EffectManager {
   }
 
   /**
-   * Select an entity config based on probability weights
+   * Select an object config based on probability weights
    */
-  private selectEntityConfig(configs: EffectEntityConfig[]): EffectEntityConfig | null {
+  private selectObjectConfig(configs: EffectObjectConfig[]): EffectObjectConfig | null {
     if (configs.length === 0) return null;
 
     const totalWeight = configs.reduce((sum, c) => sum + c.probability, 0);
@@ -314,7 +329,7 @@ export class EffectManager {
   /**
    * Calculate radius based on scale range
    */
-  private calculateRadius(config: EffectEntityConfig): number {
+  private calculateRadius(config: EffectObjectConfig): number {
     const baseRadius = config.baseRadius ?? 20;
     const scale = this.randomInRange(config.minScale, config.maxScale);
     return baseRadius * scale;
