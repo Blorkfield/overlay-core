@@ -455,6 +455,19 @@ export class OverlayScene {
     return ids;
   }
 
+  /**
+   * Get all unique tags currently in use by objects in the scene.
+   */
+  getAllTags(): string[] {
+    const tagsSet = new Set<string>();
+    for (const entry of this.objects.values()) {
+      for (const tag of entry.tags) {
+        tagsSet.add(tag);
+      }
+    }
+    return Array.from(tagsSet).sort();
+  }
+
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
   }
@@ -570,7 +583,7 @@ export class OverlayScene {
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
-    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
+    const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
     // Determine if static based on tags (no 'falling' tag = static)
     const baseTags = config.tags ?? [];
     const isStatic = !baseTags.includes('falling');
@@ -579,6 +592,11 @@ export class OverlayScene {
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
     const debugInfo: LetterDebugInfo[] = [];
+
+    // Track word boundaries for word-level tagging
+    const wordTagsSet = new Set<string>();
+    let currentWordIndex = 0;
+    let inWord = false;
 
     // Split text into lines
     const lines = text.split('\n');
@@ -645,6 +663,12 @@ export class OverlayScene {
       const chars = line.split('');
       let currentX = config.x;
 
+      // New line = end of current word (if we were in one)
+      if (inWord) {
+        currentWordIndex++;
+        inWord = false;
+      }
+
       for (let i = 0; i < chars.length; i++) {
         const char = chars[i];
 
@@ -654,6 +678,11 @@ export class OverlayScene {
           // TODO Replace this with a configured value
           currentX += 20;
           globalCharIndex++;
+          // Space ends the current word
+          if (inWord) {
+            currentWordIndex++;
+            inWord = false;
+          }
           continue;
         }
 
@@ -662,6 +691,11 @@ export class OverlayScene {
           globalCharIndex++;
           continue;
         }
+
+        // We're now in a word
+        inWord = true;
+        const wordTag = `${stringTag}-word-${currentWordIndex}`;
+        wordTagsSet.add(wordTag);
 
         // Get this letter's original dimensions
         const dims = charDimensions.get(char)!;
@@ -683,7 +717,7 @@ export class OverlayScene {
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
-        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         const id = crypto.randomUUID();
 
@@ -737,21 +771,24 @@ export class OverlayScene {
       currentY += lineHeight;
     }
 
-    // Store debug info for this word
-    this.letterDebugInfo.set(wordTag, debugInfo);
+    // Store debug info for this string
+    this.letterDebugInfo.set(stringTag, debugInfo);
 
+    const wordTags = Array.from(wordTagsSet);
     logger.info('OverlayScene', `Created text obstacles`, {
       text: text.replace(/\n/g, '\\n'),
       fontName,
       letterCount: letterIds.length,
-      wordTag,
+      stringTag,
+      wordTags,
       letterColor,
       lineCount: lines.length
     });
 
     return {
       letterIds,
-      wordTag,
+      stringTag,
+      wordTags,
       letterMap,
       letterDebugInfo: debugInfo
     };
@@ -821,7 +858,7 @@ export class OverlayScene {
     const { x, y, fontSize, fontUrl } = config;
     // Convert literal \n strings to actual newlines
     const text = config.text.replace(/\\n/g, '\n');
-    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
+    const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
     // Determine if static based on tags (no 'falling' tag = static)
     const baseTags = config.tags ?? [];
     const isStatic = !baseTags.includes('falling');
@@ -830,6 +867,11 @@ export class OverlayScene {
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
+
+    // Track word boundaries for word-level tagging
+    const wordTagsSet = new Set<string>();
+    let currentWordIndex = 0;
+    let inWord = false;
 
     // Load the font
     const loadedFont = await loadFont(fontUrl);
@@ -849,6 +891,12 @@ export class OverlayScene {
       // Track current X position as we place each glyph
       let currentX = x;
 
+      // New line = end of current word (if we were in one)
+      if (inWord) {
+        currentWordIndex++;
+        inWord = false;
+      }
+
       const chars = line.split('');
 
       for (let i = 0; i < chars.length; i++) {
@@ -867,11 +915,21 @@ export class OverlayScene {
             currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
           }
           globalCharIndex++;
+          // Space/unsupported char ends the current word
+          if (char === ' ' && inWord) {
+            currentWordIndex++;
+            inWord = false;
+          }
           continue;
         }
 
+        // We're now in a word
+        inWord = true;
+        const wordTag = `${stringTag}-word-${currentWordIndex}`;
+        wordTagsSet.add(wordTag);
+
         const id = crypto.randomUUID();
-        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
@@ -938,19 +996,22 @@ export class OverlayScene {
       currentY += lineHeight;
     }
 
+    const wordTags = Array.from(wordTagsSet);
     logger.info('OverlayScene', `Created TTF text obstacles`, {
       text: text.replace(/\n/g, '\\n'),
       fontUrl,
       fontSize,
       letterCount: letterIds.length,
-      wordTag,
+      stringTag,
+      wordTags,
       lineCount: lines.length
     });
 
     // TTF fonts use font metrics, not PNG dimensions, so debug info is empty
     return {
       letterIds,
-      wordTag,
+      stringTag,
+      wordTags,
       letterMap,
       letterDebugInfo: []
     };

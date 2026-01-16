@@ -197,8 +197,8 @@ export interface TextObstacleConfig {
   fontsBasePath?: string;
   /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
-  /** Additional tag for the word group (for releasing whole word) */
-  wordTag?: string;
+  /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
+  stringTag?: string;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Color to tint the letters (CSS color string). If not set, original image colors are used */
@@ -235,8 +235,10 @@ export interface LetterDebugInfo {
 export interface TextObstacleResult {
   /** IDs of all created letter obstacles */
   letterIds: string[];
-  /** The word tag used to group these letters */
-  wordTag: string;
+  /** Tag for the entire string (all letters) */
+  stringTag: string;
+  /** Tags for each individual word (space/newline separated) */
+  wordTags: string[];
   /** Map of character to obstacle ID for individual control */
   letterMap: Map<string, string>;
   /** Debug info for each letter (for drawing original dimension boxes) */
@@ -259,8 +261,8 @@ export interface TTFTextObstacleConfig {
   fontUrl: string;
   /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
-  /** Additional tag for the word group (for releasing whole word) */
-  wordTag?: string;
+  /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
+  stringTag?: string;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Fill color for the letters (CSS color string, default: '#ffffff') */

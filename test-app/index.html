@@ -391,7 +391,12 @@
       </div>
       <div class="effect-section">
         <div style="display:flex;flex-direction:column;gap:6px">
-          <button id="btn-release-group" class="panel-btn">Release "platforms"</button>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="select-release-tag" class="select-input" style="flex:1">
+              <option value="">-- Select Tag --</option>
+            </select>
+            <button id="btn-release-tag" class="panel-btn">Release</button>
+          </div>
           <button id="btn-release-all" class="panel-btn">Release All</button>
         </div>
       </div>

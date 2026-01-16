@@ -13,7 +13,8 @@ const btnApply = document.getElementById('btn-apply') as HTMLButtonElement;
 const btnSpawnEntity = document.getElementById('btn-spawn-entity') as HTMLButtonElement;
 const btnSpawnObstacle = document.getElementById('btn-spawn-obstacle') as HTMLButtonElement;
 const btnSpawnFalling = document.getElementById('btn-spawn-falling') as HTMLButtonElement;
-const btnReleaseGroup = document.getElementById('btn-release-group') as HTMLButtonElement;
+const selectReleaseTag = document.getElementById('select-release-tag') as HTMLSelectElement;
+const btnReleaseTag = document.getElementById('btn-release-tag') as HTMLButtonElement;
 const btnReleaseAll = document.getElementById('btn-release-all') as HTMLButtonElement;
 const btnRemoveEntities = document.getElementById('btn-remove-entities') as HTMLButtonElement;
 const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HTMLButtonElement;
@@ -335,8 +336,36 @@ btnSpawnEntity.addEventListener('click', spawnRandomEntity);
 btnSpawnObstacle.addEventListener('click', spawnRandomObstacle);
 btnSpawnFalling.addEventListener('click', spawnFallingObstacle);
 
-btnReleaseGroup.addEventListener('click', () => {
-  scene?.releaseObjectsByTag('platforms');
+// Populate tag dropdown with current scene tags
+function populateTagDropdown(): void {
+  if (!scene) return;
+
+  const currentValue = selectReleaseTag.value;
+  const tags = scene.getAllTags();
+
+  selectReleaseTag.innerHTML = '<option value="">-- Select Tag --</option>';
+  tags.forEach(tag => {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    selectReleaseTag.appendChild(option);
+  });
+
+  // Restore selection if it still exists
+  if (tags.includes(currentValue)) {
+    selectReleaseTag.value = currentValue;
+  }
+}
+
+// Refresh dropdown when clicked/focused
+selectReleaseTag.addEventListener('focus', populateTagDropdown);
+selectReleaseTag.addEventListener('click', populateTagDropdown);
+
+btnReleaseTag.addEventListener('click', () => {
+  const tag = selectReleaseTag.value;
+  if (tag) {
+    scene?.releaseObjectsByTag(tag);
+  }
 });
 
 btnReleaseAll.addEventListener('click', () => {
@@ -418,7 +447,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
     });
   }
 
-  console.log('Created text obstacle:', { text, fontName, letterColor, wordTag: result.wordTag, letterIds: result.letterIds });
+  console.log('Created text obstacle:', { text, fontName, letterColor, stringTag: result.stringTag, wordTags: result.wordTags, letterIds: result.letterIds });
 }
 
 btnAddTextObstacle.addEventListener('click', () => addTextObstacle(false));
