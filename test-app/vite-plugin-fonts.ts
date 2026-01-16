@@ -5,6 +5,50 @@ import sharp from 'sharp';
 
 const VALID_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.split('');
 
+// Horizontal padding (in pixels) to keep on left/right of character content when trimming
+const TRIM_PADDING_X = 16;
+
+/**
+ * Find the horizontal content bounds (leftmost and rightmost non-transparent columns) in an image.
+ * Returns { left, right } where left is the first column with content and right is the last.
+ */
+async function findHorizontalContentBounds(
+  imageBuffer: Buffer,
+  width: number,
+  height: number,
+  channels: number
+): Promise<{ left: number; right: number }> {
+  // Alpha channel is the 4th channel (index 3) in RGBA
+  const alphaOffset = channels === 4 ? 3 : (channels === 2 ? 1 : -1);
+
+  if (alphaOffset === -1) {
+    // No alpha channel, return full width
+    return { left: 0, right: width - 1 };
+  }
+
+  let left = width;
+  let right = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixelIndex = (y * width + x) * channels;
+      const alpha = imageBuffer[pixelIndex + alphaOffset];
+
+      if (alpha > 0) {
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+
+  // If no content found, return full width
+  if (left > right) {
+    return { left: 0, right: width - 1 };
+  }
+
+  return { left, right };
+}
+
 interface AsepriteFrame {
   frame: { x: number; y: number; w: number; h: number };
   rotated: boolean;
@@ -155,11 +199,28 @@ async function processSpritesheets(fontDir: string): Promise<void> {
 
         const { x, y, w, h } = frameData.frame;
 
+        // Extract the frame from spritesheet
+        const frameImage = sharp(imagePath).extract({ left: x, top: y, width: w, height: h });
+
+        // Get raw pixel data to find content bounds
+        const { data: rawData, info } = await frameImage
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+
+        const bounds = await findHorizontalContentBounds(rawData, info.width, info.height, info.channels);
+
+        // Calculate crop region with padding
+        const cropLeft = Math.max(0, bounds.left - TRIM_PADDING_X);
+        const cropRight = Math.min(info.width - 1, bounds.right + TRIM_PADDING_X);
+        const cropWidth = cropRight - cropLeft + 1;
+
+        // Re-extract the frame and apply horizontal trim
         await sharp(imagePath)
-          .extract({ left: x, top: y, width: w, height: h })
+          .extract({ left: x + cropLeft, top: y, width: cropWidth, height: h })
           .toFile(outputPath);
 
-        console.log(`[vite-plugin-fonts] Extracted ${charName}.png (${w}x${h} from ${x},${y})`);
+        console.log(`[vite-plugin-fonts] Extracted ${charName}.png (${cropWidth}x${h}, trimmed from ${w}x${h})`);
       }
 
       console.log(`[vite-plugin-fonts] Finished processing spritesheet: ${imageName}`);
