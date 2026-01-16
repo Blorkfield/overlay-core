@@ -30,6 +30,7 @@ const selectFont = document.getElementById('select-font') as HTMLSelectElement;
 const inputLetterSize = document.getElementById('input-letter-size') as HTMLInputElement;
 const inputLetterSpacing = document.getElementById('input-letter-spacing') as HTMLInputElement;
 const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
+const inputLineSpacing = document.getElementById('input-line-spacing') as HTMLInputElement;
 const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
 const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
 
@@ -363,6 +364,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const letterSize = parseInt(inputLetterSize.value) || 60;
   const letterSpacing = parseInt(inputLetterSpacing.value);
   const letterColor = inputLetterColor.value.trim() || undefined;
+  const lineSpacing = inputLineSpacing.value || 30;
 
   // Find the selected font info
   const fonts = scene.getAvailableFonts();
@@ -385,7 +387,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       fontUrl: selectedFont.fontUrl,
       isStatic: !falling,
       tags: ['text-obstacle'],
-      fillColor: letterColor || '#6495ED'
+      fillColor: letterColor || '#6495ED',
+      lineHeight: (letterSize + lineSpacing)
     });
   } else {
     // Use PNG-based text obstacles
@@ -398,7 +401,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       fontName,
       isStatic: !falling,
       tags: ['text-obstacle'],
-      letterColor
+      letterColor,
+      lineHeight: (letterSize + lineSpacing)
     });
   }
 

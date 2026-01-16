@@ -640,8 +640,8 @@ export class OverlayScene {
         // Handle spaces - use average letter width or letterSpacing config
         if (char === ' ') {
           // Use explicit letterSpacing if provided, otherwise use letterSize as space width
-          const spaceWidth = config.letterSpacing ?? letterSize;
-          currentX += spaceWidth;
+          // TODO Replace this with a configured value
+          currentX += 20;
           globalCharIndex++;
           continue;
         }
