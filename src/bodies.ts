@@ -321,33 +321,53 @@ export async function createBoxObstacleWithInfo(id: string, config: ObjectConfig
   const scaledWidth = imageWidth * spriteScale;
   const scaledHeight = imageHeight * spriteScale;
 
-  // Create rectangle with actual scaled dimensions from the PNG
-  const body = Matter.Bodies.rectangle(config.x, config.y, scaledWidth, scaledHeight, {
-    isStatic,
-    label: `obstacle:${id}`,
-    render: {
-      sprite: {
-        texture: config.imageUrl!,
-        xScale: spriteScale,
-        yScale: spriteScale
-      }
-    }
-  });
+  let body: Matter.Body;
 
-  // If we have clipped vertices, replace the collision shape
   if (vertices.length >= 3) {
-    const targetX = config.x;
-    const targetY = config.y;
-
-    // Translate vertices to body position
-    const translatedVertices = vertices.map(v => ({
-      x: targetX + v.x,
-      y: targetY + v.y
+    // Translate vertices to world position (like TTF glyph approach)
+    const worldVertices = vertices.map(v => ({
+      x: config.x + v.x,
+      y: config.y + v.y
     }));
-    Matter.Body.setVertices(body, translatedVertices);
 
-    // setVertices may have moved body - force it back
-    Matter.Body.setPosition(body, { x: targetX, y: targetY });
+    // Use fromVertices - it will position body at centroid of these world vertices
+    body = Matter.Bodies.fromVertices(config.x, config.y, [worldVertices], {
+      isStatic,
+      label: `obstacle:${id}`,
+      render: {
+        sprite: {
+          texture: config.imageUrl!,
+          xScale: spriteScale,
+          yScale: spriteScale,
+          // Offset sprite to compensate for body being at centroid instead of image center
+          // body.position will be at vertex centroid, but we want sprite centered on image center (config.x, config.y)
+          xOffset: 0.5 + (config.x - body?.position?.x ?? 0) / scaledWidth,
+          yOffset: 0.5 + (config.y - body?.position?.y ?? 0) / scaledHeight
+        }
+      }
+    });
+
+    // Calculate sprite offset AFTER body creation (we now know where centroid landed)
+    const spriteOffsetX = (config.x - body.position.x) / scaledWidth;
+    const spriteOffsetY = (config.y - body.position.y) / scaledHeight;
+
+    if (body.render.sprite) {
+      body.render.sprite.xOffset = 0.5 + spriteOffsetX;
+      body.render.sprite.yOffset = 0.5 + spriteOffsetY;
+    }
+  } else {
+    // Fallback to rectangle
+    body = Matter.Bodies.rectangle(config.x, config.y, scaledWidth, scaledHeight, {
+      isStatic,
+      label: `obstacle:${id}`,
+      render: {
+        sprite: {
+          texture: config.imageUrl!,
+          xScale: spriteScale,
+          yScale: spriteScale
+        }
+      }
+    });
   }
 
   return {
