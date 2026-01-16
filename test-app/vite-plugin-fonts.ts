@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 
-const VALID_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+const VALID_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.split('');
 
 interface AsepriteFrame {
   frame: { x: number; y: number; w: number; h: number };
@@ -99,13 +99,26 @@ async function processSpritesheets(fontDir: string): Promise<void> {
         continue;
       }
 
-      // Validate all alphanumeric characters are present
+      // Track which valid characters are in the spritesheet
       const validChars = new Set(VALID_CHARACTERS);
-      const foundChars = new Set(characterNames.filter(c => validChars.has(c)));
-      const missingChars = VALID_CHARACTERS.filter(c => !foundChars.has(c));
+      const foundChars = characterNames.filter(c => validChars.has(c));
 
-      if (missingChars.length > 0) {
-        console.warn(`[vite-plugin-fonts] Spritesheet ${jsonFile} is missing characters: ${missingChars.join(', ')}`);
+      // Check if we have at least a complete set of uppercase OR lowercase letters (plus digits)
+      const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      const lowercase = 'abcdefghijklmnopqrstuvwxyz'.split('');
+      const digits = '0123456789'.split('');
+      const foundSet = new Set(foundChars);
+
+      const hasAllUppercase = uppercase.every(c => foundSet.has(c));
+      const hasAllLowercase = lowercase.every(c => foundSet.has(c));
+      const hasAllDigits = digits.every(c => foundSet.has(c));
+
+      if (!hasAllUppercase && !hasAllLowercase) {
+        console.warn(`[vite-plugin-fonts] Spritesheet ${jsonFile} has incomplete letter set (found: ${foundChars.filter(c => /[A-Za-z]/.test(c)).join('')})`);
+      }
+      if (!hasAllDigits) {
+        const missingDigits = digits.filter(c => !foundSet.has(c));
+        console.warn(`[vite-plugin-fonts] Spritesheet ${jsonFile} is missing digits: ${missingDigits.join(', ')}`);
       }
 
       console.log(`[vite-plugin-fonts] Processing spritesheet: ${imageName} (${frameEntries.length} frames, characters: ${characterNames.join('')})`);

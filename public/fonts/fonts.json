@@ -3,7 +3,7 @@
     {
       "name": "block",
       "type": "png",
-      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     },
     {
       "name": "handwritten",
