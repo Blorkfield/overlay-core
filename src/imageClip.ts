@@ -8,10 +8,21 @@ export interface Vector2D {
 const LOG_PREFIX = 'ImageClip';
 const ALPHA_THRESHOLD = 128;
 
+// Bounding box of the clipped content within the original image
+export interface ClipBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 // Cache for extracted vertices - keyed by imageUrl
 // We cache the raw contour data (before scaling) so it can be reused at different sizes
 interface ContourCacheEntry {
-  vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range)
+  vertices: Vector2D[];  // Normalized to unit size (-0.5 to 0.5 range), centered on clip bounds
+  imageWidth: number;
+  imageHeight: number;
+  clipBounds: ClipBounds;  // Bounding box of non-transparent content
   timestamp: number;
 }
 
@@ -160,11 +171,14 @@ function perpendicularDistance(point: Vector2D, lineStart: Vector2D, lineEnd: Ve
   return Math.sqrt((point.x - closestX) ** 2 + (point.y - closestY) ** 2);
 }
 
-// Scale and center vertices for Matter.js body creation
-export function normalizeVertices(vertices: Vector2D[], targetSize: number): Vector2D[] {
-  if (vertices.length === 0) return [];
+/**
+ * Calculate the bounding box of a set of vertices (the clipped content bounds)
+ */
+export function getClipBounds(vertices: Vector2D[]): ClipBounds {
+  if (vertices.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
 
-  // Find bounding box
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const v of vertices) {
     minX = Math.min(minX, v.x);
@@ -172,14 +186,48 @@ export function normalizeVertices(vertices: Vector2D[], targetSize: number): Vec
     maxX = Math.max(maxX, v.x);
     maxY = Math.max(maxY, v.y);
   }
+  return { minX, minY, maxX, maxY };
+}
 
-  const width = maxX - minX;
-  const height = maxY - minY;
-  const scale = targetSize / Math.max(width, height);
+// Scale and center vertices for Matter.js body creation
+// When imageWidth/imageHeight are provided, centers based on image dimensions (for consistent alignment)
+// Otherwise falls back to centering based on shape bounding box
+export function normalizeVertices(
+  vertices: Vector2D[],
+  targetSize: number,
+  imageWidth?: number,
+  imageHeight?: number
+): Vector2D[] {
+  if (vertices.length === 0) return [];
 
-  // Center at origin and scale
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
+  // Use image dimensions if provided, otherwise calculate from shape bounds
+  let centerX: number;
+  let centerY: number;
+  let refWidth: number;
+  let refHeight: number;
+
+  if (imageWidth !== undefined && imageHeight !== undefined) {
+    // Center based on image dimensions - all same-size images will align
+    centerX = imageWidth / 2;
+    centerY = imageHeight / 2;
+    refWidth = imageWidth;
+    refHeight = imageHeight;
+  } else {
+    // Fallback: center based on shape bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const v of vertices) {
+      minX = Math.min(minX, v.x);
+      minY = Math.min(minY, v.y);
+      maxX = Math.max(maxX, v.x);
+      maxY = Math.max(maxY, v.y);
+    }
+    centerX = (minX + maxX) / 2;
+    centerY = (minY + maxY) / 2;
+    refWidth = maxX - minX;
+    refHeight = maxY - minY;
+  }
+
+  const scale = targetSize / Math.max(refWidth, refHeight);
 
   return vertices.map(v => ({
     x: (v.x - centerX) * scale,
@@ -219,10 +267,35 @@ function cleanupCache(): void {
 }
 
 /**
+ * Result from getVerticesAndDimensionsFromImage
+ */
+export interface ImageClipResult {
+  /** Collision vertices, scaled to targetSize and centered on image center */
+  vertices: Vector2D[];
+  /** Original image width in pixels */
+  imageWidth: number;
+  /** Original image height in pixels */
+  imageHeight: number;
+  /** Bounding box of the non-transparent content within the original image */
+  clipBounds: ClipBounds;
+  /** Offset from image center to clip center (in target size coordinates) */
+  clipOffset: Vector2D;
+}
+
+/**
  * Extract vertices from image, with caching for repeated calls.
  * Vertices are cached normalized to unit size and scaled to targetSize on retrieval.
  */
 export async function getVerticesFromImage(imageUrl: string, targetSize: number): Promise<Vector2D[]> {
+  const result = await getVerticesAndDimensionsFromImage(imageUrl, targetSize);
+  return result.vertices;
+}
+
+/**
+ * Extract vertices from image along with original image dimensions and clip bounds.
+ * Returns information needed for proper letter spacing and positioning.
+ */
+export async function getVerticesAndDimensionsFromImage(imageUrl: string, targetSize: number): Promise<ImageClipResult> {
   logger.info(LOG_PREFIX, `Getting vertices from image`, { imageUrl, targetSize });
 
   // Check cache first
@@ -230,7 +303,24 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
   if (cached) {
     logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, cachedVertices: cached.vertices.length });
     cached.timestamp = Date.now(); // Refresh TTL on access
-    return scaleVertices(cached.vertices, targetSize);
+
+    // Calculate clip offset in target coordinates
+    const scale = targetSize / Math.max(cached.imageWidth, cached.imageHeight);
+    const imageCenterX = cached.imageWidth / 2;
+    const imageCenterY = cached.imageHeight / 2;
+    const clipCenterX = (cached.clipBounds.minX + cached.clipBounds.maxX) / 2;
+    const clipCenterY = (cached.clipBounds.minY + cached.clipBounds.maxY) / 2;
+
+    return {
+      vertices: scaleVertices(cached.vertices, targetSize),
+      imageWidth: cached.imageWidth,
+      imageHeight: cached.imageHeight,
+      clipBounds: cached.clipBounds,
+      clipOffset: {
+        x: (clipCenterX - imageCenterX) * scale,
+        y: (clipCenterY - imageCenterY) * scale
+      }
+    };
   }
 
   logger.debug(LOG_PREFIX, `Cache miss for image`, { imageUrl });
@@ -242,8 +332,18 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
     const contour = extractContour(data, width, height);
     if (contour.length < 3) {
       logger.warn(LOG_PREFIX, `Contour has insufficient points`, { pointCount: contour.length });
-      return [];
+      const emptyClipBounds = { minX: 0, minY: 0, maxX: width, maxY: height };
+      return {
+        vertices: [],
+        imageWidth: width,
+        imageHeight: height,
+        clipBounds: emptyClipBounds,
+        clipOffset: { x: 0, y: 0 }
+      };
     }
+
+    // Calculate clip bounds before simplification (for accurate bounds)
+    const clipBounds = getClipBounds(contour);
 
     // Simplify based on image size - larger images need more aggressive simplification
     const epsilon = Math.max(width, height) / 50;
@@ -253,26 +353,64 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
     // Ensure we have at least 3 vertices for a valid polygon
     if (simplified.length < 3) {
       logger.warn(LOG_PREFIX, `Simplified contour has insufficient points`, { pointCount: simplified.length });
-      return [];
+      return {
+        vertices: [],
+        imageWidth: width,
+        imageHeight: height,
+        clipBounds,
+        clipOffset: { x: 0, y: 0 }
+      };
     }
 
-    // Normalize to unit size (vertices centered at origin, fitting in -0.5 to 0.5 range)
-    const unitVertices = normalizeVertices(simplified, 1);
+    // Normalize to unit size, centered on IMAGE dimensions (not shape bounds)
+    // This ensures all same-size images align consistently
+    const unitVertices = normalizeVertices(simplified, 1, width, height);
 
-    // Cache the unit-sized vertices
+    // Cache the unit-sized vertices along with image dimensions and clip bounds
     contourCache.set(imageUrl, {
       vertices: unitVertices,
+      imageWidth: width,
+      imageHeight: height,
+      clipBounds,
       timestamp: Date.now()
     });
     cleanupCache();
 
-    logger.info(LOG_PREFIX, `Vertices extracted and cached`, { imageUrl, vertexCount: unitVertices.length });
+    logger.info(LOG_PREFIX, `Vertices extracted and cached`, {
+      imageUrl,
+      vertexCount: unitVertices.length,
+      width,
+      height,
+      clipBounds
+    });
+
+    // Calculate clip offset in target coordinates
+    const scale = targetSize / Math.max(width, height);
+    const imageCenterX = width / 2;
+    const imageCenterY = height / 2;
+    const clipCenterX = (clipBounds.minX + clipBounds.maxX) / 2;
+    const clipCenterY = (clipBounds.minY + clipBounds.maxY) / 2;
 
     // Scale to requested size and return
-    return scaleVertices(unitVertices, targetSize);
+    return {
+      vertices: scaleVertices(unitVertices, targetSize),
+      imageWidth: width,
+      imageHeight: height,
+      clipBounds,
+      clipOffset: {
+        x: (clipCenterX - imageCenterX) * scale,
+        y: (clipCenterY - imageCenterY) * scale
+      }
+    };
   } catch (error) {
     logger.error(LOG_PREFIX, `Failed to extract vertices from image`, { error: String(error) });
-    return [];
+    return {
+      vertices: [],
+      imageWidth: 0,
+      imageHeight: 0,
+      clipBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
+      clipOffset: { x: 0, y: 0 }
+    };
   }
 }
 
@@ -289,4 +427,108 @@ export function clearVertexCache(): void {
  */
 export function getVertexCacheStats(): { size: number; maxSize: number } {
   return { size: contourCache.size, maxSize: CACHE_MAX_SIZE };
+}
+
+// Cache for tinted images - keyed by "imageUrl:color"
+const tintedImageCache: Map<string, string> = new Map();
+const TINTED_CACHE_MAX_SIZE = 200;
+
+/**
+ * Parse a CSS color string to RGB values
+ */
+function parseColor(color: string): { r: number; g: number; b: number } | null {
+  // Create a temporary canvas to parse the color
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const data = ctx.getImageData(0, 0, 1, 1).data;
+  return { r: data[0], g: data[1], b: data[2] };
+}
+
+/**
+ * Tint an image by replacing all non-transparent pixels with the specified color,
+ * preserving the original alpha values.
+ *
+ * @param imageUrl - URL of the image to tint
+ * @param color - CSS color string (e.g., '#ff0000', 'red', 'rgb(255,0,0)')
+ * @returns Data URL of the tinted image
+ */
+export async function tintImage(imageUrl: string, color: string): Promise<string> {
+  const cacheKey = `${imageUrl}:${color}`;
+
+  // Check cache first
+  const cached = tintedImageCache.get(cacheKey);
+  if (cached) {
+    logger.debug(LOG_PREFIX, `Tinted image cache hit`, { imageUrl, color });
+    return cached;
+  }
+
+  logger.debug(LOG_PREFIX, `Tinting image`, { imageUrl, color });
+
+  try {
+    const img = await loadImage(imageUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+
+    // Draw original image
+    ctx.drawImage(img, 0, 0);
+
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Parse the target color
+    const rgb = parseColor(color);
+    if (!rgb) {
+      logger.warn(LOG_PREFIX, `Failed to parse color, returning original image`, { color });
+      return imageUrl;
+    }
+
+    // Replace colors while preserving alpha
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha > 0) {
+        data[i] = rgb.r;     // R
+        data[i + 1] = rgb.g; // G
+        data[i + 2] = rgb.b; // B
+        // data[i + 3] stays the same (alpha)
+      }
+    }
+
+    // Put modified data back
+    ctx.putImageData(imageData, 0, 0);
+
+    // Convert to data URL
+    const dataUrl = canvas.toDataURL('image/png');
+
+    // Cache the result
+    tintedImageCache.set(cacheKey, dataUrl);
+
+    // Clean up cache if too large
+    if (tintedImageCache.size > TINTED_CACHE_MAX_SIZE) {
+      const firstKey = tintedImageCache.keys().next().value;
+      if (firstKey) {
+        tintedImageCache.delete(firstKey);
+      }
+    }
+
+    logger.debug(LOG_PREFIX, `Image tinted successfully`, { imageUrl, color });
+    return dataUrl;
+  } catch (error) {
+    logger.error(LOG_PREFIX, `Failed to tint image`, { error: String(error) });
+    return imageUrl; // Return original on error
+  }
+}
+
+/**
+ * Clear the tinted image cache
+ */
+export function clearTintedImageCache(): void {
+  tintedImageCache.clear();
+  logger.debug(LOG_PREFIX, `Tinted image cache cleared`);
 }

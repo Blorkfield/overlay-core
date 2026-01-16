@@ -33,6 +33,14 @@ export interface ShapeConfig {
   vertices?: Array<{ x: number; y: number }>;
 }
 
+/**
+ * Configuration for despawn effects (placeholder for future custom effects)
+ */
+export interface DespawnEffectConfig {
+  /** Effect type identifier for future use */
+  type?: string;
+}
+
 export interface EntityConfig {
   x: number;
   y: number;
@@ -44,14 +52,30 @@ export interface EntityConfig {
   shape?: ShapeConfig;
   /** Entity behavior type. Defaults to GROUNDED_FOLLOW */
   entityType?: EntityType;
+  /** Time-to-live in milliseconds. If not set, entity lives forever */
+  ttl?: number;
+  /** Configuration for despawn effect (future use) */
+  despawnEffect?: DespawnEffectConfig;
 }
 
 export interface ObstacleConfig {
   x: number;
   y: number;
-  width: number;
-  height: number;
+  /** Width for rectangle obstacles (ignored if imageUrl is provided) */
+  width?: number;
+  /** Height for rectangle obstacles (ignored if imageUrl is provided) */
+  height?: number;
+  /** Image URL for image-based obstacle shapes */
+  imageUrl?: string;
+  /** Size of the obstacle when using imageUrl (diameter) */
+  size?: number;
+  /** Fill style color */
+  fillStyle?: string;
   tags?: string[];
+  /** Time-to-live in milliseconds. If not set, obstacle lives forever */
+  ttl?: number;
+  /** Configuration for despawn effect (future use) */
+  despawnEffect?: DespawnEffectConfig;
 }
 
 export interface DynamicObstacle {
@@ -156,5 +180,141 @@ export interface RainEffectConfig extends BaseEffectConfig {
   spawnWidth?: number;
 }
 
-export type EffectConfig = BurstEffectConfig | RainEffectConfig;
+/**
+ * Stream effect - emits entities from a point in a configurable direction with cone spread
+ */
+export interface StreamEffectConfig extends BaseEffectConfig {
+  type: 'stream';
+  /** Origin point where entities are emitted from (can be outside bounds) */
+  origin: { x: number; y: number };
+  /** Direction vector (will be normalized). e.g., { x: 0, y: 1 } for downward */
+  direction: { x: number; y: number };
+  /** How many entities to spawn per second */
+  spawnRate: number;
+  /** Initial velocity/force magnitude for spawned entities */
+  force: number;
+  /** Cone angle in radians - spread from center direction (0 = laser, Math.PI/4 = 45° cone) */
+  coneAngle: number;
+}
+
+export type EffectConfig = BurstEffectConfig | RainEffectConfig | StreamEffectConfig;
 export type EffectType = EffectConfig['type'];
+
+// ==================== TEXT OBSTACLE TYPES ====================
+
+/**
+ * Configuration for creating text obstacles from strings
+ */
+export interface TextObstacleConfig {
+  /** The text to create obstacles from (A-Z, 0-9 supported, supports \n for multiline) */
+  text: string;
+  /** X position of the first letter's center */
+  x: number;
+  /** Y position of the letter centers */
+  y: number;
+  /** Size of each letter (width/height) */
+  letterSize: number;
+  /** Spacing between letter centers (default: letterSize) */
+  letterSpacing?: number;
+  /** Font name - corresponds to directory under /fonts/ (default: 'handwritten') */
+  fontName?: string;
+  /** Base URL path for fonts directory (default: '/fonts/') */
+  fontsBasePath?: string;
+  /** Tags to apply to all letters */
+  tags?: string[];
+  /** Additional tag for the word group (for releasing whole word) */
+  wordTag?: string;
+  /** Whether obstacles are static (default: true) */
+  isStatic?: boolean;
+  /** Time-to-live in milliseconds */
+  ttl?: number;
+  /** Color to tint the letters (CSS color string). If not set, original image colors are used */
+  letterColor?: string;
+  /** Line height for multiline text (default: letterSize * 1.2) */
+  lineHeight?: number;
+}
+
+/**
+ * Debug information for a single letter's positioning
+ */
+export interface LetterDebugInfo {
+  /** Letter character */
+  char: string;
+  /** Obstacle ID */
+  id: string;
+  /** Original PNG dimensions (before scaling) */
+  originalWidth: number;
+  originalHeight: number;
+  /** Scaled dimensions at letterSize */
+  scaledWidth: number;
+  scaledHeight: number;
+  /** Position of the letter's original dimension box (top-left corner) */
+  boxX: number;
+  boxY: number;
+  /** Center position of the letter */
+  centerX: number;
+  centerY: number;
+}
+
+/**
+ * Result of creating text obstacles
+ */
+export interface TextObstacleResult {
+  /** IDs of all created letter obstacles */
+  letterIds: string[];
+  /** The word tag used to group these letters */
+  wordTag: string;
+  /** Map of character to obstacle ID for individual control */
+  letterMap: Map<string, string>;
+  /** Debug info for each letter (for drawing original dimension boxes) */
+  letterDebugInfo: LetterDebugInfo[];
+}
+
+/**
+ * Configuration for creating text obstacles from a TTF font
+ */
+export interface TTFTextObstacleConfig {
+  /** Text to display (supports \n for multiline) */
+  text: string;
+  /** X position of the start of text */
+  x: number;
+  /** Y position of the text baseline */
+  y: number;
+  /** Font size in pixels */
+  fontSize: number;
+  /** URL path to the TTF/OTF font file */
+  fontUrl: string;
+  /** Tags to apply to all letters */
+  tags?: string[];
+  /** Additional tag for the word group (for releasing whole word) */
+  wordTag?: string;
+  /** Whether obstacles are static (default: true) */
+  isStatic?: boolean;
+  /** Time-to-live in milliseconds */
+  ttl?: number;
+  /** Fill color for the letters (CSS color string, default: '#ffffff') */
+  fillColor?: string;
+  /** Line height for multiline text (default: fontSize * 1.2) */
+  lineHeight?: number;
+}
+
+/**
+ * Information about an available font
+ */
+export interface FontInfo {
+  /** Font name (directory name under /fonts/) */
+  name: string;
+  /** Available characters in this font (e.g., "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") */
+  characters: string;
+  /** Font type: 'png' for image-based, 'ttf' for TrueType fonts */
+  type: 'png' | 'ttf';
+  /** For TTF fonts: relative URL path to the font file */
+  fontUrl?: string;
+}
+
+/**
+ * Font manifest structure loaded from fonts.json
+ */
+export interface FontManifest {
+  fonts: FontInfo[];
+}

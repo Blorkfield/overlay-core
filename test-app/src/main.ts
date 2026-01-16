@@ -1,4 +1,4 @@
-import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig } from '@blorkfield/overlay-core';
+import { OverlayScene, EntityType, EffectEntityConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig } from '@blorkfield/overlay-core';
 import { TabManager } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
@@ -20,8 +20,21 @@ const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HT
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
 const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
+const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
+
+// Text obstacle elements
+const inputTextObstacle = document.getElementById('input-text-obstacle') as HTMLInputElement;
+const selectFont = document.getElementById('select-font') as HTMLSelectElement;
+const inputLetterSize = document.getElementById('input-letter-size') as HTMLInputElement;
+const inputLetterSpacing = document.getElementById('input-letter-spacing') as HTMLInputElement;
+const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
+const inputLineSpacing = document.getElementById('input-line-spacing') as HTMLInputElement;
+const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLInputElement;
+const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
+const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
+const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
 
 // Settings panel elements
 const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
@@ -47,16 +60,24 @@ const burstCount = document.getElementById('burst-count') as HTMLInputElement;
 const burstForce = document.getElementById('burst-force') as HTMLInputElement;
 const rainSpawnRate = document.getElementById('rain-spawn-rate') as HTMLInputElement;
 const rainSpawnWidth = document.getElementById('rain-spawn-width') as HTMLInputElement;
+const checkboxStream = document.getElementById('checkbox-stream') as HTMLInputElement;
+const streamOriginX = document.getElementById('stream-origin-x') as HTMLInputElement;
+const streamOriginY = document.getElementById('stream-origin-y') as HTMLInputElement;
+const streamDirection = document.getElementById('stream-direction') as HTMLInputElement;
+const streamSpawnRate = document.getElementById('stream-spawn-rate') as HTMLInputElement;
+const streamForce = document.getElementById('stream-force') as HTMLInputElement;
+const streamConeAngle = document.getElementById('stream-cone-angle') as HTMLInputElement;
 const burstAddEntity = document.getElementById('burst-add-entity') as HTMLButtonElement;
 const rainAddEntity = document.getElementById('rain-add-entity') as HTMLButtonElement;
+const streamAddEntity = document.getElementById('stream-add-entity') as HTMLButtonElement;
 const burstEntityList = document.getElementById('burst-entity-list') as HTMLDivElement;
 const rainEntityList = document.getElementById('rain-entity-list') as HTMLDivElement;
+const streamEntityList = document.getElementById('stream-entity-list') as HTMLDivElement;
 
 // Available images for effects
 const availableImages = [
   { value: '', label: 'Color (random)' },
-  { value: '/bf_koban_512.png', label: 'bf_koban_512.png' },
-  { value: '/test-bg.png', label: 'test-bg.png' }
+  { value: '/bf_koban_512.png', label: 'bf_koban_512.png' }
 ];
 
 // Available entity types
@@ -74,10 +95,12 @@ interface EffectEntityUI {
   minScale: number;
   maxScale: number;
   baseRadius: number;
+  ttl?: number;
 }
 
 const burstEntities: EffectEntityUI[] = [];
 const rainEntities: EffectEntityUI[] = [];
+const streamEntities: EffectEntityUI[] = [];
 
 let scene: OverlayScene | null = null;
 let canvas: HTMLCanvasElement | null = null;
@@ -90,7 +113,7 @@ function getContainerSize(): { width: number; height: number } {
   };
 }
 
-function createScene(width: number, height: number): void {
+async function createScene(width: number, height: number): Promise<void> {
   // Cleanup existing scene
   if (scene) {
     scene.destroy();
@@ -167,11 +190,42 @@ function createScene(width: number, height: number): void {
 
   scene.start();
 
+  // Initialize fonts and populate dropdown
+  await scene.initializeFonts();
+  populateFontDropdown();
+
   // Re-initialize effects with new scene
   updateBurstEffect();
   updateRainEffect();
+  updateStreamEffect();
 
   console.log('Overlay scene started!');
+}
+
+function populateFontDropdown(): void {
+  if (!scene) return;
+
+  const fonts = scene.getAvailableFonts();
+
+  // Clear existing options
+  selectFont.innerHTML = '';
+
+  if (fonts.length === 0) {
+    // Fallback if no fonts found
+    const option = document.createElement('option');
+    option.value = 'handwritten';
+    option.textContent = 'handwritten';
+    selectFont.appendChild(option);
+    return;
+  }
+
+  // Add options for each available font
+  fonts.forEach((font, index) => {
+    const option = document.createElement('option');
+    option.value = font.name;
+    option.textContent = font.name;
+    selectFont.appendChild(option);
+  });
 }
 
 function setFullscreenMode(): void {
@@ -216,7 +270,8 @@ async function spawnRandomEntity(): Promise<void> {
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
   const selectedType = selectEntityType.value as EntityType;
-  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType);
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
+  console.log('Spawning entity with image:', selectedImage || 'none', 'type:', selectedType, 'ttl:', ttlValue ?? '∞');
 
   const config = {
     x,
@@ -225,7 +280,8 @@ async function spawnRandomEntity(): Promise<void> {
     fillStyle: color,
     imageUrl: selectedImage || undefined,
     tags: ['spawned'],
-    entityType: selectedType
+    entityType: selectedType,
+    ttl: ttlValue
   };
 
   // Use async for image entities (extracts shape from alpha), sync otherwise
@@ -240,12 +296,14 @@ function spawnRandomObstacle(): void {
   if (!scene || !canvas) return;
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = Math.random() * canvas.height * 0.5 + canvas.height * 0.2;
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   scene.addObstacle({
     x,
     y,
     width: 80 + Math.random() * 100,
     height: 15 + Math.random() * 10,
-    tags: ['spawned-obstacle']
+    tags: ['spawned-obstacle'],
+    ttl: ttlValue
   });
 }
 
@@ -253,12 +311,14 @@ function spawnFallingObstacle(): void {
   if (!scene || !canvas) return;
   const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
   const y = 50;
+  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   scene.spawnFallingObstacle({
     x,
     y,
     width: 60 + Math.random() * 60,
     height: 15 + Math.random() * 10,
-    tags: ['falling']
+    tags: ['falling'],
+    ttl: ttlValue
   });
 }
 
@@ -293,6 +353,67 @@ btnRemoveAll.addEventListener('click', () => {
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
 });
+
+// ==================== TEXT OBSTACLE LOGIC ====================
+
+async function addTextObstacle(falling: boolean = false): Promise<void> {
+  if (!scene || !canvas) return;
+
+  const text = inputTextObstacle.value.trim();
+  if (!text) return;
+
+  const fontName = selectFont.value;
+  const letterSize = parseInt(inputLetterSize.value) || 60;
+  const letterSpacing = parseInt(inputLetterSpacing.value);
+  const letterColor = inputLetterColor.value.trim() || undefined;
+  const lineSpacing = parseInt(inputLineSpacing.value) || 30;
+
+  // Find the selected font info
+  const fonts = scene.getAvailableFonts();
+  const selectedFont = fonts.find(f => f.name === fontName);
+
+  // Convert origin percentages to pixels
+  const originXPercent = parseFloat(inputTextOriginX.value) || 20;
+  const originYPercent = parseFloat(inputTextOriginY.value) || 30;
+  const startX = (originXPercent / 100) * canvas.width;
+  const y = (originYPercent / 100) * canvas.height;
+
+  let result;
+
+  if (selectedFont?.type === 'ttf' && selectedFont.fontUrl) {
+    // Use TTF text obstacles for TrueType fonts
+    result = await scene.addTTFTextObstacles({
+      text,
+      x: startX,
+      y,
+      fontSize: letterSize,
+      fontUrl: selectedFont.fontUrl,
+      isStatic: !falling,
+      tags: ['text-obstacle'],
+      fillColor: letterColor || '#6495ED',
+      lineHeight: (letterSize + lineSpacing)
+    });
+  } else {
+    // Use PNG-based text obstacles
+    result = await scene.addTextObstacles({
+      text,
+      x: startX,
+      y,
+      letterSize,
+      letterSpacing,
+      fontName,
+      isStatic: !falling,
+      tags: ['text-obstacle'],
+      letterColor,
+      lineHeight: (letterSize + lineSpacing)
+    });
+  }
+
+  console.log('Created text obstacle:', { text, fontName, letterColor, wordTag: result.wordTag, letterIds: result.letterIds });
+}
+
+btnAddTextObstacle.addEventListener('click', () => addTextObstacle(false));
+btnSpawnFallingText.addEventListener('click', () => addTextObstacle(true));
 
 // Handle window resize for fullscreen mode
 window.addEventListener('resize', () => {
@@ -359,7 +480,8 @@ function uiToEffectEntities(uiEntities: EffectEntityUI[]): EffectEntityConfig[] 
       fillStyle: colors[Math.floor(Math.random() * colors.length)],
       imageUrl: ui.imageUrl || undefined,
       tags: ['effect-spawned'],
-      entityType: ui.entityType
+      entityType: ui.entityType,
+      ttl: ui.ttl
     },
     probability: ui.probability,
     minScale: ui.minScale,
@@ -401,6 +523,43 @@ function updateRainEffect(): void {
 
   scene.setEffect(config);
   console.log('Rain effect updated:', config.enabled ? 'enabled' : 'disabled');
+}
+
+// Update stream effect config
+function updateStreamEffect(): void {
+  if (!scene || !canvas) return;
+
+  // Convert origin percentages to pixels
+  const originXPercent = parseFloat(streamOriginX.value) || 50;
+  const originYPercent = parseFloat(streamOriginY.value) || 0;
+  const originX = (originXPercent / 100) * canvas.width;
+  const originY = (originYPercent / 100) * canvas.height;
+
+  // Convert direction angle (degrees) to direction vector
+  // 0° = right, 90° = down, 180° = left, 270° = up
+  const directionDeg = parseFloat(streamDirection.value) || 90;
+  const directionRad = (directionDeg * Math.PI) / 180;
+  const directionX = Math.cos(directionRad);
+  const directionY = Math.sin(directionRad);
+
+  // Convert cone angle degrees to radians
+  const coneAngleDeg = parseFloat(streamConeAngle.value) || 15;
+  const coneAngleRad = (coneAngleDeg * Math.PI) / 180;
+
+  const config: StreamEffectConfig = {
+    id: 'stream',
+    type: 'stream',
+    enabled: checkboxStream.checked,
+    origin: { x: originX, y: originY },
+    direction: { x: directionX, y: directionY },
+    spawnRate: parseFloat(streamSpawnRate.value) || 10,
+    force: parseFloat(streamForce.value) || 15,
+    coneAngle: coneAngleRad,
+    entityConfigs: uiToEffectEntities(streamEntities)
+  };
+
+  scene.setEffect(config);
+  console.log('Stream effect updated:', config.enabled ? 'enabled' : 'disabled');
 }
 
 // Render entity list UI
@@ -447,6 +606,10 @@ function renderEntityList(
         <input type="number" class="entity-prob" data-index="${index}" value="${entity.probability}" min="0.1" step="0.1">
         <label style="margin-left:12px">Radius</label>
         <input type="number" class="entity-radius" data-index="${index}" value="${entity.baseRadius}" min="5">
+      </div>
+      <div class="entity-row">
+        <label>TTL (ms)</label>
+        <input type="number" class="entity-ttl" data-index="${index}" value="${entity.ttl ?? ''}" placeholder="∞" min="0" step="100">
       </div>
     `;
     container.appendChild(item);
@@ -501,6 +664,15 @@ function renderEntityList(
     });
   });
 
+  container.querySelectorAll('.entity-ttl').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      const value = (e.target as HTMLInputElement).value;
+      entities[idx].ttl = value ? parseInt(value) : undefined;
+      onUpdate();
+    });
+  });
+
   container.querySelectorAll('.remove-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt((e.target as HTMLButtonElement).dataset.index!);
@@ -536,6 +708,14 @@ checkboxRain.addEventListener('change', updateRainEffect);
 rainSpawnRate.addEventListener('change', updateRainEffect);
 rainSpawnWidth.addEventListener('change', updateRainEffect);
 
+checkboxStream.addEventListener('change', updateStreamEffect);
+streamOriginX.addEventListener('change', updateStreamEffect);
+streamOriginY.addEventListener('change', updateStreamEffect);
+streamDirection.addEventListener('change', updateStreamEffect);
+streamSpawnRate.addEventListener('change', updateStreamEffect);
+streamForce.addEventListener('change', updateStreamEffect);
+streamConeAngle.addEventListener('change', updateStreamEffect);
+
 burstAddEntity.addEventListener('click', () => {
   addEffectEntity(burstEntities, burstEntityList, updateBurstEffect);
 });
@@ -544,14 +724,20 @@ rainAddEntity.addEventListener('click', () => {
   addEffectEntity(rainEntities, rainEntityList, updateRainEffect);
 });
 
+streamAddEntity.addEventListener('click', () => {
+  addEffectEntity(streamEntities, streamEntityList, updateStreamEffect);
+});
+
 // Initialize entity lists with empty state
 renderEntityList(burstEntityList, burstEntities, updateBurstEffect);
 renderEntityList(rainEntityList, rainEntities, updateRainEffect);
+renderEntityList(streamEntityList, streamEntities, updateStreamEffect);
 
 // Initialize effects after scene creation
 function initializeEffects(): void {
   updateBurstEffect();
   updateRainEffect();
+  updateStreamEffect();
 }
 
 // Initialize in fullscreen mode

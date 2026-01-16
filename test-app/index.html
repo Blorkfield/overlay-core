@@ -369,7 +369,6 @@
             <select id="select-entity-image" class="select-input select-truncate">
               <option value="">None</option>
               <option value="/bf_koban_512.png">bf_koban_512.png</option>
-              <option value="/test-bg.png">test-bg.png</option>
             </select>
           </div>
           <div class="param-row">
@@ -378,6 +377,10 @@
               <option value="GROUNDED_FOLLOW">Follow</option>
               <option value="GROUNDED_STATIC">Static</option>
             </select>
+          </div>
+          <div class="param-row">
+            <label>TTL (ms):</label>
+            <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
@@ -390,6 +393,51 @@
         <div style="display:flex;flex-direction:column;gap:6px">
           <button id="btn-release-group" class="panel-btn">Release "platforms"</button>
           <button id="btn-release-all" class="panel-btn">Release All</button>
+        </div>
+      </div>
+      <div class="effect-section">
+        <div class="effect-header" style="margin-bottom:8px">
+          <span class="effect-title">Text Obstacles</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Text:</label>
+            <input type="text" id="input-text-obstacle" value="ABCDEFGHIJKLMNOPQRSTUVWXYZ" style="width:120px" placeholder="A-Z, 0-9">
+          </div>
+          <div class="param-row">
+            <label>Font:</label>
+            <select id="select-font" class="select-input">
+              <!-- Populated dynamically from API -->
+            </select>
+          </div>
+          <div class="param-row">
+            <label>Letter Size:</label>
+            <input type="number" id="input-letter-size" value="60" min="20" max="200">
+          </div>
+          <div class="param-row">
+            <label>Letter Spacing:</label>
+            <input type="number" id="input-letter-spacing" value="0" min="0" max="200">
+          </div>
+          <div class="param-row">
+            <label>Color:</label>
+            <input type="text" id="input-letter-color" placeholder="#ff0000" style="width:80px">
+          </div>
+          <div class="param-row">
+            <label>Line Spacing:</label>
+            <input type="number" id="input-line-spacing" placeholder="30">
+          </div>
+          <div class="param-row">
+            <label>Origin X (%):</label>
+            <input type="number" id="input-text-origin-x" value="20" min="-50" max="150" step="5">
+          </div>
+          <div class="param-row">
+            <label>Origin Y (%):</label>
+            <input type="number" id="input-text-origin-y" value="30" min="-50" max="150" step="5">
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <button id="btn-add-text-obstacle" class="panel-btn">Add Text Obstacle</button>
+          <button id="btn-spawn-falling-text" class="panel-btn">Spawn Falling Text</button>
         </div>
       </div>
       <div class="effect-section">
@@ -467,6 +515,50 @@
             <button class="add-entity-btn" id="rain-add-entity">+ Add</button>
           </div>
           <div class="entity-list" id="rain-entity-list"></div>
+        </div>
+      </div>
+
+      <!-- Stream Effect -->
+      <div class="effect-section">
+        <div class="effect-header">
+          <label class="toggle-switch">
+            <input type="checkbox" id="checkbox-stream">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="effect-title">Stream Effect</span>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Origin X (%):</label>
+            <input type="number" id="stream-origin-x" value="50" min="-50" max="150" step="5">
+          </div>
+          <div class="param-row">
+            <label>Origin Y (%):</label>
+            <input type="number" id="stream-origin-y" value="0" min="-50" max="150" step="5">
+          </div>
+          <div class="param-row">
+            <label>Direction (deg):</label>
+            <input type="number" id="stream-direction" value="90" min="0" max="360" step="5">
+          </div>
+          <div class="param-row">
+            <label>Spawn Rate (/sec):</label>
+            <input type="number" id="stream-spawn-rate" value="10" min="0.1" step="0.5">
+          </div>
+          <div class="param-row">
+            <label>Force:</label>
+            <input type="number" id="stream-force" value="15" min="1">
+          </div>
+          <div class="param-row">
+            <label>Cone Angle (deg):</label>
+            <input type="number" id="stream-cone-angle" value="15" min="0" max="180" step="5">
+          </div>
+        </div>
+        <div class="effect-entities">
+          <div class="entities-header">
+            <span>Entity Types</span>
+            <button class="add-entity-btn" id="stream-add-entity">+ Add</button>
+          </div>
+          <div class="entity-list" id="stream-entity-list"></div>
         </div>
       </div>
     </div>
