@@ -101,6 +101,7 @@ interface EffectObjectUI {
   maxScale: number;
   baseRadius: number;
   ttl?: number;
+  weight?: number;
 }
 
 const burstEntities: EffectObjectUI[] = [];
@@ -140,7 +141,9 @@ async function createScene(width: number, height: number): Promise<void> {
     gravity: 1,
     wrapHorizontal: true,
     debug: false,
-    background: '#16213e'
+    background: '#16213e',
+    floorThreshold: 5000,  // Floor collapses when weighted pressure reaches 5000
+    despawnBelowFloor: 1.0  // Despawn objects 100% of container height below floor
   });
 
   // Track mouse position
@@ -170,16 +173,22 @@ async function createScene(width: number, height: number): Promise<void> {
   const welcomeY = height * 0.3;
 
   // "Welcome to Blorkfield" - default font, default color (#6495ED)
+  // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
+  // Weight of 10 - when letters collapse, they contribute 10 to pressure below
   const welcomeResult = await scene.addTextObstacles({
     text: 'Welcome to Blorkfield',
     x: welcomeX,
     y: welcomeY,
     letterSize: 60,
-    tags: ['welcome-text']
+    tags: ['welcome-text'],
+    pressureThreshold: { value: 9 },
+    weight: { value: 10 }
   });
   console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
 
   // "Build Stuff" - Roboto font, lighter gray-blue, 40px below
+  // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
+  // Weight of 10 - when letters collapse, they contribute 10 to pressure below
   const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
   if (robotoFont?.fontUrl) {
     const buildResult = await scene.addTTFTextObstacles({
@@ -189,7 +198,9 @@ async function createScene(width: number, height: number): Promise<void> {
       fontSize: 40,
       fontUrl: robotoFont.fontUrl,
       fillColor: '#8BA4C7',
-      tags: ['build-text']
+      tags: ['build-text'],
+      pressureThreshold: { value: 9 },
+      weight: { value: 10 }
     });
     console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
   }
@@ -542,7 +553,8 @@ function uiToEffectObjects(uiObjects: EffectObjectUI[]): EffectObjectConfig[] {
         fillStyle: colors[Math.floor(Math.random() * colors.length)],
         imageUrl: ui.imageUrl || undefined,
         tags,
-        ttl: ui.ttl
+        ttl: ui.ttl,
+        weight: ui.weight
       },
       probability: ui.probability,
       minScale: ui.minScale,
@@ -672,6 +684,8 @@ function renderObjectList(
       <div class="entity-row">
         <label>TTL (ms)</label>
         <input type="number" class="entity-ttl" data-index="${index}" value="${obj.ttl ?? ''}" placeholder="∞" min="0" step="100">
+        <label style="margin-left:12px">Weight</label>
+        <input type="number" class="entity-weight" data-index="${index}" value="${obj.weight ?? ''}" placeholder="1" min="1" step="1">
       </div>
     `;
     container.appendChild(item);
@@ -731,6 +745,15 @@ function renderObjectList(
       const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
       const value = (e.target as HTMLInputElement).value;
       objects[idx].ttl = value ? parseInt(value) : undefined;
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-weight').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt((e.target as HTMLInputElement).dataset.index!);
+      const value = (e.target as HTMLInputElement).value;
+      objects[idx].weight = value ? parseInt(value) : undefined;
       onUpdate();
     });
   });

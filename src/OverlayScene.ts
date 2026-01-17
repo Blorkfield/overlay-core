@@ -50,6 +50,12 @@ interface ObjectEntry {
   despawnEffect?: DespawnEffectConfig;
   /** TTF glyph rendering info (for text objects) */
   ttfGlyph?: TTFGlyphRenderInfo;
+  /** Pressure threshold - when reached, this obstacle becomes dynamic */
+  pressureThreshold?: number;
+  /** If set, collapse all letters with this word tag together when word total reaches threshold */
+  wordCollapseTag?: string;
+  /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
+  weight: number;
 }
 
 export class OverlayScene {
@@ -75,6 +81,9 @@ export class OverlayScene {
   private obstaclePressure: Map<string, Set<string>> = new Map();
   private previousPressure: Map<string, number> = new Map();
   private pressureLogTimer: number = 0;
+  // Floor pressure tracking
+  private floorPressure: Set<string> = new Set();
+  private floorCollapsed: boolean = false;
 
   static createContainer(
     parent: HTMLElement,
@@ -223,6 +232,26 @@ export class OverlayScene {
       }
     }
 
+    // Check thresholds and collapse obstacles that exceed them
+    this.checkPressureThresholds(obstacles, newPressure);
+
+    // Track floor pressure (objects resting on the bottom boundary)
+    const newFloorPressure = new Set<string>();
+    const floorY = this.config.bounds.bottom;
+    const tolerance = 10;
+
+    for (const dyn of dynamics) {
+      const dynBottom = dyn.body.bounds.max.y;
+      // Object is on floor if its bottom is near the floor boundary
+      if (dynBottom >= floorY - tolerance && dynBottom <= floorY + tolerance) {
+        newFloorPressure.add(dyn.id);
+      }
+    }
+    this.floorPressure = newFloorPressure;
+
+    // Check floor threshold
+    this.checkFloorThreshold();
+
     // Update stored state
     this.obstaclePressure = newPressure;
     this.previousPressure.clear();
@@ -235,6 +264,34 @@ export class OverlayScene {
     if (this.pressureLogTimer >= 120) {
       this.pressureLogTimer = 0;
       this.logPressureSummary();
+    }
+  }
+
+  /** Check if floor pressure exceeds threshold and collapse if so */
+  private checkFloorThreshold(): void {
+    if (this.floorCollapsed) return;
+    if (this.config.floorThreshold === undefined) return;
+
+    const pressure = this.calculateWeightedPressure(this.floorPressure);
+    if (pressure >= this.config.floorThreshold) {
+      this.collapseFloor();
+    }
+  }
+
+  /** Collapse the floor - remove the bottom boundary */
+  private collapseFloor(): void {
+    if (this.floorCollapsed) return;
+    this.floorCollapsed = true;
+
+    // Find and remove the floor boundary
+    const floorY = this.config.bounds.bottom;
+    for (const boundary of this.boundaries) {
+      // Floor boundary is the one at the bottom
+      if (Math.abs(boundary.position.y - floorY) < 50) {
+        Matter.Composite.remove(this.engine.world, boundary);
+        console.log(`[Pressure] Floor collapsed! (pressure: ${this.calculateWeightedPressure(this.floorPressure)} >= ${this.config.floorThreshold})`);
+        break;
+      }
     }
   }
 
@@ -253,14 +310,14 @@ export class OverlayScene {
       const wordTag = entry.tags.find(t => t.includes('-word-'));
       const groupKey = wordTag ?? 'other';
 
-      // Get letter display name and count
+      // Get letter display name and weighted pressure
       const letter = this.getObstacleDisplayName(entry);
-      const count = objectIds.size;
+      const pressure = this.calculateWeightedPressure(objectIds);
 
       if (!wordPressure.has(groupKey)) {
         wordPressure.set(groupKey, []);
       }
-      wordPressure.get(groupKey)!.push(`${letter}:${count}`);
+      wordPressure.get(groupKey)!.push(`${letter}:${pressure}`);
     }
 
     // Format output
@@ -272,9 +329,95 @@ export class OverlayScene {
       parts.push(`[${wordLabel}: ${letters.join(' ')}]`);
     }
 
+    // Add floor pressure if any
+    const floorPressureValue = this.calculateWeightedPressure(this.floorPressure);
+    if (floorPressureValue > 0) {
+      const threshold = this.config.floorThreshold ?? '∞';
+      parts.push(`[floor: ${floorPressureValue}/${threshold}]`);
+    }
+
     if (parts.length > 0) {
       console.log('[Pressure]', parts.join(' '));
     }
+  }
+
+  /** Calculate weighted pressure from a set of object IDs */
+  private calculateWeightedPressure(objectIds: Set<string>): number {
+    let total = 0;
+    for (const id of objectIds) {
+      const entry = this.objects.get(id);
+      if (entry) {
+        total += entry.weight;
+      }
+    }
+    return total;
+  }
+
+  /** Check pressure thresholds and collapse obstacles that exceed them */
+  private checkPressureThresholds(obstacles: ObjectEntry[], pressure: Map<string, Set<string>>): void {
+    // Track word-level pressure for wordCollapse mode
+    const wordPressure: Map<string, number> = new Map();
+    const wordObstacles: Map<string, ObjectEntry[]> = new Map();
+
+    // First pass: calculate per-letter and word-level pressure (using weights)
+    for (const obstacle of obstacles) {
+      if (obstacle.pressureThreshold === undefined) continue;
+
+      const objectsOnObstacle = pressure.get(obstacle.id);
+      const obstaclePressure = objectsOnObstacle ? this.calculateWeightedPressure(objectsOnObstacle) : 0;
+
+      if (obstacle.wordCollapseTag) {
+        // Accumulate word-level pressure
+        const currentTotal = wordPressure.get(obstacle.wordCollapseTag) ?? 0;
+        wordPressure.set(obstacle.wordCollapseTag, currentTotal + obstaclePressure);
+
+        // Track obstacles in this word
+        if (!wordObstacles.has(obstacle.wordCollapseTag)) {
+          wordObstacles.set(obstacle.wordCollapseTag, []);
+        }
+        wordObstacles.get(obstacle.wordCollapseTag)!.push(obstacle);
+      } else {
+        // Per-letter mode: check individual threshold
+        if (obstaclePressure >= obstacle.pressureThreshold) {
+          this.collapseObstacle(obstacle);
+        }
+      }
+    }
+
+    // Second pass: check word-level thresholds
+    for (const [wordTag, total] of wordPressure) {
+      const wordObs = wordObstacles.get(wordTag);
+      if (!wordObs || wordObs.length === 0) continue;
+
+      // All letters in a word share the same threshold (from config)
+      const threshold = wordObs[0].pressureThreshold;
+      if (threshold !== undefined && total >= threshold) {
+        // Collapse all letters in this word
+        for (const obs of wordObs) {
+          this.collapseObstacle(obs);
+        }
+        console.log(`[Pressure] Word collapsed! ${wordTag} (total: ${total} >= ${threshold})`);
+      }
+    }
+  }
+
+  /** Convert a static obstacle to dynamic (make it fall) */
+  private collapseObstacle(entry: ObjectEntry): void {
+    // Skip if already falling
+    if (entry.tags.includes('falling')) return;
+
+    const name = this.getObstacleDisplayName(entry);
+    console.log(`[Pressure] Collapsed: ${name}`);
+
+    // Add falling tag
+    entry.tags.push('falling');
+
+    // Make body dynamic
+    Matter.Body.setStatic(entry.body, false);
+
+    // Clear threshold so it doesn't trigger again
+    entry.pressureThreshold = undefined;
+    entry.wordCollapseTag = undefined;
   }
 
   /** Find an object entry by its Matter.js body (handles compound body parts) */
@@ -321,6 +464,8 @@ export class OverlayScene {
     this.obstaclePressure.clear();
     this.previousPressure.clear();
     this.pressureLogTimer = 0;
+    this.floorPressure.clear();
+    this.floorCollapsed = false;
     this.updateCallbacks = [];
   }
 
@@ -402,7 +547,8 @@ export class OverlayScene {
       tags,
       spawnTime: performance.now(),
       ttl: config.ttl,
-      despawnEffect: config.despawnEffect
+      despawnEffect: config.despawnEffect,
+      weight: config.weight ?? 1
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -442,7 +588,8 @@ export class OverlayScene {
       tags,
       spawnTime: performance.now(),
       ttl: config.ttl,
-      despawnEffect: config.despawnEffect
+      despawnEffect: config.despawnEffect,
+      weight: config.weight ?? 1
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
@@ -914,12 +1061,41 @@ export class OverlayScene {
 
         const result = await createBoxObstacleWithInfo(id, objectConfig, isStatic);
 
+        // Determine pressure threshold for this letter
+        let pressureThreshold: number | undefined;
+        let wordCollapseTag: string | undefined;
+        if (config.pressureThreshold) {
+          const pt = config.pressureThreshold;
+          if (Array.isArray(pt.value)) {
+            // Per-letter thresholds by index
+            pressureThreshold = pt.value[letterIds.length];
+          } else {
+            pressureThreshold = pt.value;
+            if (pt.wordCollapse) {
+              wordCollapseTag = wordTag;
+            }
+          }
+        }
+
+        // Determine weight for this letter
+        let weight = 1;
+        if (config.weight) {
+          if (Array.isArray(config.weight.value)) {
+            weight = config.weight.value[letterIds.length] ?? 1;
+          } else {
+            weight = config.weight.value;
+          }
+        }
+
         const entry: ObjectEntry = {
           id,
           body: result.body,
           tags,
-              spawnTime: performance.now(),
-          ttl: config.ttl
+          spawnTime: performance.now(),
+          ttl: config.ttl,
+          pressureThreshold,
+          wordCollapseTag,
+          weight
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
@@ -1141,11 +1317,37 @@ export class OverlayScene {
         const offsetX = currentX - body.position.x;
         const offsetY = currentY - body.position.y;
 
+        // Determine pressure threshold for this letter
+        let pressureThreshold: number | undefined;
+        let wordCollapseTag: string | undefined;
+        if (config.pressureThreshold) {
+          const pt = config.pressureThreshold;
+          if (Array.isArray(pt.value)) {
+            // Per-letter thresholds by index
+            pressureThreshold = pt.value[letterIds.length];
+          } else {
+            pressureThreshold = pt.value;
+            if (pt.wordCollapse) {
+              wordCollapseTag = wordTag;
+            }
+          }
+        }
+
+        // Determine weight for this letter
+        let weight = 1;
+        if (config.weight) {
+          if (Array.isArray(config.weight.value)) {
+            weight = config.weight.value[letterIds.length] ?? 1;
+          } else {
+            weight = config.weight.value;
+          }
+        }
+
         const entry: ObjectEntry = {
           id,
           body,
           tags,
-              spawnTime: performance.now(),
+          spawnTime: performance.now(),
           ttl: config.ttl,
           ttfGlyph: {
             char,
@@ -1154,7 +1356,10 @@ export class OverlayScene {
             fillColor,
             offsetX,
             offsetY
-          }
+          },
+          pressureThreshold,
+          wordCollapseTag,
+          weight
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
@@ -1278,6 +1483,9 @@ export class OverlayScene {
     // Check for TTL expiration
     this.checkTTLExpiration();
 
+    // Check for objects fallen below floor (despawn them)
+    this.checkDespawnBelowFloor();
+
     // Update pressure tracking
     this.updatePressure();
 
@@ -1393,6 +1601,25 @@ export class OverlayScene {
       }
     }
     for (const id of expiredObjects) {
+      this.removeObject(id);
+    }
+  }
+
+  /** Despawn objects that have fallen below the floor by the configured distance */
+  private checkDespawnBelowFloor(): void {
+    // Default to 100% of container height below floor
+    const despawnDistance = this.config.despawnBelowFloor ?? 1.0;
+    const containerHeight = this.config.bounds.bottom - this.config.bounds.top;
+    const despawnY = this.config.bounds.bottom + (containerHeight * despawnDistance);
+
+    const toDespawn: string[] = [];
+    for (const [id, entry] of this.objects) {
+      if (entry.body.position.y > despawnY) {
+        toDespawn.push(id);
+      }
+    }
+
+    for (const id of toDespawn) {
       this.removeObject(id);
     }
   }

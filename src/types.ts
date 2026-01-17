@@ -4,6 +4,10 @@ export interface OverlaySceneConfig {
   wrapHorizontal?: boolean;
   debug?: boolean;
   background?: string;
+  /** Pressure threshold for the floor boundary. If not set, floor has infinite capacity */
+  floorThreshold?: number;
+  /** Distance below floor (as fraction of container height) at which objects despawn. Default: 1.0 (100%) */
+  despawnBelowFloor?: number;
 }
 
 export interface Bounds {
@@ -71,6 +75,8 @@ export interface ObjectConfig {
   ttl?: number;
   /** Configuration for despawn effect (future use) */
   despawnEffect?: DespawnEffectConfig;
+  /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
+  weight?: number;
 }
 
 /**
@@ -175,6 +181,45 @@ export interface StreamEffectConfig extends BaseEffectConfig {
 export type EffectConfig = BurstEffectConfig | RainEffectConfig | StreamEffectConfig;
 export type EffectType = EffectConfig['type'];
 
+// ==================== PRESSURE THRESHOLD TYPES ====================
+
+/**
+ * Configuration for pressure-based collapse of obstacles.
+ * When pressure (number of objects resting on an obstacle) reaches the threshold,
+ * the obstacle converts to dynamic (falling).
+ */
+export interface PressureThresholdConfig {
+  /**
+   * Threshold value(s):
+   * - number: Single threshold applied per-letter (or word total if wordCollapse is true)
+   * - number[]: Per-letter thresholds by index (letter 0 uses value[0], etc.)
+   */
+  value: number | number[];
+
+  /**
+   * When true and value is a single number:
+   * - Tracks total pressure across all letters in the word
+   * - When total reaches threshold, ALL letters in the word collapse together
+   * When false or undefined (default):
+   * - Each letter tracks its own pressure
+   * - Only the letter that reaches threshold collapses
+   */
+  wordCollapse?: boolean;
+}
+
+/**
+ * Configuration for weight of obstacles (used when they collapse and become falling objects).
+ * Weight determines how much pressure an object contributes when resting on something.
+ */
+export interface WeightConfig {
+  /**
+   * Weight value(s):
+   * - number: Single weight applied to all letters
+   * - number[]: Per-letter weights by index (letter 0 uses value[0], etc.)
+   */
+  value: number | number[];
+}
+
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
@@ -205,6 +250,10 @@ export interface TextObstacleConfig {
   letterColor?: string;
   /** Line height for multiline text (default: letterSize * 1.2) */
   lineHeight?: number;
+  /** Pressure threshold config - when reached, letters collapse */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Weight config - when letters collapse, this is their pressure contribution */
+  weight?: WeightConfig;
 }
 
 /**
@@ -269,6 +318,10 @@ export interface TTFTextObstacleConfig {
   fillColor?: string;
   /** Line height for multiline text (default: fontSize * 1.2) */
   lineHeight?: number;
+  /** Pressure threshold config - when reached, letters collapse */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Weight config - when letters collapse, this is their pressure contribution */
+  weight?: WeightConfig;
 }
 
 /**
