@@ -296,12 +296,10 @@ export async function getVerticesFromImage(imageUrl: string, targetSize: number)
  * Returns information needed for proper letter spacing and positioning.
  */
 export async function getVerticesAndDimensionsFromImage(imageUrl: string, targetSize: number): Promise<ImageClipResult> {
-  logger.info(LOG_PREFIX, `Getting vertices from image`, { imageUrl, targetSize });
-
   // Check cache first
   const cached = contourCache.get(imageUrl);
   if (cached) {
-    logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, cachedVertices: cached.vertices.length });
+    logger.debug(LOG_PREFIX, `Cache hit for image`, { imageUrl, targetSize, cachedVertices: cached.vertices.length });
     cached.timestamp = Date.now(); // Refresh TTL on access
 
     // Calculate clip offset in target coordinates
@@ -323,7 +321,7 @@ export async function getVerticesAndDimensionsFromImage(imageUrl: string, target
     };
   }
 
-  logger.debug(LOG_PREFIX, `Cache miss for image`, { imageUrl });
+  logger.info(LOG_PREFIX, `Extracting vertices from image (cache miss)`, { imageUrl, targetSize });
 
   try {
     const img = await loadImage(imageUrl);

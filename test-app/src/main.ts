@@ -1,4 +1,7 @@
-import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig } from '@blorkfield/overlay-core';
+import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig, setLogLevel } from '@blorkfield/overlay-core';
+
+// Set default log level to 'warn' for quieter output (change to 'info' or 'debug' for more detail)
+setLogLevel('warn');
 import { TabManager } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
@@ -24,6 +27,7 @@ const selectEntityType = document.getElementById('select-entity-type') as HTMLSe
 const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
+const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
 
 // Text obstacle elements
 const inputTextObstacle = document.getElementById('input-text-obstacle') as HTMLInputElement;
@@ -196,13 +200,12 @@ async function createScene(width: number, height: number): Promise<void> {
     imageUrl: '/bf_koban_512.png',
     behaviorMode: 'no-follow',
     probability: 1,
-    minScale: 0.8,
+    minScale: 1,
     maxScale: 1,
-    baseRadius: 3,
-    ttl: 6000
+    baseRadius: 10
   });
   checkboxRain.checked = true;
-  rainSpawnRate.value = '15';
+  rainSpawnRate.value = '3';
   renderObjectList(rainEntityList, rainEntities, updateRainEffect);
 
   // Re-initialize effects with new scene
@@ -400,6 +403,11 @@ btnRemoveAll.addEventListener('click', () => {
 
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
+});
+
+selectLogLevel.addEventListener('change', () => {
+  setLogLevel(selectLogLevel.value as 'warn' | 'info' | 'debug');
+  console.log('Log level set to:', selectLogLevel.value);
 });
 
 // ==================== TEXT OBSTACLE LOGIC ====================

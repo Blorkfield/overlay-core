@@ -231,11 +231,11 @@ export async function createEntityAsync(id: string, config: ObjectConfig): Promi
 
   // If imageUrl provided, try to extract shape from it
   if (config.imageUrl) {
-    logger.info(LOG_PREFIX, `Attempting to extract shape from image`, { id, imageUrl: config.imageUrl });
+    logger.debug(LOG_PREFIX, `Attempting to extract shape from image`, { id, imageUrl: config.imageUrl });
     const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl, config.radius * 2);
 
     if (vertices.length >= 3) {
-      logger.info(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
+      logger.debug(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
       return createBodyFromVertices(id, config.x, config.y, vertices, createSpriteRenderOptions(config, imageWidth, imageHeight));
     }
 
