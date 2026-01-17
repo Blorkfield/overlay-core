@@ -71,6 +71,11 @@ export class OverlayScene {
   private fontsInitialized: boolean = false;
   private letterDebugInfo: Map<string, LetterDebugInfo[]> = new Map(); // wordTag -> debug info
 
+  // Pressure tracking: maps obstacle ID -> Set of dynamic object IDs resting on it
+  private obstaclePressure: Map<string, Set<string>> = new Map();
+  private previousPressure: Map<string, number> = new Map();
+  private pressureLogTimer: number = 0;
+
   static createContainer(
     parent: HTMLElement,
     options: ContainerOptions = {}
@@ -158,10 +163,128 @@ export class OverlayScene {
     }
   };
 
-  /** Find an object entry by its Matter.js body */
-  private findObjectByBody(body: Matter.Body): ObjectEntry | null {
+  /** Get a display name for an obstacle (letter char or short ID) */
+  private getObstacleDisplayName(entry: ObjectEntry): string {
+    const letterTag = entry.tags.find(t => t.startsWith('letter-') && !t.startsWith('letter-index-'));
+    if (letterTag) return letterTag.replace('letter-', '');
+    if (entry.ttfGlyph) return entry.ttfGlyph.char;
+    return entry.id.slice(0, 4);
+  }
+
+  /** Update pressure tracking - check which dynamic objects rest on static obstacles */
+  private updatePressure(): void {
+    // Collect static obstacles and dynamic objects
+    const obstacles: ObjectEntry[] = [];
+    const dynamics: ObjectEntry[] = [];
+
     for (const entry of this.objects.values()) {
-      if (entry.body === body) {
+      if (entry.tags.includes('falling')) {
+        // Only count resting objects (low velocity)
+        if (Math.abs(entry.body.velocity.y) < 2) {
+          dynamics.push(entry);
+        }
+      } else {
+        obstacles.push(entry);
+      }
+    }
+
+    // Build new pressure map
+    const newPressure: Map<string, Set<string>> = new Map();
+
+    for (const obstacle of obstacles) {
+      const resting = new Set<string>();
+      const obsBounds = obstacle.body.bounds;
+
+      for (const dyn of dynamics) {
+        const dynBounds = dyn.body.bounds;
+
+        // Check if dynamic object is resting on/in obstacle:
+        // Dynamic's bottom is within the obstacle's vertical range (with some tolerance above)
+        // AND horizontal positions overlap
+        const tolerance = 10; // pixels above obstacle top
+        const dynBottom = dynBounds.max.y;
+        const obsTop = obsBounds.min.y;
+        const obsBottom = obsBounds.max.y;
+
+        // Dynamic is "on" obstacle if its bottom is between (slightly above top) and bottom
+        const verticallyOn = dynBottom >= obsTop - tolerance && dynBottom <= obsBottom;
+
+        const horizontalOverlap =
+          dynBounds.max.x > obsBounds.min.x &&
+          dynBounds.min.x < obsBounds.max.x;
+
+        if (verticallyOn && horizontalOverlap) {
+          resting.add(dyn.id);
+        }
+      }
+
+      if (resting.size > 0) {
+        newPressure.set(obstacle.id, resting);
+      }
+    }
+
+    // Update stored state
+    this.obstaclePressure = newPressure;
+    this.previousPressure.clear();
+    for (const [id, set] of newPressure) {
+      this.previousPressure.set(id, set.size);
+    }
+
+    // Timed summary log every ~2 seconds (120 frames at 60fps)
+    this.pressureLogTimer++;
+    if (this.pressureLogTimer >= 120) {
+      this.pressureLogTimer = 0;
+      this.logPressureSummary();
+    }
+  }
+
+  /** Log a summary of pressure on all obstacles, grouped by word */
+  private logPressureSummary(): void {
+    if (this.obstaclePressure.size === 0) return;
+
+    // Group by word tag
+    const wordPressure: Map<string, string[]> = new Map();
+
+    for (const [obstacleId, objectIds] of this.obstaclePressure) {
+      const entry = this.objects.get(obstacleId);
+      if (!entry) continue;
+
+      // Find word tag
+      const wordTag = entry.tags.find(t => t.includes('-word-'));
+      const groupKey = wordTag ?? 'other';
+
+      // Get letter display name and count
+      const letter = this.getObstacleDisplayName(entry);
+      const count = objectIds.size;
+
+      if (!wordPressure.has(groupKey)) {
+        wordPressure.set(groupKey, []);
+      }
+      wordPressure.get(groupKey)!.push(`${letter}:${count}`);
+    }
+
+    // Format output
+    const parts: string[] = [];
+    for (const [wordTag, letters] of wordPressure) {
+      // Extract word index from tag like "str-abc123-word-0"
+      const match = wordTag.match(/-word-(\d+)$/);
+      const wordLabel = match ? `w${match[1]}` : wordTag.slice(0, 8);
+      parts.push(`[${wordLabel}: ${letters.join(' ')}]`);
+    }
+
+    if (parts.length > 0) {
+      console.log('[Pressure]', parts.join(' '));
+    }
+  }
+
+  /** Find an object entry by its Matter.js body (handles compound body parts) */
+  private findObjectByBody(body: Matter.Body): ObjectEntry | null {
+    // For compound bodies (created by fromVertices), collision events report parts
+    // Use the parent property to find the root body we're tracking
+    const rootBody = body.parent ?? body;
+
+    for (const entry of this.objects.values()) {
+      if (entry.body === body || entry.body === rootBody) {
         return entry;
       }
     }
@@ -195,6 +318,9 @@ export class OverlayScene {
     }
     Matter.Engine.clear(this.engine);
     this.objects.clear();
+    this.obstaclePressure.clear();
+    this.previousPressure.clear();
+    this.pressureLogTimer = 0;
     this.updateCallbacks = [];
   }
 
@@ -470,6 +596,61 @@ export class OverlayScene {
 
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
+  }
+
+  // ==================== PRESSURE TRACKING METHODS ====================
+
+  /**
+   * Get the current pressure (number of objects resting) on an obstacle.
+   * @param obstacleId - The ID of the obstacle
+   * @returns Number of objects currently resting on the obstacle
+   */
+  getPressure(obstacleId: string): number {
+    return this.obstaclePressure.get(obstacleId)?.size ?? 0;
+  }
+
+  /**
+   * Get the IDs of all objects currently resting on an obstacle.
+   * @param obstacleId - The ID of the obstacle
+   * @returns Array of object IDs resting on the obstacle
+   */
+  getObjectsRestingOn(obstacleId: string): string[] {
+    const set = this.obstaclePressure.get(obstacleId);
+    return set ? Array.from(set) : [];
+  }
+
+  /**
+   * Get all obstacles that have pressure (at least one object resting on them).
+   * @returns Map of obstacle ID -> pressure count
+   */
+  getAllPressure(): Map<string, number> {
+    const result = new Map<string, number>();
+    for (const [id, set] of this.obstaclePressure) {
+      if (set.size > 0) {
+        result.set(id, set.size);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get pressure summary for all obstacles with their display names (letters).
+   * Useful for debugging and visualization.
+   * @returns Array of { id, name, pressure } objects
+   */
+  getPressureSummary(): { id: string; name: string; pressure: number }[] {
+    const summary: { id: string; name: string; pressure: number }[] = [];
+    for (const [id, set] of this.obstaclePressure) {
+      if (set.size > 0) {
+        const entry = this.objects.get(id);
+        summary.push({
+          id,
+          name: entry ? this.getObstacleDisplayName(entry) : id.slice(0, 4),
+          pressure: set.size
+        });
+      }
+    }
+    return summary;
   }
 
   // ==================== FONT MANAGEMENT METHODS ====================
@@ -1096,6 +1277,9 @@ export class OverlayScene {
 
     // Check for TTL expiration
     this.checkTTLExpiration();
+
+    // Update pressure tracking
+    this.updatePressure();
 
     // Apply tag-based behaviors to all objects
     const mouseX = this.mouse?.position.x ?? this.mouseX;

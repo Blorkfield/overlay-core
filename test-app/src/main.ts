@@ -1,7 +1,7 @@
 import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig, setLogLevel } from '@blorkfield/overlay-core';
 
-// Set default log level to 'warn' for quieter output (change to 'info' or 'debug' for more detail)
-setLogLevel('warn');
+// Set default log level to 'debug' for development (change to 'warn' for quieter output)
+setLogLevel('debug');
 import { TabManager } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
