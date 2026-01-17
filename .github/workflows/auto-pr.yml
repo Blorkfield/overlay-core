@@ -1,0 +1,131 @@
+name: Auto Create PR
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - 'release/**'
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate bot token
+        id: bot-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.bot-token.outputs.token }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "bork-blot[bot]"
+          git config user.email "bork-blot[bot]@users.noreply.github.com"
+
+      - name: Parse branch and create changeset
+        id: parse
+        run: |
+          BRANCH="$GITHUB_REF_NAME"
+
+          # Extract prefix and description (handles both / and - separators)
+          if [[ "$BRANCH" == *"/"* ]]; then
+            PREFIX="${BRANCH%%/*}"
+            DESC="${BRANCH#*/}"
+          elif [[ "$BRANCH" == *"-"* ]]; then
+            PREFIX="${BRANCH%%-*}"
+            DESC="${BRANCH#*-}"
+          else
+            PREFIX=""
+            DESC="$BRANCH"
+          fi
+
+          # Map branch prefixes to conventional commit types and bump types
+          case "$PREFIX" in
+            feature|feat)     TYPE="feat"; BUMP="minor" ;;
+            fix|bugfix|hotfix) TYPE="fix"; BUMP="patch" ;;
+            chore)            TYPE="chore"; BUMP="patch" ;;
+            docs|doc)         TYPE="docs"; BUMP="patch" ;;
+            refactor)         TYPE="refactor"; BUMP="patch" ;;
+            perf|performance) TYPE="perf"; BUMP="patch" ;;
+            test|tests)       TYPE="test"; BUMP="patch" ;;
+            style)            TYPE="style"; BUMP="patch" ;;
+            ci)               TYPE="ci"; BUMP="patch" ;;
+            build)            TYPE="build"; BUMP="patch" ;;
+            breaking)         TYPE="feat"; BUMP="major" ;;
+            *)                TYPE=""; BUMP="" ;;
+          esac
+
+          # Format the title
+          if [ -n "$TYPE" ]; then
+            DESC_READABLE=$(echo "$DESC" | tr '-' ' ' | tr '_' ' ')
+            TITLE="$TYPE: $DESC_READABLE"
+          else
+            TITLE="$BRANCH"
+          fi
+
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "desc=$DESC" >> $GITHUB_OUTPUT
+
+      - name: Create changeset file
+        if: steps.parse.outputs.bump != ''
+        run: |
+          BUMP="${{ steps.parse.outputs.bump }}"
+          DESC="${{ steps.parse.outputs.desc }}"
+          BRANCH="$GITHUB_REF_NAME"
+
+          # Create a safe filename from branch name
+          CHANGESET_FILE=$(echo "$DESC" | tr '/' '-' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+          CHANGESET_PATH=".changeset/${CHANGESET_FILE}.md"
+
+          # Skip if changeset already exists for THIS branch
+          if [ -f "$CHANGESET_PATH" ]; then
+            echo "Changeset already exists for this branch, skipping creation"
+            exit 0
+          fi
+
+          # Check if there are any source changes compared to main
+          if ! git diff --name-only origin/main...HEAD | grep -qE "^(src/|package\.json|tsconfig\.json|tsup\.config\.ts)"; then
+            echo "No source changes detected, skipping changeset"
+            exit 0
+          fi
+
+          # Create changeset file for @blorkfield/overlay-core
+          mkdir -p .changeset
+          cat > "$CHANGESET_PATH" << EOF
+          ---
+          "@blorkfield/overlay-core": $BUMP
+          ---
+
+          ${{ steps.parse.outputs.title }}
+          EOF
+
+          echo "Created changeset: $CHANGESET_PATH"
+          cat "$CHANGESET_PATH"
+
+          # Commit and push the changeset
+          git add .changeset/
+          git commit -m "chore: add changeset for $BRANCH"
+          git push
+
+      - name: Create Pull Request
+        run: |
+          EXISTING_PR=$(gh pr list --head "$GITHUB_REF_NAME" --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists for branch $GITHUB_REF_NAME"
+          else
+            # Create PR
+            gh pr create \
+              --title "${{ steps.parse.outputs.title }}" \
+              --body "Auto-generated PR for branch \`$GITHUB_REF_NAME\`" \
+              --base main
+          fi
+        env:
+          GH_TOKEN: ${{ steps.bot-token.outputs.token }}
