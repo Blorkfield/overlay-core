@@ -8,6 +8,7 @@ export type { ImageClipResult, ClipBounds };
 
 const BOUNDARY_THICKNESS = 50;
 const LOG_PREFIX = 'Bodies';
+const DEFAULT_RADIUS = 20;
 
 // Preset shape side counts
 const SHAPE_SIDES: Record<string, number> = {
@@ -198,7 +199,8 @@ function createFillRenderOptions(config: ObjectConfig): Matter.IBodyRenderOption
  * Create render options for entity with sprite, using actual image dimensions
  */
 function createSpriteRenderOptions(config: ObjectConfig, imageWidth: number, imageHeight: number): Matter.IBodyRenderOptions {
-  const targetSize = config.radius * 2;
+  const radius = config.radius ?? DEFAULT_RADIUS;
+  const targetSize = radius * 2;
   const maxDim = Math.max(imageWidth, imageHeight);
   const spriteScale = targetSize / maxDim;
 
@@ -215,8 +217,9 @@ function createSpriteRenderOptions(config: ObjectConfig, imageWidth: number, ima
  * Create a circle body (default fallback) - no image
  */
 function createCircleEntity(id: string, config: ObjectConfig): Matter.Body {
-  logger.debug(LOG_PREFIX, `Creating circle entity`, { id, radius: config.radius });
-  return Matter.Bodies.circle(config.x, config.y, config.radius, {
+  const radius = config.radius ?? DEFAULT_RADIUS;
+  logger.debug(LOG_PREFIX, `Creating circle entity`, { id, radius });
+  return Matter.Bodies.circle(config.x, config.y, radius, {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
@@ -229,8 +232,9 @@ function createCircleEntity(id: string, config: ObjectConfig): Matter.Body {
  * Create a circle body with sprite - requires image dimensions
  */
 function createCircleEntityWithSprite(id: string, config: ObjectConfig, imageWidth: number, imageHeight: number): Matter.Body {
-  logger.debug(LOG_PREFIX, `Creating circle entity with sprite`, { id, radius: config.radius, imageWidth, imageHeight });
-  return Matter.Bodies.circle(config.x, config.y, config.radius, {
+  const radius = config.radius ?? DEFAULT_RADIUS;
+  logger.debug(LOG_PREFIX, `Creating circle entity with sprite`, { id, radius, imageWidth, imageHeight });
+  return Matter.Bodies.circle(config.x, config.y, radius, {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
@@ -257,7 +261,8 @@ export function createEntity(id: string, config: ObjectConfig): Matter.Body {
   }
 
   // Get vertices for polygon shape
-  const vertices = getShapeVertices(shape, config.radius);
+  const radius = config.radius ?? DEFAULT_RADIUS;
+  const vertices = getShapeVertices(shape, radius);
   if (!vertices) {
     logger.warn(LOG_PREFIX, `Failed to get vertices, falling back to circle`, { type: shape.type });
     return createCircleEntity(id, config);
@@ -282,8 +287,9 @@ export async function createEntityAsync(id: string, config: ObjectConfig): Promi
 
   // If imageUrl provided, try to extract shape from it
   if (config.imageUrl) {
+    const radius = config.radius ?? DEFAULT_RADIUS;
     logger.debug(LOG_PREFIX, `Attempting to extract shape from image`, { id, imageUrl: config.imageUrl });
-    const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl, config.radius * 2);
+    const { vertices, imageWidth, imageHeight } = await getVerticesAndDimensionsFromImage(config.imageUrl, radius * 2);
 
     if (vertices.length >= 3) {
       logger.debug(LOG_PREFIX, `Image shape extraction succeeded`, { id, vertices: vertices.length, imageWidth, imageHeight });
@@ -297,7 +303,8 @@ export async function createEntityAsync(id: string, config: ObjectConfig): Promi
 
   // No image - check for shape config (polygon presets, custom vertices)
   if (shape) {
-    const vertices = getShapeVertices(shape, config.radius);
+    const shapeRadius = config.radius ?? DEFAULT_RADIUS;
+    const vertices = getShapeVertices(shape, shapeRadius);
     if (vertices) {
       logger.info(LOG_PREFIX, `Creating polygon entity`, { id, type: shape.type, vertices: vertices.length });
       return createBodyFromVertices(id, config.x, config.y, vertices, createFillRenderOptions(config));
@@ -389,22 +396,19 @@ export async function createBoxObstacleWithInfo(id: string, config: ObjectConfig
         sprite: {
           texture: config.imageUrl!,
           xScale: spriteScale,
-          yScale: spriteScale,
-          // Offset sprite to compensate for body being at centroid instead of image center
-          // body.position will be at vertex centroid, but we want sprite centered on image center (config.x, config.y)
-          xOffset: 0.5 + (config.x - body?.position?.x ?? 0) / scaledWidth,
-          yOffset: 0.5 + (config.y - body?.position?.y ?? 0) / scaledHeight
+          yScale: spriteScale
         }
       }
     });
 
     // Calculate sprite offset AFTER body creation (we now know where centroid landed)
+    // Offset sprite to compensate for body being at centroid instead of image center
     const spriteOffsetX = (config.x - body.position.x) / scaledWidth;
     const spriteOffsetY = (config.y - body.position.y) / scaledHeight;
 
     if (body.render.sprite) {
-      body.render.sprite.xOffset = 0.5 + spriteOffsetX;
-      body.render.sprite.yOffset = 0.5 + spriteOffsetY;
+      (body.render.sprite as unknown as Record<string, unknown>).xOffset = 0.5 + spriteOffsetX;
+      (body.render.sprite as unknown as Record<string, unknown>).yOffset = 0.5 + spriteOffsetY;
     }
   } else {
     // Fallback to rectangle
