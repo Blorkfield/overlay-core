@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
+import { createBoundaries, createBoundariesWithFloorConfig, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
 import { tintImage } from './imageClip';
 import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
@@ -81,9 +81,10 @@ export class OverlayScene {
   private obstaclePressure: Map<string, Set<string>> = new Map();
   private previousPressure: Map<string, number> = new Map();
   private pressureLogTimer: number = 0;
-  // Floor pressure tracking
-  private floorPressure: Set<string> = new Set();
-  private floorCollapsed: boolean = false;
+  // Floor segment tracking
+  private floorSegments: Matter.Body[] = [];
+  private floorSegmentPressure: Map<number, Set<string>> = new Map(); // segment index -> object IDs
+  private collapsedSegments: Set<number> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -128,7 +129,11 @@ export class OverlayScene {
     this.engine = createEngine(this.config.gravity!);
     this.render = createRender(this.engine, canvas, this.config);
     this.runner = Matter.Runner.create();
-    this.boundaries = createBoundaries(this.config.bounds);
+
+    // Create boundaries with optional floor segments
+    const boundariesResult = createBoundariesWithFloorConfig(this.config.bounds, this.config.floorConfig);
+    this.boundaries = [...boundariesResult.walls, ...boundariesResult.floorSegments];
+    this.floorSegments = boundariesResult.floorSegments;
     Matter.Composite.add(this.engine.world, this.boundaries);
 
     // Setup mouse interaction
@@ -235,22 +240,11 @@ export class OverlayScene {
     // Check thresholds and collapse obstacles that exceed them
     this.checkPressureThresholds(obstacles, newPressure);
 
-    // Track floor pressure (objects resting on the bottom boundary)
-    const newFloorPressure = new Set<string>();
-    const floorY = this.config.bounds.bottom;
-    const tolerance = 10;
+    // Track floor segment pressure
+    this.updateFloorSegmentPressure(dynamics);
 
-    for (const dyn of dynamics) {
-      const dynBottom = dyn.body.bounds.max.y;
-      // Object is on floor if its bottom is near the floor boundary
-      if (dynBottom >= floorY - tolerance && dynBottom <= floorY + tolerance) {
-        newFloorPressure.add(dyn.id);
-      }
-    }
-    this.floorPressure = newFloorPressure;
-
-    // Check floor threshold
-    this.checkFloorThreshold();
+    // Check floor segment thresholds
+    this.checkFloorSegmentThresholds();
 
     // Update stored state
     this.obstaclePressure = newPressure;
@@ -267,37 +261,94 @@ export class OverlayScene {
     }
   }
 
-  /** Check if floor pressure exceeds threshold and collapse if so */
-  private checkFloorThreshold(): void {
-    if (this.floorCollapsed) return;
-    if (this.config.floorThreshold === undefined) return;
+  /** Update pressure tracking for each floor segment */
+  private updateFloorSegmentPressure(dynamics: ObjectEntry[]): void {
+    // Clear and rebuild segment pressure
+    this.floorSegmentPressure.clear();
 
-    const pressure = this.calculateWeightedPressure(this.floorPressure);
-    if (pressure >= this.config.floorThreshold) {
-      this.collapseFloor();
+    // Build set of object IDs that are resting on obstacles (letters)
+    // These should NOT count toward floor pressure
+    const onObstacles = new Set<string>();
+    for (const objectIds of this.obstaclePressure.values()) {
+      for (const id of objectIds) {
+        onObstacles.add(id);
+      }
     }
-  }
 
-  /** Collapse the floor - remove the bottom boundary */
-  private collapseFloor(): void {
-    if (this.floorCollapsed) return;
-    this.floorCollapsed = true;
+    for (let i = 0; i < this.floorSegments.length; i++) {
+      if (this.collapsedSegments.has(i)) continue;
 
-    // Find and remove the floor boundary
-    const floorY = this.config.bounds.bottom;
-    for (const boundary of this.boundaries) {
-      // Floor boundary is the one at the bottom
-      if (Math.abs(boundary.position.y - floorY) < 50) {
-        Matter.Composite.remove(this.engine.world, boundary);
-        console.log(`[Pressure] Floor collapsed! (pressure: ${this.calculateWeightedPressure(this.floorPressure)} >= ${this.config.floorThreshold})`);
-        break;
+      const segment = this.floorSegments[i];
+      const segmentBounds = segment.bounds;
+      const resting = new Set<string>();
+
+      for (const dyn of dynamics) {
+        // Skip objects resting on obstacles - they don't contribute to floor pressure
+        if (onObstacles.has(dyn.id)) continue;
+
+        const dynBounds = dyn.body.bounds;
+
+        // Count resting objects in this segment's horizontal column
+        const horizontalOverlap =
+          dynBounds.max.x > segmentBounds.min.x &&
+          dynBounds.min.x < segmentBounds.max.x;
+
+        if (horizontalOverlap) {
+          resting.add(dyn.id);
+        }
+      }
+
+      if (resting.size > 0) {
+        this.floorSegmentPressure.set(i, resting);
       }
     }
   }
 
+  /** Check floor segment thresholds and collapse segments that exceed them */
+  private checkFloorSegmentThresholds(): void {
+    const floorConfig = this.config.floorConfig;
+    // Support legacy floorThreshold for backward compatibility
+    const legacyThreshold = this.config.floorThreshold;
+
+    if (!floorConfig?.threshold && legacyThreshold === undefined) return;
+
+    for (let i = 0; i < this.floorSegments.length; i++) {
+      if (this.collapsedSegments.has(i)) continue;
+
+      // Determine threshold for this segment
+      let threshold: number | undefined;
+      if (floorConfig?.threshold !== undefined) {
+        threshold = Array.isArray(floorConfig.threshold)
+          ? floorConfig.threshold[i]
+          : floorConfig.threshold;
+      } else if (legacyThreshold !== undefined) {
+        threshold = legacyThreshold;
+      }
+
+      if (threshold === undefined) continue;
+
+      const objectIds = this.floorSegmentPressure.get(i);
+      const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
+
+      if (pressure >= threshold) {
+        this.collapseFloorSegment(i, pressure, threshold);
+      }
+    }
+  }
+
+  /** Collapse a single floor segment */
+  private collapseFloorSegment(index: number, pressure: number, threshold: number): void {
+    if (this.collapsedSegments.has(index)) return;
+    this.collapsedSegments.add(index);
+
+    const segment = this.floorSegments[index];
+    Matter.Composite.remove(this.engine.world, segment);
+    console.log(`[Pressure] Floor segment ${index} collapsed! (pressure: ${pressure} >= ${threshold})`);
+  }
+
   /** Log a summary of pressure on all obstacles, grouped by word */
   private logPressureSummary(): void {
-    if (this.obstaclePressure.size === 0) return;
+    if (this.obstaclePressure.size === 0 && this.floorSegmentPressure.size === 0 && this.collapsedSegments.size === 0) return;
 
     // Group by word tag
     const wordPressure: Map<string, string[]> = new Map();
@@ -329,11 +380,37 @@ export class OverlayScene {
       parts.push(`[${wordLabel}: ${letters.join(' ')}]`);
     }
 
-    // Add floor pressure if any
-    const floorPressureValue = this.calculateWeightedPressure(this.floorPressure);
-    if (floorPressureValue > 0) {
-      const threshold = this.config.floorThreshold ?? '∞';
-      parts.push(`[floor: ${floorPressureValue}/${threshold}]`);
+    // Add floor segment pressure if any
+    if (this.floorSegmentPressure.size > 0 || this.collapsedSegments.size > 0) {
+      const floorConfig = this.config.floorConfig;
+      const legacyThreshold = this.config.floorThreshold;
+
+      // Get threshold for display
+      let thresholdDisplay: number | string = '∞';
+      if (floorConfig?.threshold !== undefined && !Array.isArray(floorConfig.threshold)) {
+        thresholdDisplay = floorConfig.threshold;
+      } else if (legacyThreshold !== undefined) {
+        thresholdDisplay = legacyThreshold;
+      }
+
+      // Build segment pressure display: "seg0=42 seg1=X seg2=55"
+      const segmentParts: string[] = [];
+      for (let i = 0; i < this.floorSegments.length; i++) {
+        if (this.collapsedSegments.has(i)) {
+          segmentParts.push(`s${i}=X`);
+          continue;
+        }
+
+        const objectIds = this.floorSegmentPressure.get(i);
+        const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
+        if (pressure > 0) {
+          segmentParts.push(`s${i}=${pressure}`);
+        }
+      }
+
+      if (segmentParts.length > 0) {
+        parts.push(`[floor(t=${thresholdDisplay}): ${segmentParts.join(' ')}]`);
+      }
     }
 
     if (parts.length > 0) {
@@ -464,8 +541,8 @@ export class OverlayScene {
     this.obstaclePressure.clear();
     this.previousPressure.clear();
     this.pressureLogTimer = 0;
-    this.floorPressure.clear();
-    this.floorCollapsed = false;
+    this.floorSegmentPressure.clear();
+    this.collapsedSegments.clear();
     this.updateCallbacks = [];
   }
 
@@ -492,8 +569,12 @@ export class OverlayScene {
     // Remove old boundaries
     Matter.Composite.remove(this.engine.world, this.boundaries);
 
-    // Create and add new boundaries
-    this.boundaries = createBoundaries(this.config.bounds);
+    // Create and add new boundaries with floor segments
+    const boundariesResult = createBoundariesWithFloorConfig(this.config.bounds, this.config.floorConfig);
+    this.boundaries = [...boundariesResult.walls, ...boundariesResult.floorSegments];
+    this.floorSegments = boundariesResult.floorSegments;
+    this.collapsedSegments.clear();
+    this.floorSegmentPressure.clear();
     Matter.Composite.add(this.engine.world, this.boundaries);
 
     // Update render bounds

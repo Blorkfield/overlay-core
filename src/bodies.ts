@@ -1,5 +1,5 @@
 import Matter from 'matter-js';
-import type { Bounds, ObjectConfig, ShapeConfig } from './types';
+import type { Bounds, ObjectConfig, ShapeConfig, FloorConfig } from './types';
 import { getVerticesFromImage, getVerticesAndDimensionsFromImage, loadImage, Vector2D, ImageClipResult, ClipBounds } from './imageClip';
 import { logger } from './logger';
 
@@ -132,6 +132,57 @@ export function createBoundaries(bounds: Bounds): Matter.Body[] {
       { ...options, label: 'rightWall' }
     )
   ];
+}
+
+export interface BoundariesResult {
+  walls: Matter.Body[];
+  floorSegments: Matter.Body[];
+}
+
+export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: FloorConfig): BoundariesResult {
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const options = { isStatic: true, render: { visible: false } };
+
+  // Create walls (left and right)
+  const walls = [
+    // Left wall
+    Matter.Bodies.rectangle(
+      bounds.left - BOUNDARY_THICKNESS / 2,
+      bounds.top + height / 2,
+      BOUNDARY_THICKNESS,
+      height,
+      { ...options, label: 'leftWall' }
+    ),
+    // Right wall
+    Matter.Bodies.rectangle(
+      bounds.right + BOUNDARY_THICKNESS / 2,
+      bounds.top + height / 2,
+      BOUNDARY_THICKNESS,
+      height,
+      { ...options, label: 'rightWall' }
+    )
+  ];
+
+  // Create floor segment(s)
+  const segmentCount = floorConfig?.segments ?? 1;
+  const segmentWidth = width / segmentCount;
+  const floorSegments: Matter.Body[] = [];
+
+  for (let i = 0; i < segmentCount; i++) {
+    const segmentX = bounds.left + (i + 0.5) * segmentWidth;
+    floorSegments.push(
+      Matter.Bodies.rectangle(
+        segmentX,
+        bounds.bottom + BOUNDARY_THICKNESS / 2,
+        segmentWidth,
+        BOUNDARY_THICKNESS,
+        { ...options, label: `floor-segment-${i}` }
+      )
+    );
+  }
+
+  return { walls, floorSegments };
 }
 
 /**

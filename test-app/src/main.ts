@@ -142,7 +142,10 @@ async function createScene(width: number, height: number): Promise<void> {
     wrapHorizontal: true,
     debug: false,
     background: '#16213e',
-    floorThreshold: 5000,  // Floor collapses when weighted pressure reaches 5000
+    floorConfig: {
+      segments: 10,     // Divide floor into 10 segments
+      threshold: 100    // Each segment collapses when weighted pressure reaches 100
+    },
     despawnBelowFloor: 1.0  // Despawn objects 100% of container height below floor
   });
 

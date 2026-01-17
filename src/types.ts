@@ -4,10 +4,32 @@ export interface OverlaySceneConfig {
   wrapHorizontal?: boolean;
   debug?: boolean;
   background?: string;
-  /** Pressure threshold for the floor boundary. If not set, floor has infinite capacity */
+  /** @deprecated Use floorConfig instead. Pressure threshold for the floor boundary. */
   floorThreshold?: number;
   /** Distance below floor (as fraction of container height) at which objects despawn. Default: 1.0 (100%) */
   despawnBelowFloor?: number;
+  /** Configuration for floor segments and thresholds */
+  floorConfig?: FloorConfig;
+}
+
+/**
+ * Configuration for floor segments and pressure thresholds.
+ * When provided, floor can be divided into segments with individual collapse behavior.
+ */
+export interface FloorConfig {
+  /**
+   * Number of segments to divide the floor into.
+   * If not provided or 1, floor is a single strip.
+   */
+  segments?: number;
+
+  /**
+   * Pressure threshold(s) for floor segments:
+   * - number: Same threshold for all segments
+   * - number[]: Per-segment thresholds (segment 0 uses value[0], etc.)
+   * If not provided, segments have infinite capacity.
+   */
+  threshold?: number | number[];
 }
 
 export interface Bounds {
