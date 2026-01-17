@@ -1,0 +1,149 @@
+---
+// Astro example for @blorkfield/overlay-core
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Overlay Core Astro Example</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      #container {
+        width: 100%;
+        height: 100%;
+        background: #1a1a2e;
+      }
+
+      .controls {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 100;
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        padding: 8px 16px;
+        background: #4a90d9;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      button:hover {
+        background: #3a80c9;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <button id="spawn">Spawn Object</button>
+      <button id="release">Release All</button>
+    </div>
+    <div id="container"></div>
+
+    <script>
+      import { OverlayScene } from '@blorkfield/overlay-core';
+
+      const container = document.getElementById('container') as HTMLElement;
+
+      // Create canvas and scene
+      const { canvas, bounds } = OverlayScene.createContainer(container, {
+        fullscreen: true
+      });
+
+      const scene = new OverlayScene(canvas, {
+        bounds,
+        gravity: 1,
+        wrapHorizontal: true,
+        background: '#1a1a2e',
+        floorConfig: {
+          segments: 5,
+          threshold: 50
+        }
+      });
+
+      // Track mouse position for follow behavior
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        scene.setMousePosition(e.clientX - rect.left, e.clientY - rect.top);
+      });
+
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        scene.resize(container.clientWidth, container.clientHeight);
+      });
+
+      // Add some text obstacles
+      async function init() {
+        await scene.initializeFonts('/fonts/');
+
+        const centerX = bounds.right * 0.3;
+        const centerY = bounds.bottom * 0.4;
+
+        await scene.addTextObstacles({
+          text: 'Hello Astro',
+          x: centerX,
+          y: centerY,
+          letterSize: 60,
+          pressureThreshold: { value: 5 },
+          weight: { value: 2 },
+          shadow: { opacity: 0.3 }
+        });
+
+        // Start a rain effect
+        scene.setEffect({
+          id: 'rain',
+          type: 'rain',
+          enabled: true,
+          spawnRate: 3,
+          objectConfigs: [{
+            objectConfig: {
+              fillStyle: '#e94560',
+              tags: ['falling', 'grabable']
+            },
+            probability: 1,
+            minScale: 0.8,
+            maxScale: 1.2,
+            baseRadius: 15
+          }]
+        });
+      }
+
+      // Button handlers
+      document.getElementById('spawn')?.addEventListener('click', () => {
+        const x = Math.random() * bounds.right * 0.8 + bounds.right * 0.1;
+        scene.spawnObject({
+          x,
+          y: 50,
+          radius: 15 + Math.random() * 10,
+          fillStyle: '#4ae945',
+          tags: ['falling', 'grabable']
+        });
+      });
+
+      document.getElementById('release')?.addEventListener('click', () => {
+        scene.releaseAllObjects();
+      });
+
+      // Start everything
+      scene.start();
+      init();
+    </script>
+  </body>
+</html>

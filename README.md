@@ -1,1 +1,413 @@
+# @blorkfield/overlay-core
 
+A physics based interactive canvas library built on Matter.js. Create dynamic scenes where objects fall under gravity, stack on obstacles, and trigger collapse events when pressure thresholds are exceeded. The library is optimized for interactive text effects where letters can collapse under accumulated weight.
+
+## Installation
+
+```bash
+npm install @blorkfield/overlay-core
+```
+
+Or with pnpm:
+
+```bash
+pnpm add @blorkfield/overlay-core
+```
+
+## Core Concepts
+
+### The Scene
+
+`OverlayScene` is the central class that manages the physics simulation, rendering, and object lifecycle. It wraps Matter.js to provide a simplified API for common interactive scenarios.
+
+### Tag Based Behavior
+
+Objects don't have fixed types. Instead, their behavior is determined by string tags:
+
+| Tag | Behavior |
+|-----|----------|
+| `falling` | Object is dynamic and affected by gravity |
+| `follow` | Object follows mouse position when grounded |
+| `grabable` | Object can be dragged via mouse constraint |
+
+Without the `falling` tag, objects are static and won't move.
+
+### Pressure System
+
+Static obstacles track how many dynamic objects are resting on them. When the accumulated pressure reaches a threshold, the obstacle collapses (becomes dynamic and falls). You can configure:
+
+| Option | Description |
+|--------|-------------|
+| Per letter thresholds | Each letter collapses independently |
+| Word collapse mode | All letters in a word collapse together |
+| Weighted pressure | Objects contribute configurable weight values |
+| Shadows | Leave a faded copy behind when collapsing |
+
+### Floor Segments
+
+The floor can be divided into independent segments, each with its own pressure threshold. When a segment receives too much weight, it collapses and objects fall through.
+
+## Quick Start
+
+```typescript
+import { OverlayScene } from '@blorkfield/overlay-core';
+
+// Create container and canvas
+const container = document.getElementById('container');
+const { canvas, bounds } = OverlayScene.createContainer(container, {
+  fullscreen: true
+});
+
+// Create scene
+const scene = new OverlayScene(canvas, {
+  bounds,
+  gravity: 1,
+  wrapHorizontal: true,
+  background: 'transparent'
+});
+
+scene.start();
+```
+
+## Spawning Objects
+
+### Basic Shapes
+
+```typescript
+// Circle (dynamic, falls with gravity)
+scene.spawnObject({
+  x: 100,
+  y: 50,
+  radius: 20,
+  fillStyle: '#ff0000',
+  tags: ['falling']
+});
+
+// Rectangle (static, doesn't move)
+scene.spawnObject({
+  x: 200,
+  y: 300,
+  width: 100,
+  height: 20,
+  fillStyle: '#0000ff'
+});
+
+// Polygon shapes
+scene.spawnObject({
+  x: 150,
+  y: 100,
+  radius: 25,
+  fillStyle: '#00ff00',
+  tags: ['falling'],
+  shape: { type: 'hexagon' }
+});
+```
+
+### Image Based Objects
+
+When you provide an `imageUrl`, the library extracts the shape from the image's alpha channel for accurate collision detection.
+
+```typescript
+const id = await scene.spawnObjectAsync({
+  x: 150,
+  y: 100,
+  imageUrl: '/images/coin.png',
+  size: 50,
+  tags: ['falling', 'grabable']
+});
+```
+
+## Text Obstacles
+
+### PNG Based Text
+
+Uses individual letter images stored in a fonts directory. Each character's collision shape is extracted from its PNG.
+
+```typescript
+await scene.initializeFonts('/fonts/');
+
+const result = await scene.addTextObstacles({
+  text: 'Hello World',
+  x: 100,
+  y: 200,
+  letterSize: 48,
+  fontName: 'handwritten',
+  letterColor: '#ff00ff',
+  pressureThreshold: { value: 5 },
+  weight: { value: 2 },
+  shadow: { opacity: 0.3 }
+});
+
+// Access created elements
+console.log(result.stringTag);   // Tag for entire string
+console.log(result.wordTags);    // Tags for each word
+console.log(result.letterIds);   // Individual letter IDs
+```
+
+### TTF Font Text
+
+Renders text using TrueType/OpenType fonts with proper kerning and glyph outlines for collision.
+
+```typescript
+const result = await scene.addTTFTextObstacles({
+  text: 'Build Stuff',
+  x: 100,
+  y: 200,
+  fontSize: 40,
+  fontUrl: '/fonts/Roboto/static/Roboto-Regular.ttf',
+  fillColor: '#ffffff',
+  pressureThreshold: { value: 10 }
+});
+```
+
+## Effects
+
+Effects are persistent spawning mechanisms that create objects over time.
+
+### Rain Effect
+
+Objects fall continuously from the top of the scene.
+
+```typescript
+scene.setEffect({
+  id: 'my-rain',
+  type: 'rain',
+  enabled: true,
+  spawnRate: 5,
+  spawnWidth: 0.8,
+  objectConfigs: [{
+    objectConfig: {
+      radius: 15,
+      fillStyle: '#4a90d9',
+      tags: ['falling']
+    },
+    probability: 1,
+    minScale: 0.8,
+    maxScale: 1.2,
+    baseRadius: 15
+  }]
+});
+```
+
+### Burst Effect
+
+Objects explode outward from a point at intervals.
+
+```typescript
+scene.setEffect({
+  id: 'my-burst',
+  type: 'burst',
+  enabled: true,
+  burstInterval: 2000,
+  burstCount: 8,
+  burstForce: 15,
+  origin: { x: 400, y: 300 },
+  objectConfigs: [/* ... */]
+});
+```
+
+### Stream Effect
+
+Objects emit from a point in a specific direction with cone spread.
+
+```typescript
+scene.setEffect({
+  id: 'my-stream',
+  type: 'stream',
+  enabled: true,
+  origin: { x: 0, y: 0 },
+  direction: { x: 1, y: 1 },
+  spawnRate: 10,
+  force: 15,
+  coneAngle: Math.PI / 8,
+  objectConfigs: [/* ... */]
+});
+```
+
+## Managing Objects
+
+```typescript
+// Release objects (make them fall)
+scene.releaseObject(id);
+scene.releaseObjectsByTag('my-text');
+scene.releaseAllObjects();
+
+// Remove objects
+scene.removeObject(id);
+scene.removeObjectsByTag('welcome-text');
+scene.removeAllObjects();
+
+// Add or remove tags
+scene.addTag(id, 'falling');
+scene.removeTag(id, 'grabable');
+
+// Get object info
+const ids = scene.getObjectIds();
+const tagged = scene.getObjectIdsByTag('falling');
+const allTags = scene.getAllTags();
+```
+
+## Configuration
+
+### Scene Config
+
+```typescript
+const scene = new OverlayScene(canvas, {
+  bounds: { top: 0, bottom: 600, left: 0, right: 800 },
+  gravity: 1,
+  wrapHorizontal: true,
+  debug: false,
+  background: '#16213e',
+  floorConfig: {
+    segments: 10,
+    threshold: 100
+  },
+  despawnBelowFloor: 1.0
+});
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `gravity` | 1 | Gravity strength |
+| `wrapHorizontal` | true | Objects wrap around screen edges |
+| `debug` | false | Show collision wireframes |
+| `background` | transparent | Canvas background color |
+| `floorConfig.segments` | 1 | Number of floor segments |
+| `floorConfig.threshold` | none | Pressure threshold for floor collapse |
+| `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
+
+## Pressure Tracking
+
+```typescript
+// Get pressure on a specific obstacle
+const pressure = scene.getPressure(obstacleId);
+
+// Get IDs of objects resting on an obstacle
+const restingIds = scene.getObjectsRestingOn(obstacleId);
+
+// Get all obstacles with pressure
+const allPressure = scene.getAllPressure();
+
+// Debug summary
+const summary = scene.getPressureSummary();
+```
+
+## Update Callbacks
+
+```typescript
+scene.onUpdate((data) => {
+  // data.objects contains all dynamic (falling) objects
+  for (const obj of data.objects) {
+    console.log(obj.id, obj.x, obj.y, obj.angle, obj.tags);
+  }
+});
+```
+
+## Font Setup
+
+### PNG Based Fonts
+
+Create a directory structure under `/public/fonts/`:
+
+```
+public/
+  fonts/
+    fonts.json
+    handwritten/
+      A.png
+      B.png
+      ...
+    block/
+      A.png
+      a.png
+      ...
+```
+
+The `fonts.json` manifest:
+
+```json
+{
+  "fonts": [
+    {
+      "name": "handwritten",
+      "type": "png",
+      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    },
+    {
+      "name": "block",
+      "type": "png",
+      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    }
+  ]
+}
+```
+
+### TTF Fonts
+
+```json
+{
+  "fonts": [
+    {
+      "name": "Roboto",
+      "type": "ttf",
+      "characters": "*",
+      "fontUrl": "/fonts/Roboto/static/Roboto-Regular.ttf"
+    }
+  ]
+}
+```
+
+## Logging
+
+```typescript
+import { setLogLevel, getLogLevel } from '@blorkfield/overlay-core';
+
+setLogLevel('debug');  // Options: debug, info, warn, error
+```
+
+## Lifecycle
+
+```typescript
+scene.start();           // Start simulation
+scene.stop();            // Pause simulation
+scene.resize(w, h);      // Resize canvas and bounds
+scene.setDebug(true);    // Toggle wireframe mode
+scene.destroy();         // Clean up resources
+```
+
+## Examples
+
+Working examples are provided in the `/examples` directory:
+
+| Example | Description |
+|---------|-------------|
+| [examples/astro](./examples/astro) | Basic integration with Astro |
+| [examples/astro-svelte](./examples/astro-svelte) | Using Svelte components within Astro |
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| matter-js | Physics engine for collision, gravity, and forces |
+| opentype.js | TTF/OTF font parsing for glyph extraction |
+
+## TypeScript
+
+The package is written in TypeScript and ships with full type definitions. All configuration interfaces are exported:
+
+```typescript
+import type {
+  OverlaySceneConfig,
+  ObjectConfig,
+  TextObstacleConfig,
+  TTFTextObstacleConfig,
+  EffectConfig,
+  BurstEffectConfig,
+  RainEffectConfig,
+  StreamEffectConfig,
+  PressureThresholdConfig,
+  WeightConfig,
+  ShadowConfig,
+  FloorConfig
+} from '@blorkfield/overlay-core';
+```
