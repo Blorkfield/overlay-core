@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
-import { createBoundaries, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
+import { createBoundaries, createBoundariesWithFloorConfig, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
 import { tintImage } from './imageClip';
 import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
@@ -8,15 +8,12 @@ import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
 import type {
   OverlaySceneConfig,
-  EntityConfig,
-  ObstacleConfig,
+  ObjectConfig,
   UpdateCallback,
   UpdateCallbackData,
-  DynamicObstacle,
-  DynamicEntity,
+  DynamicObject,
   ContainerOptions,
   Bounds,
-  EntityType,
   EffectConfig,
   DespawnEffectConfig,
   TextObstacleConfig,
@@ -26,17 +23,6 @@ import type {
   FontManifest,
   LetterDebugInfo
 } from './types';
-
-interface EntityEntry {
-  id: string;
-  body: Matter.Body;
-  tags: string[];
-  grounded: boolean;
-  entityType: EntityType;
-  spawnTime: number;
-  ttl?: number;
-  despawnEffect?: DespawnEffectConfig;
-}
 
 interface TTFGlyphRenderInfo {
   char: string;
@@ -48,15 +34,38 @@ interface TTFGlyphRenderInfo {
   offsetY: number;
 }
 
-interface ObstacleEntry {
+/**
+ * Internal representation of a scene object.
+ * Behavior is determined by tags:
+ * - 'falling': Object is dynamic (not static), affected by gravity
+ * - 'follow': Object follows mouse when grounded
+ * - 'grabable': Object can be dragged via mouse constraint
+ */
+interface ObjectEntry {
   id: string;
   body: Matter.Body;
-  isStatic: boolean;
   tags: string[];
   spawnTime: number;
   ttl?: number;
   despawnEffect?: DespawnEffectConfig;
+  /** TTF glyph rendering info (for text objects) */
   ttfGlyph?: TTFGlyphRenderInfo;
+  /** Pressure threshold - when reached, this obstacle becomes dynamic */
+  pressureThreshold?: number;
+  /** If set, collapse all letters with this word tag together when word total reaches threshold */
+  wordCollapseTag?: string;
+  /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
+  weight: number;
+  /** Shadow config - when set, a washed-out static copy is left behind on collapse */
+  shadow?: { opacity: number };
+  /** Original position (for shadow placement) */
+  originalPosition?: { x: number; y: number };
+  /** Image URL (for shadow rendering) */
+  imageUrl?: string;
+  /** Image size (for shadow rendering) */
+  imageSize?: number;
+  /** Clicks remaining before this obstacle collapses (undefined = no click behavior) */
+  clicksRemaining?: number;
 }
 
 export class OverlayScene {
@@ -64,8 +73,8 @@ export class OverlayScene {
   private render: Matter.Render;
   private runner: Matter.Runner;
   private canvas: HTMLCanvasElement;
-  private entities: Map<string, EntityEntry> = new Map();
-  private obstacles: Map<string, ObstacleEntry> = new Map();
+  /** All scene objects (unified - no more entity/obstacle distinction) */
+  private objects: Map<string, ObjectEntry> = new Map();
   private boundaries: Matter.Body[] = [];
   private updateCallbacks: UpdateCallback[] = [];
   private mouseX: number = 0;
@@ -77,6 +86,15 @@ export class OverlayScene {
   private fonts: FontInfo[] = [];
   private fontsInitialized: boolean = false;
   private letterDebugInfo: Map<string, LetterDebugInfo[]> = new Map(); // wordTag -> debug info
+
+  // Pressure tracking: maps obstacle ID -> Set of dynamic object IDs resting on it
+  private obstaclePressure: Map<string, Set<string>> = new Map();
+  private previousPressure: Map<string, number> = new Map();
+  private pressureLogTimer: number = 0;
+  // Floor segment tracking
+  private floorSegments: Matter.Body[] = [];
+  private floorSegmentPressure: Map<number, Set<string>> = new Map(); // segment index -> object IDs
+  private collapsedSegments: Set<number> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -121,7 +139,11 @@ export class OverlayScene {
     this.engine = createEngine(this.config.gravity!);
     this.render = createRender(this.engine, canvas, this.config);
     this.runner = Matter.Runner.create();
-    this.boundaries = createBoundaries(this.config.bounds);
+
+    // Create boundaries with optional floor segments
+    const boundariesResult = createBoundariesWithFloorConfig(this.config.bounds, this.config.floorConfig);
+    this.boundaries = [...boundariesResult.walls, ...boundariesResult.floorSegments];
+    this.floorSegments = boundariesResult.floorSegments;
     Matter.Composite.add(this.engine.world, this.boundaries);
 
     // Setup mouse interaction
@@ -135,62 +157,507 @@ export class OverlayScene {
     });
     Matter.Composite.add(this.engine.world, this.mouseConstraint);
 
+    // Filter grabbing based on 'grabable' tag
+    Matter.Events.on(this.mouseConstraint, 'startdrag', this.handleStartDrag);
+
+    // Handle clicks for click-to-fall behavior
+    canvas.addEventListener('click', this.handleCanvasClick);
+
     // Keep render in sync with mouse for pixel ratio
     this.render.mouse = this.mouse;
-
-    // Setup collision detection for grounded state
-    Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
-    Matter.Events.on(this.engine, 'collisionEnd', this.handleCollisionEnd);
 
     // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
       this.config.bounds,
-      (cfg) => this.spawnEntityAsync(cfg),
-      (id) => this.entities.get(id)?.body ?? null
+      (cfg) => this.spawnObjectAsync(cfg),
+      (id) => this.objects.get(id)?.body ?? null
     );
   }
 
-  private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      const entityEntry = this.findEntityInCollision(pair);
-      if (entityEntry && this.isEntityOnTop(entityEntry.body, pair)) {
-        entityEntry.grounded = true;
+  /** Filter drag events - only allow grabbing objects with 'grabable' tag */
+  private handleStartDrag = (event: Matter.IEvent<Matter.MouseConstraint> & { body?: Matter.Body }): void => {
+    const body = event.body;
+    if (!body) return;
+
+    // Find the object entry for this body
+    const entry = this.findObjectByBody(body);
+
+    // If object doesn't have 'grabable' tag, release the constraint immediately
+    if (!entry || !entry.tags.includes('grabable')) {
+      if (this.mouseConstraint) {
+        this.mouseConstraint.constraint.bodyB = null;
       }
     }
   };
 
-  private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      const entityEntry = this.findEntityInCollision(pair);
-      if (entityEntry) {
-        entityEntry.grounded = this.checkEntityStillGrounded(entityEntry.body);
+  /** Handle canvas clicks for click-to-fall behavior */
+  private handleCanvasClick = (event: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // Find all bodies at the click position
+    const bodies = Matter.Query.point(
+      Matter.Composite.allBodies(this.engine.world),
+      { x, y }
+    );
+
+    // Process each clicked body
+    for (const body of bodies) {
+      const entry = this.findObjectByBody(body);
+      if (!entry) continue;
+
+      // Skip if already falling or no click behavior
+      if (entry.tags.includes('falling')) continue;
+      if (entry.clicksRemaining === undefined) continue;
+
+      // Decrement clicks remaining
+      entry.clicksRemaining--;
+
+      const name = this.getObstacleDisplayName(entry);
+      logger.debug('OverlayScene', `Click on ${name}: ${entry.clicksRemaining} clicks remaining`);
+
+      // Collapse if no clicks remaining
+      if (entry.clicksRemaining <= 0) {
+        this.collapseObstacle(entry);
       }
     }
   };
 
-  private findEntityInCollision(pair: Matter.Pair): EntityEntry | null {
-    for (const entry of this.entities.values()) {
-      if (pair.bodyA === entry.body || pair.bodyB === entry.body) {
+  /** Get a display name for an obstacle (letter char or short ID) */
+  private getObstacleDisplayName(entry: ObjectEntry): string {
+    const letterTag = entry.tags.find(t => t.startsWith('letter-') && !t.startsWith('letter-index-'));
+    if (letterTag) return letterTag.replace('letter-', '');
+    if (entry.ttfGlyph) return entry.ttfGlyph.char;
+    return entry.id.slice(0, 4);
+  }
+
+  /** Update pressure tracking - check which dynamic objects rest on static obstacles */
+  private updatePressure(): void {
+    // Collect static obstacles and dynamic objects
+    const obstacles: ObjectEntry[] = [];
+    const dynamics: ObjectEntry[] = [];
+
+    for (const entry of this.objects.values()) {
+      if (entry.tags.includes('falling')) {
+        // Only count resting objects (low velocity)
+        if (Math.abs(entry.body.velocity.y) < 2) {
+          dynamics.push(entry);
+        }
+      } else {
+        obstacles.push(entry);
+      }
+    }
+
+    // Build new pressure map
+    const newPressure: Map<string, Set<string>> = new Map();
+
+    for (const obstacle of obstacles) {
+      const resting = new Set<string>();
+      const obsBounds = obstacle.body.bounds;
+
+      for (const dyn of dynamics) {
+        const dynBounds = dyn.body.bounds;
+
+        // Check if dynamic object is resting on/in obstacle:
+        // Dynamic's bottom is within the obstacle's vertical range (with some tolerance above)
+        // AND horizontal positions overlap
+        const tolerance = 10; // pixels above obstacle top
+        const dynBottom = dynBounds.max.y;
+        const obsTop = obsBounds.min.y;
+        const obsBottom = obsBounds.max.y;
+
+        // Dynamic is "on" obstacle if its bottom is between (slightly above top) and bottom
+        const verticallyOn = dynBottom >= obsTop - tolerance && dynBottom <= obsBottom;
+
+        const horizontalOverlap =
+          dynBounds.max.x > obsBounds.min.x &&
+          dynBounds.min.x < obsBounds.max.x;
+
+        if (verticallyOn && horizontalOverlap) {
+          resting.add(dyn.id);
+        }
+      }
+
+      if (resting.size > 0) {
+        newPressure.set(obstacle.id, resting);
+      }
+    }
+
+    // Check thresholds and collapse obstacles that exceed them
+    this.checkPressureThresholds(obstacles, newPressure);
+
+    // Track floor segment pressure
+    this.updateFloorSegmentPressure(dynamics);
+
+    // Check floor segment thresholds
+    this.checkFloorSegmentThresholds();
+
+    // Update stored state
+    this.obstaclePressure = newPressure;
+    this.previousPressure.clear();
+    for (const [id, set] of newPressure) {
+      this.previousPressure.set(id, set.size);
+    }
+
+    // Timed summary log every ~2 seconds (120 frames at 60fps)
+    this.pressureLogTimer++;
+    if (this.pressureLogTimer >= 120) {
+      this.pressureLogTimer = 0;
+      this.logPressureSummary();
+    }
+  }
+
+  /** Update pressure tracking for each floor segment */
+  private updateFloorSegmentPressure(dynamics: ObjectEntry[]): void {
+    // Clear and rebuild segment pressure
+    this.floorSegmentPressure.clear();
+
+    // Build set of object IDs that are resting on obstacles (letters)
+    // These should NOT count toward floor pressure
+    const onObstacles = new Set<string>();
+    for (const objectIds of this.obstaclePressure.values()) {
+      for (const id of objectIds) {
+        onObstacles.add(id);
+      }
+    }
+
+    for (let i = 0; i < this.floorSegments.length; i++) {
+      if (this.collapsedSegments.has(i)) continue;
+
+      const segment = this.floorSegments[i];
+      const segmentBounds = segment.bounds;
+      const resting = new Set<string>();
+
+      for (const dyn of dynamics) {
+        // Skip objects resting on obstacles - they don't contribute to floor pressure
+        if (onObstacles.has(dyn.id)) continue;
+
+        const dynBounds = dyn.body.bounds;
+
+        // Count resting objects in this segment's horizontal column
+        const horizontalOverlap =
+          dynBounds.max.x > segmentBounds.min.x &&
+          dynBounds.min.x < segmentBounds.max.x;
+
+        if (horizontalOverlap) {
+          resting.add(dyn.id);
+        }
+      }
+
+      if (resting.size > 0) {
+        this.floorSegmentPressure.set(i, resting);
+      }
+    }
+  }
+
+  /** Check floor segment thresholds and collapse segments that exceed them */
+  private checkFloorSegmentThresholds(): void {
+    const floorConfig = this.config.floorConfig;
+    // Support legacy floorThreshold for backward compatibility
+    const legacyThreshold = this.config.floorThreshold;
+
+    if (!floorConfig?.threshold && legacyThreshold === undefined) return;
+
+    for (let i = 0; i < this.floorSegments.length; i++) {
+      if (this.collapsedSegments.has(i)) continue;
+
+      // Determine threshold for this segment
+      let threshold: number | undefined;
+      if (floorConfig?.threshold !== undefined) {
+        threshold = Array.isArray(floorConfig.threshold)
+          ? floorConfig.threshold[i]
+          : floorConfig.threshold;
+      } else if (legacyThreshold !== undefined) {
+        threshold = legacyThreshold;
+      }
+
+      if (threshold === undefined) continue;
+
+      const objectIds = this.floorSegmentPressure.get(i);
+      const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
+
+      if (pressure >= threshold) {
+        this.collapseFloorSegment(i, pressure, threshold);
+      }
+    }
+  }
+
+  /** Collapse a single floor segment */
+  private collapseFloorSegment(index: number, pressure: number, threshold: number): void {
+    if (this.collapsedSegments.has(index)) return;
+    this.collapsedSegments.add(index);
+
+    const segment = this.floorSegments[index];
+    Matter.Composite.remove(this.engine.world, segment);
+    console.log(`[Pressure] Floor segment ${index} collapsed! (pressure: ${pressure} >= ${threshold})`);
+  }
+
+  /** Log a summary of pressure on all obstacles, grouped by word */
+  private logPressureSummary(): void {
+    if (this.obstaclePressure.size === 0 && this.floorSegmentPressure.size === 0 && this.collapsedSegments.size === 0) return;
+
+    // Group by word tag
+    const wordPressure: Map<string, string[]> = new Map();
+
+    for (const [obstacleId, objectIds] of this.obstaclePressure) {
+      const entry = this.objects.get(obstacleId);
+      if (!entry) continue;
+
+      // Find word tag
+      const wordTag = entry.tags.find(t => t.includes('-word-'));
+      const groupKey = wordTag ?? 'other';
+
+      // Get letter display name and weighted pressure
+      const letter = this.getObstacleDisplayName(entry);
+      const pressure = this.calculateWeightedPressure(objectIds);
+
+      if (!wordPressure.has(groupKey)) {
+        wordPressure.set(groupKey, []);
+      }
+      wordPressure.get(groupKey)!.push(`${letter}:${pressure}`);
+    }
+
+    // Format output
+    const parts: string[] = [];
+    for (const [wordTag, letters] of wordPressure) {
+      // Extract word index from tag like "str-abc123-word-0"
+      const match = wordTag.match(/-word-(\d+)$/);
+      const wordLabel = match ? `w${match[1]}` : wordTag.slice(0, 8);
+      parts.push(`[${wordLabel}: ${letters.join(' ')}]`);
+    }
+
+    // Add floor segment pressure if any
+    if (this.floorSegmentPressure.size > 0 || this.collapsedSegments.size > 0) {
+      const floorConfig = this.config.floorConfig;
+      const legacyThreshold = this.config.floorThreshold;
+
+      // Get threshold for display
+      let thresholdDisplay: number | string = '∞';
+      if (floorConfig?.threshold !== undefined && !Array.isArray(floorConfig.threshold)) {
+        thresholdDisplay = floorConfig.threshold;
+      } else if (legacyThreshold !== undefined) {
+        thresholdDisplay = legacyThreshold;
+      }
+
+      // Build segment pressure display: "seg0=42 seg1=X seg2=55"
+      const segmentParts: string[] = [];
+      for (let i = 0; i < this.floorSegments.length; i++) {
+        if (this.collapsedSegments.has(i)) {
+          segmentParts.push(`s${i}=X`);
+          continue;
+        }
+
+        const objectIds = this.floorSegmentPressure.get(i);
+        const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
+        if (pressure > 0) {
+          segmentParts.push(`s${i}=${pressure}`);
+        }
+      }
+
+      if (segmentParts.length > 0) {
+        parts.push(`[floor(t=${thresholdDisplay}): ${segmentParts.join(' ')}]`);
+      }
+    }
+
+    if (parts.length > 0) {
+      console.log('[Pressure]', parts.join(' '));
+    }
+  }
+
+  /** Calculate weighted pressure from a set of object IDs */
+  private calculateWeightedPressure(objectIds: Set<string>): number {
+    let total = 0;
+    for (const id of objectIds) {
+      const entry = this.objects.get(id);
+      if (entry) {
+        total += entry.weight;
+      }
+    }
+    return total;
+  }
+
+  /** Check pressure thresholds and collapse obstacles that exceed them */
+  private checkPressureThresholds(obstacles: ObjectEntry[], pressure: Map<string, Set<string>>): void {
+    // Track word-level pressure for wordCollapse mode
+    const wordPressure: Map<string, number> = new Map();
+    const wordObstacles: Map<string, ObjectEntry[]> = new Map();
+
+    // First pass: calculate per-letter and word-level pressure (using weights)
+    for (const obstacle of obstacles) {
+      if (obstacle.pressureThreshold === undefined) continue;
+
+      const objectsOnObstacle = pressure.get(obstacle.id);
+      const obstaclePressure = objectsOnObstacle ? this.calculateWeightedPressure(objectsOnObstacle) : 0;
+
+      if (obstacle.wordCollapseTag) {
+        // Accumulate word-level pressure
+        const currentTotal = wordPressure.get(obstacle.wordCollapseTag) ?? 0;
+        wordPressure.set(obstacle.wordCollapseTag, currentTotal + obstaclePressure);
+
+        // Track obstacles in this word
+        if (!wordObstacles.has(obstacle.wordCollapseTag)) {
+          wordObstacles.set(obstacle.wordCollapseTag, []);
+        }
+        wordObstacles.get(obstacle.wordCollapseTag)!.push(obstacle);
+      } else {
+        // Per-letter mode: check individual threshold
+        if (obstaclePressure >= obstacle.pressureThreshold) {
+          this.collapseObstacle(obstacle);
+        }
+      }
+    }
+
+    // Second pass: check word-level thresholds
+    for (const [wordTag, total] of wordPressure) {
+      const wordObs = wordObstacles.get(wordTag);
+      if (!wordObs || wordObs.length === 0) continue;
+
+      // All letters in a word share the same threshold (from config)
+      const threshold = wordObs[0].pressureThreshold;
+      if (threshold !== undefined && total >= threshold) {
+        // Collapse all letters in this word
+        for (const obs of wordObs) {
+          this.collapseObstacle(obs);
+        }
+        console.log(`[Pressure] Word collapsed! ${wordTag} (total: ${total} >= ${threshold})`);
+      }
+    }
+  }
+
+  /** Convert a static obstacle to dynamic (make it fall) */
+  private collapseObstacle(entry: ObjectEntry): void {
+    // Skip if already falling
+    if (entry.tags.includes('falling')) return;
+
+    const name = this.getObstacleDisplayName(entry);
+    console.log(`[Pressure] Collapsed: ${name}`);
+
+    // Create shadow if configured
+    if (entry.shadow && entry.originalPosition) {
+      this.createShadow(entry);
+    }
+
+    // Add falling tag
+    entry.tags.push('falling');
+
+    // Make body dynamic
+    Matter.Body.setStatic(entry.body, false);
+
+    // Clear threshold so it doesn't trigger again
+    entry.pressureThreshold = undefined;
+    entry.wordCollapseTag = undefined;
+  }
+
+  /** Create a static shadow copy of an obstacle at its original position */
+  private async createShadow(entry: ObjectEntry): Promise<void> {
+    if (!entry.originalPosition) return;
+
+    const opacity = entry.shadow?.opacity ?? 0.3;
+    const shadowId = `shadow-${entry.id}`;
+
+    // Handle TTF glyph shadows (canvas-rendered text)
+    if (entry.ttfGlyph) {
+      // For TTF glyphs, create a minimal static body and store shadow glyph info
+      const body = Matter.Bodies.circle(entry.originalPosition.x, entry.originalPosition.y, 1, {
+        isStatic: true,
+        isSensor: true, // Don't collide
+        label: `shadow:${shadowId}`,
+        render: { visible: false }
+      });
+
+      const shadowEntry: ObjectEntry = {
+        id: shadowId,
+        body,
+        tags: ['shadow'],
+        spawnTime: performance.now(),
+        weight: 0,
+        ttfGlyph: {
+          ...entry.ttfGlyph,
+          fillColor: this.applyOpacityToColor(entry.ttfGlyph.fillColor, opacity)
+        }
+      };
+      this.objects.set(shadowId, shadowEntry);
+      Matter.Composite.add(this.engine.world, body);
+      return;
+    }
+
+    // Handle image-based shadows
+    if (!entry.imageUrl) return;
+
+    const result = await createBoxObstacleWithInfo(shadowId, {
+      x: entry.originalPosition.x,
+      y: entry.originalPosition.y,
+      imageUrl: entry.imageUrl,
+      size: entry.imageSize ?? 50,
+      tags: ['shadow']
+    }, true);
+
+    // Make shadow non-colliding (purely visual)
+    result.body.isSensor = true;
+
+    // Set shadow opacity via render
+    if (result.body.render.sprite) {
+      result.body.render.opacity = opacity;
+    }
+
+    // Store shadow as object (static, no pressure tracking)
+    const shadowEntry: ObjectEntry = {
+      id: shadowId,
+      body: result.body,
+      tags: ['shadow'],
+      spawnTime: performance.now(),
+      weight: 0 // Shadows don't contribute to pressure
+    };
+    this.objects.set(shadowId, shadowEntry);
+    Matter.Composite.add(this.engine.world, result.body);
+  }
+
+  /** Apply opacity to a CSS color string */
+  private applyOpacityToColor(color: string, opacity: number): string {
+    // Handle hex colors
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      let r, g, b;
+      if (hex.length === 3) {
+        r = parseInt(hex[0] + hex[0], 16);
+        g = parseInt(hex[1] + hex[1], 16);
+        b = parseInt(hex[2] + hex[2], 16);
+      } else {
+        r = parseInt(hex.slice(0, 2), 16);
+        g = parseInt(hex.slice(2, 4), 16);
+        b = parseInt(hex.slice(4, 6), 16);
+      }
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+    // Handle rgb/rgba
+    if (color.startsWith('rgb')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`;
+      }
+    }
+    // Fallback: return with alpha
+    return color;
+  }
+
+  /** Find an object entry by its Matter.js body (handles compound body parts) */
+  private findObjectByBody(body: Matter.Body): ObjectEntry | null {
+    // For compound bodies (created by fromVertices), collision events report parts
+    // Use the parent property to find the root body we're tracking
+    const rootBody = body.parent ?? body;
+
+    for (const entry of this.objects.values()) {
+      if (entry.body === body || entry.body === rootBody) {
         return entry;
       }
     }
     return null;
   }
 
-  private isEntityOnTop(entity: Matter.Body, pair: Matter.Pair): boolean {
-    const other = pair.bodyA === entity ? pair.bodyB : pair.bodyA;
-    return entity.position.y < other.position.y;
-  }
-
-  private checkEntityStillGrounded(entity: Matter.Body): boolean {
-    const collisions = Matter.Query.collides(entity, Matter.Composite.allBodies(this.engine.world));
-    for (const collision of collisions) {
-      const other: Matter.Body = collision.bodyA === entity ? collision.bodyB : collision.bodyA;
-      if (other !== entity && entity.position.y < other.position.y) {
-        return true;
-      }
-    }
-    return false;
+  /** Check if a body is grounded (low vertical velocity indicates resting on something) */
+  private isGrounded(body: Matter.Body): boolean {
+    return Math.abs(body.velocity.y) < 0.5;
   }
 
   start(): void {
@@ -210,11 +677,17 @@ export class OverlayScene {
 
   destroy(): void {
     this.stop();
-    Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
-    Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
+    if (this.mouseConstraint) {
+      Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
+    }
+    this.canvas.removeEventListener('click', this.handleCanvasClick);
     Matter.Engine.clear(this.engine);
-    this.entities.clear();
-    this.obstacles.clear();
+    this.objects.clear();
+    this.obstaclePressure.clear();
+    this.previousPressure.clear();
+    this.pressureLogTimer = 0;
+    this.floorSegmentPressure.clear();
+    this.collapsedSegments.clear();
     this.updateCallbacks = [];
   }
 
@@ -223,7 +696,7 @@ export class OverlayScene {
     this.render.options.wireframes = enabled;
 
     // Toggle TTF glyph body visibility (show collision shapes in debug mode)
-    for (const [, entry] of this.obstacles) {
+    for (const [, entry] of this.objects) {
       if (entry.ttfGlyph && entry.body.render) {
         entry.body.render.visible = enabled;
       }
@@ -241,8 +714,12 @@ export class OverlayScene {
     // Remove old boundaries
     Matter.Composite.remove(this.engine.world, this.boundaries);
 
-    // Create and add new boundaries
-    this.boundaries = createBoundaries(this.config.bounds);
+    // Create and add new boundaries with floor segments
+    const boundariesResult = createBoundariesWithFloorConfig(this.config.bounds, this.config.floorConfig);
+    this.boundaries = [...boundariesResult.walls, ...boundariesResult.floorSegments];
+    this.floorSegments = boundariesResult.floorSegments;
+    this.collapsedSegments.clear();
+    this.floorSegmentPressure.clear();
     Matter.Composite.add(this.engine.world, this.boundaries);
 
     // Update render bounds
@@ -255,252 +732,298 @@ export class OverlayScene {
     this.effectManager.setBounds(this.config.bounds);
   }
 
-  // ==================== ENTITY METHODS ====================
+  // ==================== OBJECT METHODS ====================
 
   /**
-   * Spawn an entity synchronously. For 'fromImage' shapes, use spawnEntityAsync instead.
-   * If fromImage is used here, it will fall back to circle shape.
+   * Spawn an object synchronously.
+   * Object behavior is determined by tags:
+   * - 'falling': Object is dynamic (affected by gravity)
+   * - 'follow': Object follows mouse when grounded
+   * - 'grabable': Object can be dragged
+   * Without 'falling' tag, object is static.
    */
-  spawnEntity(config: EntityConfig): string {
+  spawnObject(config: ObjectConfig): string {
     const id = crypto.randomUUID();
-    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
-    const body = createEntity(id, config);
-    const entry: EntityEntry = {
+    const tags = config.tags ?? [];
+    const isStatic = !tags.includes('falling');
+
+    logger.debug('OverlayScene', `Spawning object`, {
+      id,
+      tags,
+      isStatic,
+      shape: config.shape?.type ?? (config.radius ? 'circle' : 'rectangle'),
+      ttl: config.ttl
+    });
+
+    // Determine if this is an "entity-style" object (has radius) or "obstacle-style" (has width/height)
+    let body: Matter.Body;
+    if (config.radius) {
+      body = createEntity(id, config);
+      // If it should be static, set it
+      if (isStatic) {
+        Matter.Body.setStatic(body, true);
+      }
+    } else {
+      body = createObstacle(id, config, isStatic);
+    }
+
+    const entry: ObjectEntry = {
       id,
       body,
-      tags: config.tags ?? [],
-      grounded: false,
-      entityType,
+      tags,
       spawnTime: performance.now(),
       ttl: config.ttl,
-      despawnEffect: config.despawnEffect
+      despawnEffect: config.despawnEffect,
+      weight: config.weight ?? 1
     };
-    this.entities.set(id, entry);
+    this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
     return id;
   }
 
   /**
-   * Spawn an entity asynchronously. Required for 'fromImage' shapes that need to
-   * extract shape from image alpha channel.
+   * Spawn an object asynchronously. Required for image-based shapes that need
+   * shape extraction from image alpha channel.
    */
-  async spawnEntityAsync(config: EntityConfig): Promise<string> {
+  async spawnObjectAsync(config: ObjectConfig): Promise<string> {
     const id = crypto.randomUUID();
-    const entityType = config.entityType ?? 'GROUNDED_FOLLOW';
-    logger.debug('OverlayScene', `Spawning entity async`, { id, shape: config.shape?.type ?? 'circle', entityType, ttl: config.ttl });
-    const body = await createEntityAsync(id, config);
-    const entry: EntityEntry = {
+    const tags = config.tags ?? [];
+    const isStatic = !tags.includes('falling');
+
+    logger.debug('OverlayScene', `Spawning object async`, {
+      id,
+      tags,
+      isStatic,
+      shape: config.shape?.type ?? (config.radius ? 'circle' : 'rectangle'),
+      ttl: config.ttl
+    });
+
+    let body: Matter.Body;
+    if (config.radius) {
+      body = await createEntityAsync(id, config);
+      if (isStatic) {
+        Matter.Body.setStatic(body, true);
+      }
+    } else {
+      body = await createObstacleAsync(id, config, isStatic);
+    }
+
+    const entry: ObjectEntry = {
       id,
       body,
-      tags: config.tags ?? [],
-      grounded: false,
-      entityType,
+      tags,
       spawnTime: performance.now(),
       ttl: config.ttl,
-      despawnEffect: config.despawnEffect
+      despawnEffect: config.despawnEffect,
+      weight: config.weight ?? 1
     };
-    this.entities.set(id, entry);
+    this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
     return id;
   }
 
-  removeEntity(id: string): void {
-    const entry = this.entities.get(id);
+  /**
+   * Add 'falling' tag to an object, making it dynamic (affected by gravity).
+   * Also adds 'grabable' tag so released objects can be dragged.
+   * This is the tag-based replacement for releaseObstacle().
+   */
+  addFallingTag(id: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (!entry.tags.includes('falling')) {
+      entry.tags.push('falling');
+      Matter.Body.setStatic(entry.body, false);
+    }
+    if (!entry.tags.includes('grabable')) {
+      entry.tags.push('grabable');
+    }
+  }
+
+  /**
+   * Add a tag to an object.
+   */
+  addTag(id: string, tag: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (!entry.tags.includes(tag)) {
+      entry.tags.push(tag);
+      // Handle special tag behaviors
+      if (tag === 'falling') {
+        Matter.Body.setStatic(entry.body, false);
+      }
+    }
+  }
+
+  /**
+   * Remove a tag from an object.
+   */
+  removeTag(id: string, tag: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    const index = entry.tags.indexOf(tag);
+    if (index !== -1) {
+      entry.tags.splice(index, 1);
+      // Handle special tag behaviors
+      if (tag === 'falling') {
+        Matter.Body.setStatic(entry.body, true);
+      }
+    }
+  }
+
+  /**
+   * Release an object (add 'falling' tag to make it dynamic).
+   * Convenience method - equivalent to addFallingTag().
+   */
+  releaseObject(id: string): void {
+    this.addFallingTag(id);
+  }
+
+  /**
+   * Release multiple objects by their IDs.
+   */
+  releaseObjects(ids: string[]): void {
+    for (const id of ids) {
+      this.releaseObject(id);
+    }
+  }
+
+  /**
+   * Release all static objects (add 'falling' and 'grabable' tags).
+   */
+  releaseAllObjects(): void {
+    for (const [id] of this.objects) {
+      this.addFallingTag(id);
+    }
+  }
+
+  /**
+   * Release objects by tag (add 'falling' and 'grabable' tags to matching objects).
+   */
+  releaseObjectsByTag(tag: string): void {
+    for (const [id, entry] of this.objects) {
+      if (entry.tags.includes(tag)) {
+        this.addFallingTag(id);
+      }
+    }
+  }
+
+  removeObject(id: string): void {
+    const entry = this.objects.get(id);
     if (!entry) return;
     Matter.Composite.remove(this.engine.world, entry.body);
-    this.entities.delete(id);
+    this.objects.delete(id);
   }
 
-  removeAllEntities(): void {
-    for (const entry of this.entities.values()) {
+  removeObjects(ids: string[]): void {
+    for (const id of ids) {
+      this.removeObject(id);
+    }
+  }
+
+  removeAllObjects(): void {
+    for (const entry of this.objects.values()) {
       Matter.Composite.remove(this.engine.world, entry.body);
     }
-    this.entities.clear();
+    this.objects.clear();
   }
 
-  removeEntitiesByTag(tag: string): void {
+  removeObjectsByTag(tag: string): void {
     const toRemove: string[] = [];
-    for (const [id, entry] of this.entities) {
+    for (const [id, entry] of this.objects) {
       if (entry.tags.includes(tag)) {
         Matter.Composite.remove(this.engine.world, entry.body);
         toRemove.push(id);
       }
     }
-    toRemove.forEach((id) => this.entities.delete(id));
+    toRemove.forEach((id) => this.objects.delete(id));
+    // Clean up letter debug info if this was a word tag
+    this.letterDebugInfo.delete(tag);
   }
 
-  getEntityIds(): string[] {
-    return Array.from(this.entities.keys());
+  getObjectIds(): string[] {
+    return Array.from(this.objects.keys());
   }
 
-  getEntityIdsByTag(tag: string): string[] {
+  getObjectIdsByTag(tag: string): string[] {
     const ids: string[] = [];
-    for (const [id, entry] of this.entities) {
+    for (const [id, entry] of this.objects) {
       if (entry.tags.includes(tag)) {
         ids.push(id);
       }
     }
     return ids;
+  }
+
+  /**
+   * Get all unique tags currently in use by objects in the scene.
+   */
+  getAllTags(): string[] {
+    const tagsSet = new Set<string>();
+    for (const entry of this.objects.values()) {
+      for (const tag of entry.tags) {
+        tagsSet.add(tag);
+      }
+    }
+    return Array.from(tagsSet).sort();
   }
 
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
   }
 
-  // ==================== OBSTACLE METHODS ====================
+  // ==================== PRESSURE TRACKING METHODS ====================
 
-  addObstacle(config: ObstacleConfig): string {
-    const id = crypto.randomUUID();
-    const body = createObstacle(id, config, true);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: true,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  /**
+   * Get the current pressure (number of objects resting) on an obstacle.
+   * @param obstacleId - The ID of the obstacle
+   * @returns Number of objects currently resting on the obstacle
+   */
+  getPressure(obstacleId: string): number {
+    return this.obstaclePressure.get(obstacleId)?.size ?? 0;
   }
 
   /**
-   * Add an obstacle asynchronously. Required for image-based obstacles that need
-   * shape extraction from image alpha channel.
+   * Get the IDs of all objects currently resting on an obstacle.
+   * @param obstacleId - The ID of the obstacle
+   * @returns Array of object IDs resting on the obstacle
    */
-  async addObstacleAsync(config: ObstacleConfig): Promise<string> {
-    const id = crypto.randomUUID();
-    const body = await createObstacleAsync(id, config, true);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: true,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
-  }
-
-  spawnFallingObstacle(config: ObstacleConfig): string {
-    const id = crypto.randomUUID();
-    const body = createObstacle(id, config, false);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: false,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
+  getObjectsRestingOn(obstacleId: string): string[] {
+    const set = this.obstaclePressure.get(obstacleId);
+    return set ? Array.from(set) : [];
   }
 
   /**
-   * Spawn a falling obstacle asynchronously. Required for image-based obstacles.
+   * Get all obstacles that have pressure (at least one object resting on them).
+   * @returns Map of obstacle ID -> pressure count
    */
-  async spawnFallingObstacleAsync(config: ObstacleConfig): Promise<string> {
-    const id = crypto.randomUUID();
-    const body = await createObstacleAsync(id, config, false);
-    const entry: ObstacleEntry = {
-      id,
-      body,
-      isStatic: false,
-      tags: config.tags ?? [],
-      spawnTime: performance.now(),
-      ttl: config.ttl,
-      despawnEffect: config.despawnEffect
-    };
-    this.obstacles.set(id, entry);
-    Matter.Composite.add(this.engine.world, body);
-    return id;
-  }
-
-  releaseObstacle(id: string): void {
-    const entry = this.obstacles.get(id);
-    if (!entry) return;
-    Matter.Body.setStatic(entry.body, false);
-    entry.isStatic = false;
-  }
-
-  releaseObstacles(ids: string[]): void {
-    for (const id of ids) {
-      this.releaseObstacle(id);
-    }
-  }
-
-  releaseAllObstacles(): void {
-    for (const entry of this.obstacles.values()) {
-      if (entry.isStatic) {
-        Matter.Body.setStatic(entry.body, false);
-        entry.isStatic = false;
+  getAllPressure(): Map<string, number> {
+    const result = new Map<string, number>();
+    for (const [id, set] of this.obstaclePressure) {
+      if (set.size > 0) {
+        result.set(id, set.size);
       }
     }
+    return result;
   }
 
-  releaseObstaclesByTag(tag: string): void {
-    for (const entry of this.obstacles.values()) {
-      if (entry.tags.includes(tag) && entry.isStatic) {
-        Matter.Body.setStatic(entry.body, false);
-        entry.isStatic = false;
+  /**
+   * Get pressure summary for all obstacles with their display names (letters).
+   * Useful for debugging and visualization.
+   * @returns Array of { id, name, pressure } objects
+   */
+  getPressureSummary(): { id: string; name: string; pressure: number }[] {
+    const summary: { id: string; name: string; pressure: number }[] = [];
+    for (const [id, set] of this.obstaclePressure) {
+      if (set.size > 0) {
+        const entry = this.objects.get(id);
+        summary.push({
+          id,
+          name: entry ? this.getObstacleDisplayName(entry) : id.slice(0, 4),
+          pressure: set.size
+        });
       }
     }
-  }
-
-  removeObstacle(id: string): void {
-    const entry = this.obstacles.get(id);
-    if (!entry) return;
-    Matter.Composite.remove(this.engine.world, entry.body);
-    this.obstacles.delete(id);
-  }
-
-  removeObstacles(ids: string[]): void {
-    for (const id of ids) {
-      this.removeObstacle(id);
-    }
-  }
-
-  removeAllObstacles(): void {
-    for (const entry of this.obstacles.values()) {
-      Matter.Composite.remove(this.engine.world, entry.body);
-    }
-    this.obstacles.clear();
-  }
-
-  removeObstaclesByTag(tag: string): void {
-    const toRemove: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.tags.includes(tag)) {
-        Matter.Composite.remove(this.engine.world, entry.body);
-        toRemove.push(id);
-      }
-    }
-    toRemove.forEach((id) => this.obstacles.delete(id));
-    // Clean up letter debug info if this was a word tag
-    this.letterDebugInfo.delete(tag);
-  }
-
-  getObstacleIds(): string[] {
-    return Array.from(this.obstacles.keys());
-  }
-
-  getObstacleIdsByTag(tag: string): string[] {
-    const ids: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.tags.includes(tag)) {
-        ids.push(id);
-      }
-    }
-    return ids;
+    return summary;
   }
 
   // ==================== FONT MANAGEMENT METHODS ====================
@@ -614,13 +1137,20 @@ export class OverlayScene {
     const fontsBasePath = config.fontsBasePath ?? '/fonts/';
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
-    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
-    const isStatic = config.isStatic ?? true;
+    const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
+    // Determine if static based on tags (no 'falling' tag = static)
+    const baseTags = config.tags ?? [];
+    const isStatic = !baseTags.includes('falling');
     const letterColor = config.letterColor;
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
     const debugInfo: LetterDebugInfo[] = [];
+
+    // Track word boundaries for word-level tagging
+    const wordTagsSet = new Set<string>();
+    let currentWordIndex = 0;
+    let inWord = false;
 
     // Split text into lines
     const lines = text.split('\n');
@@ -687,6 +1217,12 @@ export class OverlayScene {
       const chars = line.split('');
       let currentX = config.x;
 
+      // New line = end of current word (if we were in one)
+      if (inWord) {
+        currentWordIndex++;
+        inWord = false;
+      }
+
       for (let i = 0; i < chars.length; i++) {
         const char = chars[i];
 
@@ -696,6 +1232,11 @@ export class OverlayScene {
           // TODO Replace this with a configured value
           currentX += 20;
           globalCharIndex++;
+          // Space ends the current word
+          if (inWord) {
+            currentWordIndex++;
+            inWord = false;
+          }
           continue;
         }
 
@@ -704,6 +1245,11 @@ export class OverlayScene {
           globalCharIndex++;
           continue;
         }
+
+        // We're now in a word
+        inWord = true;
+        const wordTag = `${stringTag}-word-${currentWordIndex}`;
+        wordTagsSet.add(wordTag);
 
         // Get this letter's original dimensions
         const dims = charDimensions.get(char)!;
@@ -725,12 +1271,12 @@ export class OverlayScene {
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
-        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         const id = crypto.randomUUID();
 
         // Create clipped letter body at the center position
-        const obstacleConfig: ObstacleConfig = {
+        const objectConfig: ObjectConfig = {
           x: centerX,
           y: centerY,
           imageUrl,
@@ -739,17 +1285,56 @@ export class OverlayScene {
           ttl: config.ttl
         };
 
-        const result = await createBoxObstacleWithInfo(id, obstacleConfig, isStatic);
+        const result = await createBoxObstacleWithInfo(id, objectConfig, isStatic);
 
-        const entry: ObstacleEntry = {
+        // Determine pressure threshold for this letter
+        let pressureThreshold: number | undefined;
+        let wordCollapseTag: string | undefined;
+        if (config.pressureThreshold) {
+          const pt = config.pressureThreshold;
+          if (Array.isArray(pt.value)) {
+            // Per-letter thresholds by index
+            pressureThreshold = pt.value[letterIds.length];
+          } else {
+            pressureThreshold = pt.value;
+            if (pt.wordCollapse) {
+              wordCollapseTag = wordTag;
+            }
+          }
+        }
+
+        // Determine weight for this letter
+        let weight = 1;
+        if (config.weight) {
+          if (Array.isArray(config.weight.value)) {
+            weight = config.weight.value[letterIds.length] ?? 1;
+          } else {
+            weight = config.weight.value;
+          }
+        }
+
+        // Determine shadow config
+        const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
+
+        // Determine click to fall config
+        const clicksRemaining = config.clickToFall?.clicks;
+
+        const entry: ObjectEntry = {
           id,
           body: result.body,
-          isStatic,
           tags,
           spawnTime: performance.now(),
-          ttl: config.ttl
+          ttl: config.ttl,
+          pressureThreshold,
+          wordCollapseTag,
+          weight,
+          shadow,
+          originalPosition: shadow || clicksRemaining !== undefined ? { x: centerX, y: centerY } : undefined,
+          imageUrl: shadow || clicksRemaining !== undefined ? imageUrl : undefined,
+          imageSize: shadow || clicksRemaining !== undefined ? letterSize : undefined,
+          clicksRemaining
         };
-        this.obstacles.set(id, entry);
+        this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
 
         letterIds.push(id);
@@ -780,40 +1365,45 @@ export class OverlayScene {
       currentY += lineHeight;
     }
 
-    // Store debug info for this word
-    this.letterDebugInfo.set(wordTag, debugInfo);
+    // Store debug info for this string
+    this.letterDebugInfo.set(stringTag, debugInfo);
 
+    const wordTags = Array.from(wordTagsSet);
     logger.info('OverlayScene', `Created text obstacles`, {
       text: text.replace(/\n/g, '\\n'),
       fontName,
       letterCount: letterIds.length,
-      wordTag,
+      stringTag,
+      wordTags,
       letterColor,
       lineCount: lines.length
     });
 
     return {
       letterIds,
-      wordTag,
+      stringTag,
+      wordTags,
       letterMap,
       letterDebugInfo: debugInfo
     };
   }
 
   /**
-   * Spawn falling text obstacles from a string.
-   * Same as addTextObstacles but obstacles are non-static (fall with gravity).
+   * Spawn falling text objects from a string.
+   * Same as addTextObstacles but with 'falling' tag (objects fall with gravity).
    */
   async spawnFallingTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    return this.addTextObstacles({ ...config, isStatic: false });
+    const tags = [...(config.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.addTextObstacles({ ...config, tags });
   }
 
   /**
-   * Release all letters in a word (make them non-static so they fall).
+   * Release all letters in a word (add 'falling' tag so they fall).
    * @param wordTag - The word tag returned from addTextObstacles
    */
   releaseTextObstacles(wordTag: string): void {
-    this.releaseObstaclesByTag(wordTag);
+    this.releaseObjectsByTag(wordTag);
   }
 
   /**
@@ -823,11 +1413,11 @@ export class OverlayScene {
    * @param reverse - If true, release from end to start (default: false)
    */
   async releaseTextObstaclesSequentially(wordTag: string, delayMs: number = 100, reverse: boolean = false): Promise<void> {
-    const ids = this.getObstacleIdsByTag(wordTag);
+    const ids = this.getObjectIdsByTag(wordTag);
     if (reverse) ids.reverse();
 
     for (const id of ids) {
-      this.releaseObstacle(id);
+      this.releaseObject(id);
       if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
@@ -862,13 +1452,20 @@ export class OverlayScene {
     const { x, y, fontSize, fontUrl } = config;
     // Convert literal \n strings to actual newlines
     const text = config.text.replace(/\\n/g, '\n');
-    const wordTag = config.wordTag ?? `word-${crypto.randomUUID().slice(0, 8)}`;
-    const isStatic = config.isStatic ?? true;
+    const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
+    // Determine if static based on tags (no 'falling' tag = static)
+    const baseTags = config.tags ?? [];
+    const isStatic = !baseTags.includes('falling');
     const fillColor = config.fillColor ?? '#ffffff';
     const lineHeight = config.lineHeight ?? fontSize * 1.2;
 
     const letterIds: string[] = [];
     const letterMap = new Map<string, string>();
+
+    // Track word boundaries for word-level tagging
+    const wordTagsSet = new Set<string>();
+    let currentWordIndex = 0;
+    let inWord = false;
 
     // Load the font
     const loadedFont = await loadFont(fontUrl);
@@ -888,6 +1485,12 @@ export class OverlayScene {
       // Track current X position as we place each glyph
       let currentX = x;
 
+      // New line = end of current word (if we were in one)
+      if (inWord) {
+        currentWordIndex++;
+        inWord = false;
+      }
+
       const chars = line.split('');
 
       for (let i = 0; i < chars.length; i++) {
@@ -906,11 +1509,21 @@ export class OverlayScene {
             currentX += getKerning(loadedFont, char, chars[i + 1], fontSize);
           }
           globalCharIndex++;
+          // Space/unsupported char ends the current word
+          if (char === ' ' && inWord) {
+            currentWordIndex++;
+            inWord = false;
+          }
           continue;
         }
 
+        // We're now in a word
+        inWord = true;
+        const wordTag = `${stringTag}-word-${currentWordIndex}`;
+        wordTagsSet.add(wordTag);
+
         const id = crypto.randomUUID();
-        const tags = [...(config.tags ?? []), wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
@@ -941,10 +1554,41 @@ export class OverlayScene {
         const offsetX = currentX - body.position.x;
         const offsetY = currentY - body.position.y;
 
-        const entry: ObstacleEntry = {
+        // Determine pressure threshold for this letter
+        let pressureThreshold: number | undefined;
+        let wordCollapseTag: string | undefined;
+        if (config.pressureThreshold) {
+          const pt = config.pressureThreshold;
+          if (Array.isArray(pt.value)) {
+            // Per-letter thresholds by index
+            pressureThreshold = pt.value[letterIds.length];
+          } else {
+            pressureThreshold = pt.value;
+            if (pt.wordCollapse) {
+              wordCollapseTag = wordTag;
+            }
+          }
+        }
+
+        // Determine weight for this letter
+        let weight = 1;
+        if (config.weight) {
+          if (Array.isArray(config.weight.value)) {
+            weight = config.weight.value[letterIds.length] ?? 1;
+          } else {
+            weight = config.weight.value;
+          }
+        }
+
+        // Determine shadow config
+        const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
+
+        // Determine click to fall config
+        const clicksRemaining = config.clickToFall?.clicks;
+
+        const entry: ObjectEntry = {
           id,
           body,
-          isStatic,
           tags,
           spawnTime: performance.now(),
           ttl: config.ttl,
@@ -955,9 +1599,15 @@ export class OverlayScene {
             fillColor,
             offsetX,
             offsetY
-          }
+          },
+          pressureThreshold,
+          wordCollapseTag,
+          weight,
+          shadow,
+          originalPosition: shadow || clicksRemaining !== undefined ? { x: body.position.x, y: body.position.y } : undefined,
+          clicksRemaining
         };
-        this.obstacles.set(id, entry);
+        this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
 
         letterIds.push(id);
@@ -978,42 +1628,45 @@ export class OverlayScene {
       currentY += lineHeight;
     }
 
+    const wordTags = Array.from(wordTagsSet);
     logger.info('OverlayScene', `Created TTF text obstacles`, {
       text: text.replace(/\n/g, '\\n'),
       fontUrl,
       fontSize,
       letterCount: letterIds.length,
-      wordTag,
+      stringTag,
+      wordTags,
       lineCount: lines.length
     });
 
     // TTF fonts use font metrics, not PNG dimensions, so debug info is empty
     return {
       letterIds,
-      wordTag,
+      stringTag,
+      wordTags,
       letterMap,
       letterDebugInfo: []
     };
   }
 
   /**
-   * Spawn falling TTF text obstacles.
-   * Same as addTTFTextObstacles but obstacles are non-static (fall with gravity).
+   * Spawn falling TTF text objects.
+   * Same as addTTFTextObstacles but with 'falling' tag (objects fall with gravity).
    */
   async spawnFallingTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
-    return this.addTTFTextObstacles({ ...config, isStatic: false });
+    const tags = [...(config.tags ?? [])];
+    if (!tags.includes('falling')) tags.push('falling');
+    return this.addTTFTextObstacles({ ...config, tags });
   }
 
   // ==================== COMBINED TAG METHODS ====================
 
   removeAllByTag(tag: string): void {
-    this.removeEntitiesByTag(tag);
-    this.removeObstaclesByTag(tag);
+    this.removeObjectsByTag(tag);
   }
 
   removeAll(): void {
-    this.removeAllEntities();
-    this.removeAllObstacles();
+    this.removeAllObjects();
   }
 
   // ==================== CALLBACKS ====================
@@ -1070,19 +1723,30 @@ export class OverlayScene {
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
-    // Update effects (spawn entities)
+    // Update effects (spawn objects)
     this.effectManager.update();
 
     // Check for TTL expiration
     this.checkTTLExpiration();
 
-    for (const entry of this.entities.values()) {
-      // Only apply mouse force to GROUNDED_FOLLOW entities, and not if being dragged
+    // Check for objects fallen below floor (despawn them)
+    this.checkDespawnBelowFloor();
+
+    // Update pressure tracking
+    this.updatePressure();
+
+    // Apply tag-based behaviors to all objects
+    const mouseX = this.mouse?.position.x ?? this.mouseX;
+
+    for (const entry of this.objects.values()) {
+      // Only apply mouse force to objects with 'follow' tag, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
-      if (!isDragging && entry.entityType === 'GROUNDED_FOLLOW') {
-        applyMouseForce(entry.body, this.mouseX, entry.grounded);
+      if (!isDragging && entry.tags.includes('follow')) {
+        applyMouseForce(entry.body, mouseX, this.isGrounded(entry.body));
       }
-      if (this.config.wrapHorizontal) {
+
+      // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)
+      if (this.config.wrapHorizontal && entry.tags.includes('falling')) {
         wrapHorizontal(entry.body, this.config.bounds);
       }
     }
@@ -1112,12 +1776,12 @@ export class OverlayScene {
     // Draw original dimension boxes for all letters
     for (const [, debugInfos] of this.letterDebugInfo) {
       for (const info of debugInfos) {
-        // Check if the obstacle still exists
-        const obstacle = this.obstacles.get(info.id);
-        if (!obstacle) continue;
+        // Check if the object still exists
+        const object = this.objects.get(info.id);
+        if (!object) continue;
 
-        // Get current body position (letters may have moved if not static)
-        const body = obstacle.body;
+        // Get current body position (letters may have moved if dynamic)
+        const body = object.body;
 
         // Draw the original dimension box (cyan dashed outline)
         ctx.save();
@@ -1146,7 +1810,7 @@ export class OverlayScene {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
 
-    for (const [, entry] of this.obstacles) {
+    for (const [, entry] of this.objects) {
       if (!entry.ttfGlyph) continue;
 
       const { char, fontSize, fontFamily, fillColor, offsetX, offsetY } = entry.ttfGlyph;
@@ -1173,38 +1837,45 @@ export class OverlayScene {
   private checkTTLExpiration(): void {
     const now = performance.now();
 
-    // Check entities
-    const expiredEntities: string[] = [];
-    for (const [id, entry] of this.entities) {
+    // Check all objects for expiration
+    const expiredObjects: string[] = [];
+    for (const [id, entry] of this.objects) {
       if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
         // TODO: Trigger despawn effect when implemented
         // if (entry.despawnEffect) { ... }
-        expiredEntities.push(id);
+        expiredObjects.push(id);
       }
     }
-    for (const id of expiredEntities) {
-      this.removeEntity(id);
+    for (const id of expiredObjects) {
+      this.removeObject(id);
+    }
+  }
+
+  /** Despawn objects that have fallen below the floor by the configured distance */
+  private checkDespawnBelowFloor(): void {
+    // Default to 100% of container height below floor
+    const despawnDistance = this.config.despawnBelowFloor ?? 1.0;
+    const containerHeight = this.config.bounds.bottom - this.config.bounds.top;
+    const despawnY = this.config.bounds.bottom + (containerHeight * despawnDistance);
+
+    const toDespawn: string[] = [];
+    for (const [id, entry] of this.objects) {
+      if (entry.body.position.y > despawnY) {
+        toDespawn.push(id);
+      }
     }
 
-    // Check obstacles
-    const expiredObstacles: string[] = [];
-    for (const [id, entry] of this.obstacles) {
-      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
-        // TODO: Trigger despawn effect when implemented
-        // if (entry.despawnEffect) { ... }
-        expiredObstacles.push(id);
-      }
-    }
-    for (const id of expiredObstacles) {
-      this.removeObstacle(id);
+    for (const id of toDespawn) {
+      this.removeObject(id);
     }
   }
 
   private fireUpdateCallbacks(): void {
-    const dynamicObstacles: DynamicObstacle[] = [];
-    this.obstacles.forEach((entry) => {
-      if (!entry.isStatic) {
-        dynamicObstacles.push({
+    // Collect all dynamic objects (objects with 'falling' tag)
+    const objects: DynamicObject[] = [];
+    this.objects.forEach((entry) => {
+      if (entry.tags.includes('falling')) {
+        objects.push({
           id: entry.id,
           x: entry.body.position.x,
           y: entry.body.position.y,
@@ -1214,19 +1885,7 @@ export class OverlayScene {
       }
     });
 
-    const entities: DynamicEntity[] = [];
-    this.entities.forEach((entry) => {
-      entities.push({
-        id: entry.id,
-        x: entry.body.position.x,
-        y: entry.body.position.y,
-        angle: entry.body.angle,
-        tags: entry.tags,
-        entityType: entry.entityType
-      });
-    });
-
-    const data: UpdateCallbackData = { dynamicObstacles, entities };
+    const data: UpdateCallbackData = { objects };
     this.updateCallbacks.forEach((cb) => cb(data));
   }
 

@@ -4,6 +4,32 @@ export interface OverlaySceneConfig {
   wrapHorizontal?: boolean;
   debug?: boolean;
   background?: string;
+  /** @deprecated Use floorConfig instead. Pressure threshold for the floor boundary. */
+  floorThreshold?: number;
+  /** Distance below floor (as fraction of container height) at which objects despawn. Default: 1.0 (100%) */
+  despawnBelowFloor?: number;
+  /** Configuration for floor segments and thresholds */
+  floorConfig?: FloorConfig;
+}
+
+/**
+ * Configuration for floor segments and pressure thresholds.
+ * When provided, floor can be divided into segments with individual collapse behavior.
+ */
+export interface FloorConfig {
+  /**
+   * Number of segments to divide the floor into.
+   * If not provided or 1, floor is a single strip.
+   */
+  segments?: number;
+
+  /**
+   * Pressure threshold(s) for floor segments:
+   * - number: Same threshold for all segments
+   * - number[]: Per-segment thresholds (segment 0 uses value[0], etc.)
+   * If not provided, segments have infinite capacity.
+   */
+  threshold?: number | number[];
 }
 
 export interface Bounds {
@@ -41,81 +67,58 @@ export interface DespawnEffectConfig {
   type?: string;
 }
 
-export interface EntityConfig {
+/**
+ * Unified configuration for spawning scene objects.
+ * Objects are configured via tags that define their behavior:
+ * - 'falling': Object is dynamic and affected by gravity (without this tag, object is static)
+ * - 'follow': Object follows mouse position when grounded
+ * - 'grabable': Object can be dragged via mouse constraint
+ */
+export interface ObjectConfig {
   x: number;
   y: number;
-  radius: number;
-  fillStyle?: string;
-  imageUrl?: string;
-  tags?: string[];
-  /** Shape configuration. Defaults to circle if not specified */
-  shape?: ShapeConfig;
-  /** Entity behavior type. Defaults to GROUNDED_FOLLOW */
-  entityType?: EntityType;
-  /** Time-to-live in milliseconds. If not set, entity lives forever */
-  ttl?: number;
-  /** Configuration for despawn effect (future use) */
-  despawnEffect?: DespawnEffectConfig;
-}
-
-export interface ObstacleConfig {
-  x: number;
-  y: number;
-  /** Width for rectangle obstacles (ignored if imageUrl is provided) */
+  /** Radius for circle/polygon shapes */
+  radius?: number;
+  /** Width for rectangle objects (ignored if imageUrl is provided) */
   width?: number;
-  /** Height for rectangle obstacles (ignored if imageUrl is provided) */
+  /** Height for rectangle objects (ignored if imageUrl is provided) */
   height?: number;
-  /** Image URL for image-based obstacle shapes */
+  /** Image URL for image-based shapes */
   imageUrl?: string;
-  /** Size of the obstacle when using imageUrl (diameter) */
+  /** Size of the object when using imageUrl (diameter) */
   size?: number;
   /** Fill style color */
   fillStyle?: string;
+  /** Tags that define object behavior */
   tags?: string[];
-  /** Time-to-live in milliseconds. If not set, obstacle lives forever */
+  /** Shape configuration. Defaults to circle if radius provided, rectangle otherwise */
+  shape?: ShapeConfig;
+  /** Time-to-live in milliseconds. If not set, object lives forever */
   ttl?: number;
   /** Configuration for despawn effect (future use) */
   despawnEffect?: DespawnEffectConfig;
+  /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
+  weight?: number;
 }
 
-export interface DynamicObstacle {
+/**
+ * Dynamic object data passed to update callbacks.
+ * Only objects with the 'falling' tag (dynamic objects) are included.
+ */
+export interface DynamicObject {
   id: string;
   x: number;
   y: number;
   angle: number;
   tags: string[];
-}
-
-export interface DynamicEntity {
-  id: string;
-  x: number;
-  y: number;
-  angle: number;
-  tags: string[];
-  entityType: EntityType;
 }
 
 export interface UpdateCallbackData {
-  dynamicObstacles: DynamicObstacle[];
-  entities: DynamicEntity[];
+  /** All dynamic objects (objects with 'falling' tag) */
+  objects: DynamicObject[];
 }
 
 export type UpdateCallback = (data: UpdateCallbackData) => void;
-
-export type EntityState = 'idle' | 'moving' | 'falling' | 'grounded';
-
-/**
- * Entity behavior types
- * - GROUNDED_FOLLOW: Entity follows mouse position when grounded (default)
- * - GROUNDED_STATIC: Entity does not follow mouse but can still be bumped/dragged
- */
-export type EntityType = 'GROUNDED_FOLLOW' | 'GROUNDED_STATIC';
-
-/** Debug outline colors per entity type */
-export const ENTITY_TYPE_DEBUG_COLORS: Record<EntityType, string> = {
-  GROUNDED_FOLLOW: '#ff0000', // red
-  GROUNDED_STATIC: '#00ffff'  // cyan
-};
 
 export interface ContainerOptions {
   width?: number;
@@ -126,19 +129,19 @@ export interface ContainerOptions {
 // ==================== EFFECT TYPES ====================
 
 /**
- * Configuration for an entity type that can be spawned by an effect.
- * Effects can spawn multiple entity types with different probabilities.
+ * Configuration for an object type that can be spawned by an effect.
+ * Effects can spawn multiple object types with different probabilities.
  */
-export interface EffectEntityConfig {
-  /** Partial entity config - x, y will be set by the effect */
-  entityConfig: Omit<EntityConfig, 'x' | 'y' | 'radius'> & { radius?: number };
-  /** Probability weight for this entity type (relative to other entities in the effect) */
+export interface EffectObjectConfig {
+  /** Partial object config - x, y will be set by the effect */
+  objectConfig: Omit<ObjectConfig, 'x' | 'y' | 'radius'> & { radius?: number };
+  /** Probability weight for this object type (relative to others in the effect) */
   probability: number;
   /** Minimum scale multiplier for radius */
   minScale: number;
   /** Maximum scale multiplier for radius */
   maxScale: number;
-  /** Base radius for the entity (default: 20) */
+  /** Base radius for the object (default: 20) */
   baseRadius?: number;
 }
 
@@ -150,8 +153,8 @@ export interface BaseEffectConfig {
   id: string;
   /** Whether the effect is currently active */
   enabled: boolean;
-  /** Entity configurations with their spawn probabilities */
-  entityConfigs: EffectEntityConfig[];
+  /** Object configurations with their spawn probabilities */
+  objectConfigs: EffectObjectConfig[];
 }
 
 /**
@@ -200,13 +203,75 @@ export interface StreamEffectConfig extends BaseEffectConfig {
 export type EffectConfig = BurstEffectConfig | RainEffectConfig | StreamEffectConfig;
 export type EffectType = EffectConfig['type'];
 
+// ==================== PRESSURE THRESHOLD TYPES ====================
+
+/**
+ * Configuration for pressure-based collapse of obstacles.
+ * When pressure (number of objects resting on an obstacle) reaches the threshold,
+ * the obstacle converts to dynamic (falling).
+ */
+export interface PressureThresholdConfig {
+  /**
+   * Threshold value(s):
+   * - number: Single threshold applied per-letter (or word total if wordCollapse is true)
+   * - number[]: Per-letter thresholds by index (letter 0 uses value[0], etc.)
+   */
+  value: number | number[];
+
+  /**
+   * When true and value is a single number:
+   * - Tracks total pressure across all letters in the word
+   * - When total reaches threshold, ALL letters in the word collapse together
+   * When false or undefined (default):
+   * - Each letter tracks its own pressure
+   * - Only the letter that reaches threshold collapses
+   */
+  wordCollapse?: boolean;
+}
+
+/**
+ * Configuration for weight of obstacles (used when they collapse and become falling objects).
+ * Weight determines how much pressure an object contributes when resting on something.
+ */
+export interface WeightConfig {
+  /**
+   * Weight value(s):
+   * - number: Single weight applied to all letters
+   * - number[]: Per-letter weights by index (letter 0 uses value[0], etc.)
+   */
+  value: number | number[];
+}
+
+/**
+ * Configuration for shadow left behind when an obstacle collapses.
+ * When enabled, a static washed-out version of the obstacle remains at its original position.
+ */
+export interface ShadowConfig {
+  /**
+   * Opacity of the shadow (0-1). Default: 0.3
+   */
+  opacity?: number;
+}
+
+/**
+ * Configuration for click to fall behavior.
+ * When enabled, obstacles collapse after being clicked a specified number of times.
+ */
+export interface ClickToFallConfig {
+  /**
+   * Number of clicks required before the obstacle falls.
+   * Each click decrements the counter; when it reaches zero, the obstacle collapses.
+   */
+  clicks: number;
+}
+
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
- * Configuration for creating text obstacles from strings
+ * Configuration for creating text objects from strings
  */
 export interface TextObstacleConfig {
-  /** The text to create obstacles from (A-Z, 0-9 supported, supports \n for multiline) */
+  /** The text to create objects from (A-Z, 0-9 supported, supports \n for multiline) */
   text: string;
   /** X position of the first letter's center */
   x: number;
@@ -220,18 +285,24 @@ export interface TextObstacleConfig {
   fontName?: string;
   /** Base URL path for fonts directory (default: '/fonts/') */
   fontsBasePath?: string;
-  /** Tags to apply to all letters */
+  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
-  /** Additional tag for the word group (for releasing whole word) */
-  wordTag?: string;
-  /** Whether obstacles are static (default: true) */
-  isStatic?: boolean;
+  /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
+  stringTag?: string;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Color to tint the letters (CSS color string). If not set, original image colors are used */
   letterColor?: string;
   /** Line height for multiline text (default: letterSize * 1.2) */
   lineHeight?: number;
+  /** Pressure threshold config - when reached, letters collapse */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Weight config - when letters collapse, this is their pressure contribution */
+  weight?: WeightConfig;
+  /** Shadow config - when enabled, a washed-out version remains after collapse */
+  shadow?: ShadowConfig;
+  /** Click to fall config - when set, letters collapse after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**
@@ -262,8 +333,10 @@ export interface LetterDebugInfo {
 export interface TextObstacleResult {
   /** IDs of all created letter obstacles */
   letterIds: string[];
-  /** The word tag used to group these letters */
-  wordTag: string;
+  /** Tag for the entire string (all letters) */
+  stringTag: string;
+  /** Tags for each individual word (space/newline separated) */
+  wordTags: string[];
   /** Map of character to obstacle ID for individual control */
   letterMap: Map<string, string>;
   /** Debug info for each letter (for drawing original dimension boxes) */
@@ -271,7 +344,7 @@ export interface TextObstacleResult {
 }
 
 /**
- * Configuration for creating text obstacles from a TTF font
+ * Configuration for creating text objects from a TTF font
  */
 export interface TTFTextObstacleConfig {
   /** Text to display (supports \n for multiline) */
@@ -284,18 +357,24 @@ export interface TTFTextObstacleConfig {
   fontSize: number;
   /** URL path to the TTF/OTF font file */
   fontUrl: string;
-  /** Tags to apply to all letters */
+  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
   tags?: string[];
-  /** Additional tag for the word group (for releasing whole word) */
-  wordTag?: string;
-  /** Whether obstacles are static (default: true) */
-  isStatic?: boolean;
+  /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
+  stringTag?: string;
   /** Time-to-live in milliseconds */
   ttl?: number;
   /** Fill color for the letters (CSS color string, default: '#ffffff') */
   fillColor?: string;
   /** Line height for multiline text (default: fontSize * 1.2) */
   lineHeight?: number;
+  /** Pressure threshold config - when reached, letters collapse */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Weight config - when letters collapse, this is their pressure contribution */
+  weight?: WeightConfig;
+  /** Shadow config - when enabled, a washed-out version remains after collapse */
+  shadow?: ShadowConfig;
+  /** Click to fall config - when set, letters collapse after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**

@@ -1,34 +1,36 @@
 export { OverlayScene } from './OverlayScene';
 export { logger, setLogLevel, getLogLevel } from './logger';
 export { loadFont, getGlyphData, getKerning, measureText, clearFontCache } from './fontLoader';
-export { ENTITY_TYPE_DEBUG_COLORS } from './types';
 export type {
   OverlaySceneConfig,
   Bounds,
-  EntityConfig,
-  ObstacleConfig,
-  DynamicObstacle,
-  DynamicEntity,
+  // Core object types (unified model)
+  ObjectConfig,
+  DynamicObject,
   UpdateCallbackData,
   UpdateCallback,
-  EntityState,
   ContainerOptions,
   ShapeConfig,
   ShapePreset,
-  EntityType,
   DespawnEffectConfig,
   // Effect types
   EffectConfig,
   EffectType,
-  EffectEntityConfig,
+  EffectObjectConfig,
   BaseEffectConfig,
   BurstEffectConfig,
   RainEffectConfig,
   StreamEffectConfig,
-  // Text obstacle types
+  // Text object types
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
+  // Pressure, weight, floor, shadow, and click types
+  PressureThresholdConfig,
+  WeightConfig,
+  FloorConfig,
+  ShadowConfig,
+  ClickToFallConfig,
   // Font types
   FontInfo,
   FontManifest
