@@ -47,7 +47,8 @@
       letterSize: 50,
       pressureThreshold: { value: 6 },
       weight: { value: 3 },
-      shadow: { opacity: 0.25 }
+      shadow: { opacity: 0.25 },
+      clickToFall: { clicks: 2 }
     });
 
     updateRainEffect();

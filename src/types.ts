@@ -253,6 +253,18 @@ export interface ShadowConfig {
   opacity?: number;
 }
 
+/**
+ * Configuration for click to fall behavior.
+ * When enabled, obstacles collapse after being clicked a specified number of times.
+ */
+export interface ClickToFallConfig {
+  /**
+   * Number of clicks required before the obstacle falls.
+   * Each click decrements the counter; when it reaches zero, the obstacle collapses.
+   */
+  clicks: number;
+}
+
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
@@ -289,6 +301,8 @@ export interface TextObstacleConfig {
   weight?: WeightConfig;
   /** Shadow config - when enabled, a washed-out version remains after collapse */
   shadow?: ShadowConfig;
+  /** Click to fall config - when set, letters collapse after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**
@@ -359,6 +373,8 @@ export interface TTFTextObstacleConfig {
   weight?: WeightConfig;
   /** Shadow config - when enabled, a washed-out version remains after collapse */
   shadow?: ShadowConfig;
+  /** Click to fall config - when set, letters collapse after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**

@@ -64,6 +64,8 @@ interface ObjectEntry {
   imageUrl?: string;
   /** Image size (for shadow rendering) */
   imageSize?: number;
+  /** Clicks remaining before this obstacle collapses (undefined = no click behavior) */
+  clicksRemaining?: number;
 }
 
 export class OverlayScene {
@@ -158,6 +160,9 @@ export class OverlayScene {
     // Filter grabbing based on 'grabable' tag
     Matter.Events.on(this.mouseConstraint, 'startdrag', this.handleStartDrag);
 
+    // Handle clicks for click-to-fall behavior
+    canvas.addEventListener('click', this.handleCanvasClick);
+
     // Keep render in sync with mouse for pixel ratio
     this.render.mouse = this.mouse;
 
@@ -181,6 +186,40 @@ export class OverlayScene {
     if (!entry || !entry.tags.includes('grabable')) {
       if (this.mouseConstraint) {
         this.mouseConstraint.constraint.bodyB = null;
+      }
+    }
+  };
+
+  /** Handle canvas clicks for click-to-fall behavior */
+  private handleCanvasClick = (event: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // Find all bodies at the click position
+    const bodies = Matter.Query.point(
+      Matter.Composite.allBodies(this.engine.world),
+      { x, y }
+    );
+
+    // Process each clicked body
+    for (const body of bodies) {
+      const entry = this.findObjectByBody(body);
+      if (!entry) continue;
+
+      // Skip if already falling or no click behavior
+      if (entry.tags.includes('falling')) continue;
+      if (entry.clicksRemaining === undefined) continue;
+
+      // Decrement clicks remaining
+      entry.clicksRemaining--;
+
+      const name = this.getObstacleDisplayName(entry);
+      logger.debug('OverlayScene', `Click on ${name}: ${entry.clicksRemaining} clicks remaining`);
+
+      // Collapse if no clicks remaining
+      if (entry.clicksRemaining <= 0) {
+        this.collapseObstacle(entry);
       }
     }
   };
@@ -641,6 +680,7 @@ export class OverlayScene {
     if (this.mouseConstraint) {
       Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
     }
+    this.canvas.removeEventListener('click', this.handleCanvasClick);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
     this.obstaclePressure.clear();
@@ -1276,6 +1316,9 @@ export class OverlayScene {
         // Determine shadow config
         const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
 
+        // Determine click to fall config
+        const clicksRemaining = config.clickToFall?.clicks;
+
         const entry: ObjectEntry = {
           id,
           body: result.body,
@@ -1286,9 +1329,10 @@ export class OverlayScene {
           wordCollapseTag,
           weight,
           shadow,
-          originalPosition: shadow ? { x: centerX, y: centerY } : undefined,
-          imageUrl: shadow ? imageUrl : undefined,
-          imageSize: shadow ? letterSize : undefined
+          originalPosition: shadow || clicksRemaining !== undefined ? { x: centerX, y: centerY } : undefined,
+          imageUrl: shadow || clicksRemaining !== undefined ? imageUrl : undefined,
+          imageSize: shadow || clicksRemaining !== undefined ? letterSize : undefined,
+          clicksRemaining
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
@@ -1539,6 +1583,9 @@ export class OverlayScene {
         // Determine shadow config
         const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
 
+        // Determine click to fall config
+        const clicksRemaining = config.clickToFall?.clicks;
+
         const entry: ObjectEntry = {
           id,
           body,
@@ -1557,7 +1604,8 @@ export class OverlayScene {
           wordCollapseTag,
           weight,
           shadow,
-          originalPosition: shadow ? { x: body.position.x, y: body.position.y } : undefined
+          originalPosition: shadow || clicksRemaining !== undefined ? { x: body.position.x, y: body.position.y } : undefined,
+          clicksRemaining
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);

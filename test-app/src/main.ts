@@ -179,6 +179,7 @@ async function createScene(width: number, height: number): Promise<void> {
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
   // Weight of 10 - when letters collapse, they contribute 10 to pressure below
   // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
+  // Click to fall - letters collapse after being clicked 2 times
   const welcomeResult = await scene.addTextObstacles({
     text: 'Welcome to Blorkfield',
     x: welcomeX,
@@ -187,7 +188,8 @@ async function createScene(width: number, height: number): Promise<void> {
     tags: ['welcome-text'],
     pressureThreshold: { value: 9 },
     weight: { value: 10 },
-    shadow: { opacity: 0.3 }
+    shadow: { opacity: 0.3 },
+    clickToFall: { clicks: 2 }
   });
   console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
 
@@ -195,6 +197,7 @@ async function createScene(width: number, height: number): Promise<void> {
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
   // Weight of 10 - when letters collapse, they contribute 10 to pressure below
   // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
+  // Click to fall - letters collapse after being clicked 2 times
   const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
   if (robotoFont?.fontUrl) {
     const buildResult = await scene.addTTFTextObstacles({
@@ -207,7 +210,8 @@ async function createScene(width: number, height: number): Promise<void> {
       tags: ['build-text'],
       pressureThreshold: { value: 9 },
       weight: { value: 10 },
-      shadow: { opacity: 0.3 }
+      shadow: { opacity: 0.3 },
+      clickToFall: { clicks: 2 }
     });
     console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
   }

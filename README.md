@@ -42,6 +42,7 @@ Static obstacles track how many dynamic objects are resting on them. When the ac
 | Word collapse mode | All letters in a word collapse together |
 | Weighted pressure | Objects contribute configurable weight values |
 | Shadows | Leave a faded copy behind when collapsing |
+| Click to fall | Collapse after being clicked a specified number of times |
 
 ### Floor Segments
 
@@ -135,7 +136,8 @@ const result = await scene.addTextObstacles({
   letterColor: '#ff00ff',
   pressureThreshold: { value: 5 },
   weight: { value: 2 },
-  shadow: { opacity: 0.3 }
+  shadow: { opacity: 0.3 },
+  clickToFall: { clicks: 2 }
 });
 
 // Access created elements
@@ -156,7 +158,8 @@ const result = await scene.addTTFTextObstacles({
   fontSize: 40,
   fontUrl: '/fonts/Roboto/static/Roboto-Regular.ttf',
   fillColor: '#ffffff',
-  pressureThreshold: { value: 10 }
+  pressureThreshold: { value: 10 },
+  clickToFall: { clicks: 3 }
 });
 ```
 
@@ -408,6 +411,7 @@ import type {
   PressureThresholdConfig,
   WeightConfig,
   ShadowConfig,
+  ClickToFallConfig,
   FloorConfig
 } from '@blorkfield/overlay-core';
 ```
