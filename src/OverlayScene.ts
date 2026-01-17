@@ -56,6 +56,14 @@ interface ObjectEntry {
   wordCollapseTag?: string;
   /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
   weight: number;
+  /** Shadow config - when set, a washed-out static copy is left behind on collapse */
+  shadow?: { opacity: number };
+  /** Original position (for shadow placement) */
+  originalPosition?: { x: number; y: number };
+  /** Image URL (for shadow rendering) */
+  imageUrl?: string;
+  /** Image size (for shadow rendering) */
+  imageSize?: number;
 }
 
 export class OverlayScene {
@@ -486,6 +494,11 @@ export class OverlayScene {
     const name = this.getObstacleDisplayName(entry);
     console.log(`[Pressure] Collapsed: ${name}`);
 
+    // Create shadow if configured
+    if (entry.shadow && entry.originalPosition) {
+      this.createShadow(entry);
+    }
+
     // Add falling tag
     entry.tags.push('falling');
 
@@ -495,6 +508,98 @@ export class OverlayScene {
     // Clear threshold so it doesn't trigger again
     entry.pressureThreshold = undefined;
     entry.wordCollapseTag = undefined;
+  }
+
+  /** Create a static shadow copy of an obstacle at its original position */
+  private async createShadow(entry: ObjectEntry): Promise<void> {
+    if (!entry.originalPosition) return;
+
+    const opacity = entry.shadow?.opacity ?? 0.3;
+    const shadowId = `shadow-${entry.id}`;
+
+    // Handle TTF glyph shadows (canvas-rendered text)
+    if (entry.ttfGlyph) {
+      // For TTF glyphs, create a minimal static body and store shadow glyph info
+      const body = Matter.Bodies.circle(entry.originalPosition.x, entry.originalPosition.y, 1, {
+        isStatic: true,
+        isSensor: true, // Don't collide
+        label: `shadow:${shadowId}`,
+        render: { visible: false }
+      });
+
+      const shadowEntry: ObjectEntry = {
+        id: shadowId,
+        body,
+        tags: ['shadow'],
+        spawnTime: performance.now(),
+        weight: 0,
+        ttfGlyph: {
+          ...entry.ttfGlyph,
+          fillColor: this.applyOpacityToColor(entry.ttfGlyph.fillColor, opacity)
+        }
+      };
+      this.objects.set(shadowId, shadowEntry);
+      Matter.Composite.add(this.engine.world, body);
+      return;
+    }
+
+    // Handle image-based shadows
+    if (!entry.imageUrl) return;
+
+    const result = await createBoxObstacleWithInfo(shadowId, {
+      x: entry.originalPosition.x,
+      y: entry.originalPosition.y,
+      imageUrl: entry.imageUrl,
+      size: entry.imageSize ?? 50,
+      tags: ['shadow']
+    }, true);
+
+    // Make shadow non-colliding (purely visual)
+    result.body.isSensor = true;
+
+    // Set shadow opacity via render
+    if (result.body.render.sprite) {
+      result.body.render.opacity = opacity;
+    }
+
+    // Store shadow as object (static, no pressure tracking)
+    const shadowEntry: ObjectEntry = {
+      id: shadowId,
+      body: result.body,
+      tags: ['shadow'],
+      spawnTime: performance.now(),
+      weight: 0 // Shadows don't contribute to pressure
+    };
+    this.objects.set(shadowId, shadowEntry);
+    Matter.Composite.add(this.engine.world, result.body);
+  }
+
+  /** Apply opacity to a CSS color string */
+  private applyOpacityToColor(color: string, opacity: number): string {
+    // Handle hex colors
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      let r, g, b;
+      if (hex.length === 3) {
+        r = parseInt(hex[0] + hex[0], 16);
+        g = parseInt(hex[1] + hex[1], 16);
+        b = parseInt(hex[2] + hex[2], 16);
+      } else {
+        r = parseInt(hex.slice(0, 2), 16);
+        g = parseInt(hex.slice(2, 4), 16);
+        b = parseInt(hex.slice(4, 6), 16);
+      }
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+    // Handle rgb/rgba
+    if (color.startsWith('rgb')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (match) {
+        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`;
+      }
+    }
+    // Fallback: return with alpha
+    return color;
   }
 
   /** Find an object entry by its Matter.js body (handles compound body parts) */
@@ -1168,6 +1273,9 @@ export class OverlayScene {
           }
         }
 
+        // Determine shadow config
+        const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
+
         const entry: ObjectEntry = {
           id,
           body: result.body,
@@ -1176,7 +1284,11 @@ export class OverlayScene {
           ttl: config.ttl,
           pressureThreshold,
           wordCollapseTag,
-          weight
+          weight,
+          shadow,
+          originalPosition: shadow ? { x: centerX, y: centerY } : undefined,
+          imageUrl: shadow ? imageUrl : undefined,
+          imageSize: shadow ? letterSize : undefined
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
@@ -1424,6 +1536,9 @@ export class OverlayScene {
           }
         }
 
+        // Determine shadow config
+        const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
+
         const entry: ObjectEntry = {
           id,
           body,
@@ -1440,7 +1555,9 @@ export class OverlayScene {
           },
           pressureThreshold,
           wordCollapseTag,
-          weight
+          weight,
+          shadow,
+          originalPosition: shadow ? { x: body.position.x, y: body.position.y } : undefined
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);

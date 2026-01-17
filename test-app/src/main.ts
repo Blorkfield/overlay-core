@@ -178,6 +178,7 @@ async function createScene(width: number, height: number): Promise<void> {
   // "Welcome to Blorkfield" - default font, default color (#6495ED)
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
   // Weight of 10 - when letters collapse, they contribute 10 to pressure below
+  // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
   const welcomeResult = await scene.addTextObstacles({
     text: 'Welcome to Blorkfield',
     x: welcomeX,
@@ -185,13 +186,15 @@ async function createScene(width: number, height: number): Promise<void> {
     letterSize: 60,
     tags: ['welcome-text'],
     pressureThreshold: { value: 9 },
-    weight: { value: 10 }
+    weight: { value: 10 },
+    shadow: { opacity: 0.3 }
   });
   console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
 
   // "Build Stuff" - Roboto font, lighter gray-blue, 40px below
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
   // Weight of 10 - when letters collapse, they contribute 10 to pressure below
+  // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
   const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
   if (robotoFont?.fontUrl) {
     const buildResult = await scene.addTTFTextObstacles({
@@ -203,7 +206,8 @@ async function createScene(width: number, height: number): Promise<void> {
       fillColor: '#8BA4C7',
       tags: ['build-text'],
       pressureThreshold: { value: 9 },
-      weight: { value: 10 }
+      weight: { value: 10 },
+      shadow: { opacity: 0.3 }
     });
     console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
   }

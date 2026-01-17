@@ -25,10 +25,11 @@ export type {
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
-  // Pressure, weight, and floor types
+  // Pressure, weight, floor, and shadow types
   PressureThresholdConfig,
   WeightConfig,
   FloorConfig,
+  ShadowConfig,
   // Font types
   FontInfo,
   FontManifest

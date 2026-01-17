@@ -242,6 +242,17 @@ export interface WeightConfig {
   value: number | number[];
 }
 
+/**
+ * Configuration for shadow left behind when an obstacle collapses.
+ * When enabled, a static washed-out version of the obstacle remains at its original position.
+ */
+export interface ShadowConfig {
+  /**
+   * Opacity of the shadow (0-1). Default: 0.3
+   */
+  opacity?: number;
+}
+
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
@@ -276,6 +287,8 @@ export interface TextObstacleConfig {
   pressureThreshold?: PressureThresholdConfig;
   /** Weight config - when letters collapse, this is their pressure contribution */
   weight?: WeightConfig;
+  /** Shadow config - when enabled, a washed-out version remains after collapse */
+  shadow?: ShadowConfig;
 }
 
 /**
@@ -344,6 +357,8 @@ export interface TTFTextObstacleConfig {
   pressureThreshold?: PressureThresholdConfig;
   /** Weight config - when letters collapse, this is their pressure contribution */
   weight?: WeightConfig;
+  /** Shadow config - when enabled, a washed-out version remains after collapse */
+  shadow?: ShadowConfig;
 }
 
 /**
