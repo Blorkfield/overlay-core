@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+test-app/node_modules
+
+# Build outputs (will be rebuilt in container)
+dist
+test-app/dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Examples (not needed for test-app)
+examples
+
+# Docker files (no need to copy into build context)
+Dockerfile
+docker-compose.yml
+.dockerignore
