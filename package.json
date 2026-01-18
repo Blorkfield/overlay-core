@@ -18,11 +18,14 @@
       "require": "./dist/vite-plugin.cjs"
     },
     "./fonts": "./fonts",
-    "./fonts/*": "./fonts/*"
+    "./fonts/*": "./fonts/*",
+    "./public": "./public",
+    "./public/*": "./public/*"
   },
   "files": [
     "dist",
-    "fonts"
+    "fonts",
+    "public"
   ],
   "scripts": {
     "build": "tsup",
