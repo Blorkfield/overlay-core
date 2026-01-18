@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.4.1
+
+### Patch Changes
+
+- dbd8b9a: fix: bundling order
+
 ## 0.4.0
 
 ### Minor Changes
