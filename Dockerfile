@@ -16,6 +16,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 # Copy source files
 COPY tsconfig.json tsup.config.ts ./
 COPY src ./src
+COPY fonts ./fonts
 COPY public ./public
 COPY test-app ./test-app
 
