@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.4.2
+
+### Patch Changes
+
+- 59e1464: fix: public inclusion
+
 ## 0.4.1
 
 ### Patch Changes
