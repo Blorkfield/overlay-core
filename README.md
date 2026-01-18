@@ -308,55 +308,77 @@ scene.onUpdate((data) => {
 
 ## Font Setup
 
-### PNG Based Fonts
+### Bundled Fonts
 
-Create a directory structure under `/public/fonts/`:
+The package includes three default fonts ready to use:
 
+| Font | Type | Characters |
+|------|------|------------|
+| `block` | PNG | A-Z, a-z, 0-9 (pixel/block style) |
+| `handwritten` | PNG | A-Z, 0-9 (handwritten style) |
+| `Roboto` | TTF | All characters |
+
+#### Vite Projects
+
+Add the plugin to serve bundled fonts automatically:
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { overlayFontsPlugin } from '@blorkfield/overlay-core/vite';
+
+export default defineConfig({
+  plugins: [overlayFontsPlugin()],
+});
 ```
-public/
-  fonts/
-    fonts.json
-    handwritten/
-      A.png
-      B.png
-      ...
-    block/
-      A.png
-      a.png
-      ...
+
+That's it. The fonts are now available at `/fonts/` in your app.
+
+#### Other Build Tools
+
+For non-Vite projects, the bundled fonts are located at:
+```
+node_modules/@blorkfield/overlay-core/fonts/
 ```
 
-The `fonts.json` manifest:
+Configure your build tool to serve this directory at `/fonts/`.
+
+### Adding Custom Fonts
+
+Custom fonts can be added alongside the bundled fonts. Create a `fonts.json` manifest that includes both:
 
 ```json
 {
   "fonts": [
-    {
-      "name": "handwritten",
-      "type": "png",
-      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    },
-    {
-      "name": "block",
-      "type": "png",
-      "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    }
+    { "name": "block", "type": "png", "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" },
+    { "name": "handwritten", "type": "png", "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" },
+    { "name": "Roboto", "type": "ttf", "characters": "*", "fontUrl": "/fonts/Roboto/static/Roboto-Regular.ttf" },
+    { "name": "my-custom-font", "type": "png", "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" }
   ]
 }
 ```
 
-### TTF Fonts
+#### PNG Fonts
+
+Create a directory with individual character images:
+
+```
+my-custom-font/
+  A.png
+  B.png
+  ...
+```
+
+#### TTF Fonts
+
+Add the font file and reference it in the manifest:
 
 ```json
 {
-  "fonts": [
-    {
-      "name": "Roboto",
-      "type": "ttf",
-      "characters": "*",
-      "fontUrl": "/fonts/Roboto/static/Roboto-Regular.ttf"
-    }
-  ]
+  "name": "MyFont",
+  "type": "ttf",
+  "characters": "*",
+  "fontUrl": "/fonts/MyFont/MyFont-Regular.ttf"
 }
 ```
 

@@ -56,9 +56,13 @@ public/
     fonts.json             # Font manifest
 ```
 
-## Adding Fonts
+## Bundled Fonts
 
-Copy font directories into `public/fonts/` and update `public/fonts/fonts.json`:
+The package includes three default fonts (block, handwritten, Roboto) that work automatically. No setup required.
+
+## Adding Custom Fonts
+
+To add your own fonts, create directories in `public/fonts/` and update `public/fonts/fonts.json`:
 
 ```json
 {
@@ -67,7 +71,7 @@ Copy font directories into `public/fonts/` and update `public/fonts/fonts.json`:
       "name": "MyFont",
       "type": "ttf",
       "characters": "*",
-      "fontUrl": "/fonts/MyFont.ttf"
+      "fontUrl": "/fonts/MyFont/MyFont.ttf"
     }
   ]
 }
