@@ -40,23 +40,18 @@ export function overlayFontsPlugin(): Plugin {
       }
     },
 
-    configureServer(server: ViteDevServer) {
-      // Dynamically import sirv (it's a vite dependency)
-      return async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sirv = (await import('sirv' as any)).default as (dir: string, opts?: Record<string, unknown>) => any;
-        const serve = sirv(fontsDir, { dev: true, etag: true });
-        server.middlewares.use('/fonts', serve);
-      };
+    async configureServer(server: ViteDevServer) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sirv = (await import('sirv' as any)).default as (dir: string, opts?: Record<string, unknown>) => any;
+      const serve = sirv(fontsDir, { dev: true, etag: true });
+      server.middlewares.use('/fonts', serve);
     },
 
-    configurePreviewServer(server: PreviewServer) {
-      return async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sirv = (await import('sirv' as any)).default as (dir: string, opts?: Record<string, unknown>) => any;
-        const serve = sirv(fontsDir, { etag: true });
-        server.middlewares.use('/fonts', serve);
-      };
+    async configurePreviewServer(server: PreviewServer) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sirv = (await import('sirv' as any)).default as (dir: string, opts?: Record<string, unknown>) => any;
+      const serve = sirv(fontsDir, { etag: true });
+      server.middlewares.use('/fonts', serve);
     },
   };
 }
