@@ -342,7 +342,15 @@ async function generateManifest(fontsDir: string, outputPath: string): Promise<v
   console.log(`[vite-plugin-fonts] Generated fonts.json with ${fonts.length} fonts:`, fonts.map(f => f.name).join(', '));
 }
 
-export function fontsPlugin(): Plugin {
+interface FontsPluginOptions {
+  /**
+   * Directory containing font files.
+   * Defaults to publicDir/fonts if not specified.
+   */
+  fontsDir?: string;
+}
+
+export function fontsPlugin(options: FontsPluginOptions = {}): Plugin {
   let fontsDir: string;
   let manifestPath: string;
   let isProcessing = false;
@@ -361,7 +369,8 @@ export function fontsPlugin(): Plugin {
     name: 'vite-plugin-fonts',
 
     configResolved(config) {
-      fontsDir = path.join(config.publicDir, 'fonts');
+      // Use provided fontsDir or fall back to publicDir/fonts
+      fontsDir = options.fontsDir ?? path.join(config.publicDir, 'fonts');
       manifestPath = path.join(fontsDir, 'fonts.json');
     },
 
