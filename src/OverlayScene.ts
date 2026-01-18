@@ -157,6 +157,17 @@ export class OverlayScene {
     });
     Matter.Composite.add(this.engine.world, this.mouseConstraint);
 
+    // Allow page scrolling - Matter.js adds wheel listeners that block scrolling
+    // We need to remove them and allow default scroll behavior
+    const wheelHandler = (this.mouse as unknown as { mousewheel: EventListener }).mousewheel;
+    if (wheelHandler) {
+      canvas.removeEventListener('mousewheel', wheelHandler);
+      canvas.removeEventListener('DOMMouseScroll', wheelHandler);
+      canvas.removeEventListener('wheel', wheelHandler);
+    }
+    // Allow touch scrolling on mobile
+    canvas.style.touchAction = 'pan-x pan-y';
+
     // Filter grabbing based on 'grabable' tag
     Matter.Events.on(this.mouseConstraint, 'startdrag', this.handleStartDrag);
 
