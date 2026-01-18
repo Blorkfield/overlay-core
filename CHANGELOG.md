@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.4.0
+
+### Minor Changes
+
+- be5f9cf: feat: default fonts
+
 ## 0.3.0
 
 ### Minor Changes
