@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.4.3
+
+### Patch Changes
+
+- e0f1c7c: fix: mouse events
+
 ## 0.4.2
 
 ### Patch Changes
