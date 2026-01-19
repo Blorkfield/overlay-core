@@ -53,6 +53,7 @@ The floor can be divided into independent segments, each with its own pressure t
 | `thickness` | Segment height in pixels (single value or array per segment) |
 | `color` | Segment fill color (single value or array per segment) - makes floor visible |
 | `minIntegrity` | Minimum segments required. When remaining segments drop below this, all collapse |
+| `segmentWidths` | Proportional widths for each segment (array that sums to 1.0, e.g., `[0.2, 0.3, 0.5]`) |
 
 Example: With 10 segments and `minIntegrity: 7`, once 4 segments have collapsed (leaving 6), all remaining segments collapse together.
 
@@ -344,6 +345,7 @@ const scene = new OverlayScene(canvas, {
 | `floorConfig.thickness` | 50 | Floor thickness in pixels (number or array per segment) |
 | `floorConfig.color` | none | Floor color - makes segments visible (string or array per segment) |
 | `floorConfig.minIntegrity` | none | Minimum segments required, otherwise all collapse |
+| `floorConfig.segmentWidths` | none | Proportional widths for each segment (array that sums to 1.0) |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
 
 ## Pressure Tracking

@@ -357,12 +357,15 @@ export class OverlayScene {
 
         const dynBounds = dyn.body.bounds;
 
-        // Count resting objects in this segment's horizontal column
+        // Check horizontal overlap with segment
         const horizontalOverlap =
           dynBounds.max.x > segmentBounds.min.x &&
           dynBounds.min.x < segmentBounds.max.x;
 
-        if (horizontalOverlap) {
+        // Check if object is actually near the floor (within 10px of segment top)
+        const nearFloor = dynBounds.max.y >= segmentBounds.min.y - 10;
+
+        if (horizontalOverlap && nearFloor) {
           resting.add(dyn.id);
         }
       }

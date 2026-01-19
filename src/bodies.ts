@@ -167,10 +167,26 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
 
   // Create floor segment(s)
   const segmentCount = floorConfig?.segments ?? 1;
-  const segmentWidth = width / segmentCount;
   const floorSegments: Matter.Body[] = [];
 
+  // Calculate segment widths - either from config or equal distribution
+  let segmentWidths: number[];
+  if (floorConfig?.segmentWidths && floorConfig.segmentWidths.length === segmentCount) {
+    // Normalize widths to ensure they sum to 1.0
+    const sum = floorConfig.segmentWidths.reduce((a, b) => a + b, 0);
+    segmentWidths = floorConfig.segmentWidths.map(w => (w / sum) * width);
+  } else {
+    // Equal widths
+    const equalWidth = width / segmentCount;
+    segmentWidths = Array(segmentCount).fill(equalWidth);
+  }
+
+  // Track cumulative X position for segment placement
+  let currentX = bounds.left;
+
   for (let i = 0; i < segmentCount; i++) {
+    const segmentWidth = segmentWidths[i];
+
     // Get thickness for this segment (default: BOUNDARY_THICKNESS)
     const thickness = floorConfig?.thickness !== undefined
       ? (Array.isArray(floorConfig.thickness) ? floorConfig.thickness[i] ?? BOUNDARY_THICKNESS : floorConfig.thickness)
@@ -181,7 +197,7 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
       ? (Array.isArray(floorConfig.color) ? floorConfig.color[i] : floorConfig.color)
       : undefined;
 
-    const segmentX = bounds.left + (i + 0.5) * segmentWidth;
+    const segmentX = currentX + segmentWidth / 2;
     // Position floor so it's visible within bounds (top edge at bounds.bottom - thickness)
     const segmentY = bounds.bottom - thickness / 2;
 
@@ -203,6 +219,8 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
         segmentOptions
       )
     );
+
+    currentX += segmentWidth;
   }
 
   return { walls, floorSegments };

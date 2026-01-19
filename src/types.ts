@@ -53,6 +53,14 @@ export interface FloorConfig {
    * If set higher than segments count, floor collapses immediately.
    */
   minIntegrity?: number;
+
+  /**
+   * Proportional widths for each segment (must sum to 1.0):
+   * - number[]: Per-segment width proportions (e.g., [0.2, 0.3, 0.5] for 3 segments)
+   * If not provided, segments have equal widths.
+   * Array length should match segments count.
+   */
+  segmentWidths?: number[];
 }
 
 export interface Bounds {
