@@ -381,10 +381,7 @@ export class OverlayScene {
   /** Check floor segment thresholds and collapse segments that exceed them */
   private checkFloorSegmentThresholds(): void {
     const floorConfig = this.config.floorConfig;
-    // Support legacy floorThreshold for backward compatibility
-    const legacyThreshold = this.config.floorThreshold;
-
-    if (!floorConfig?.threshold && legacyThreshold === undefined) return;
+    if (!floorConfig?.threshold) return;
 
     for (let i = 0; i < this.floorSegments.length; i++) {
       if (this.collapsedSegments.has(i)) continue;
@@ -395,10 +392,7 @@ export class OverlayScene {
         threshold = Array.isArray(floorConfig.threshold)
           ? floorConfig.threshold[i]
           : floorConfig.threshold;
-      } else if (legacyThreshold !== undefined) {
-        threshold = legacyThreshold;
       }
-
       if (threshold === undefined) continue;
 
       const objectIds = this.floorSegmentPressure.get(i);
@@ -502,14 +496,11 @@ export class OverlayScene {
     // Add floor segment pressure if any
     if (this.floorSegmentPressure.size > 0 || this.collapsedSegments.size > 0) {
       const floorConfig = this.config.floorConfig;
-      const legacyThreshold = this.config.floorThreshold;
 
       // Get threshold for display
       let thresholdDisplay: number | string = '∞';
       if (floorConfig?.threshold !== undefined && !Array.isArray(floorConfig.threshold)) {
         thresholdDisplay = floorConfig.threshold;
-      } else if (legacyThreshold !== undefined) {
-        thresholdDisplay = legacyThreshold;
       }
 
       // Build segment pressure display: "seg0=42 seg1=X seg2=55"
