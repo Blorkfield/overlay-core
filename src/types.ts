@@ -77,6 +77,8 @@ export interface DespawnEffectConfig {
 export interface ObjectConfig {
   x: number;
   y: number;
+  /** DOM element to link to physics. When provided, element moves with physics body and shadow clones the element */
+  element?: HTMLElement;
   /** Radius for circle/polygon shapes */
   radius?: number;
   /** Width for rectangle objects (ignored if imageUrl is provided) */
@@ -99,6 +101,12 @@ export interface ObjectConfig {
   despawnEffect?: DespawnEffectConfig;
   /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
   weight?: number;
+  /** Pressure threshold config - when reached, object collapses */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Shadow config - when enabled, a visual copy remains after collapse (true for default opacity) */
+  shadow?: ShadowConfig | boolean;
+  /** Click to fall config - when set, object collapses after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**

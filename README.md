@@ -72,6 +72,8 @@ scene.start();
 
 ## Spawning Objects
 
+All objects are created through `spawnObject()` (or `spawnObjectAsync()` for images). The same config supports canvas-rendered shapes, image-based shapes, and DOM elements.
+
 ### Basic Shapes
 
 ```typescript
@@ -115,6 +117,57 @@ const id = await scene.spawnObjectAsync({
   imageUrl: '/images/coin.png',
   size: 50,
   tags: ['falling', 'grabable']
+});
+```
+
+### DOM Elements
+
+Pass a DOM element via the `element` property to link it to physics. The element will move with the physics body when it becomes dynamic.
+
+```typescript
+const contentBox = document.getElementById('content-box');
+
+scene.spawnObject({
+  element: contentBox,
+  x: boxX,
+  y: boxY,
+  width: contentBox.offsetWidth,
+  height: contentBox.offsetHeight,
+  tags: ['grabable'],
+  pressureThreshold: { value: 50 },
+  shadow: { opacity: 0.3 },
+  clickToFall: { clicks: 5 }
+});
+```
+
+When a DOM element collapses:
+- The element's CSS transform is updated each frame to follow physics
+- Shadow creates a cloned DOM element at the original position
+
+### Pressure, Shadow, and Click Behavior
+
+These options work on any spawned object (shapes, images, or DOM elements):
+
+```typescript
+scene.spawnObject({
+  x: 200,
+  y: 300,
+  width: 150,
+  height: 30,
+  fillStyle: '#333',
+  tags: ['grabable'],
+
+  // Collapse when 20 units of pressure accumulate
+  pressureThreshold: { value: 20 },
+
+  // This object contributes 5 pressure when resting on something
+  weight: 5,
+
+  // Leave a faded copy when collapsed (true = 0.3 opacity default)
+  shadow: { opacity: 0.3 },
+
+  // Collapse after being clicked 3 times
+  clickToFall: { clicks: 3 }
 });
 ```
 

@@ -774,6 +774,23 @@ export class OverlayScene {
    * Without 'falling' tag, object is static.
    */
   spawnObject(config: ObjectConfig): string {
+    // If element is provided, delegate to DOM obstacle logic
+    if (config.element) {
+      const result = this.addDOMObstacleInternal({
+        element: config.element,
+        x: config.x,
+        y: config.y,
+        width: config.width,
+        height: config.height,
+        tags: config.tags,
+        pressureThreshold: config.pressureThreshold,
+        weight: config.weight,
+        shadow: config.shadow === true ? { opacity: 0.3 } : (config.shadow || undefined),
+        clickToFall: config.clickToFall
+      });
+      return result.id;
+    }
+
     const id = crypto.randomUUID();
     const tags = config.tags ?? [];
     const isStatic = !tags.includes('falling');
@@ -798,6 +815,25 @@ export class OverlayScene {
       body = createObstacle(id, config, isStatic);
     }
 
+    // Parse pressure threshold
+    let pressureThreshold: number | undefined;
+    if (config.pressureThreshold) {
+      pressureThreshold = typeof config.pressureThreshold.value === 'number'
+        ? config.pressureThreshold.value
+        : config.pressureThreshold.value[0];
+    }
+
+    // Parse shadow config (can be boolean or ShadowConfig)
+    let shadow: { opacity: number } | undefined;
+    if (config.shadow === true) {
+      shadow = { opacity: 0.3 };
+    } else if (config.shadow && typeof config.shadow === 'object') {
+      shadow = { opacity: config.shadow.opacity ?? 0.3 };
+    }
+
+    // Parse click to fall config
+    const clicksRemaining = config.clickToFall?.clicks;
+
     const entry: ObjectEntry = {
       id,
       body,
@@ -805,10 +841,20 @@ export class OverlayScene {
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect,
-      weight: config.weight ?? 1
+      weight: config.weight ?? 1,
+      pressureThreshold,
+      shadow,
+      originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
+      clicksRemaining
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
+
+    // Initialize pressure tracking for static obstacles with threshold
+    if (isStatic && pressureThreshold !== undefined) {
+      this.obstaclePressure.set(id, new Set());
+    }
+
     return id;
   }
 
@@ -839,6 +885,25 @@ export class OverlayScene {
       body = await createObstacleAsync(id, config, isStatic);
     }
 
+    // Parse pressure threshold
+    let pressureThreshold: number | undefined;
+    if (config.pressureThreshold) {
+      pressureThreshold = typeof config.pressureThreshold.value === 'number'
+        ? config.pressureThreshold.value
+        : config.pressureThreshold.value[0];
+    }
+
+    // Parse shadow config (can be boolean or ShadowConfig)
+    let shadow: { opacity: number } | undefined;
+    if (config.shadow === true) {
+      shadow = { opacity: 0.3 };
+    } else if (config.shadow && typeof config.shadow === 'object') {
+      shadow = { opacity: config.shadow.opacity ?? 0.3 };
+    }
+
+    // Parse click to fall config
+    const clicksRemaining = config.clickToFall?.clicks;
+
     const entry: ObjectEntry = {
       id,
       body,
@@ -846,10 +911,20 @@ export class OverlayScene {
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect,
-      weight: config.weight ?? 1
+      weight: config.weight ?? 1,
+      pressureThreshold,
+      shadow,
+      originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
+      clicksRemaining
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
+
+    // Initialize pressure tracking for static obstacles with threshold
+    if (isStatic && pressureThreshold !== undefined) {
+      this.obstaclePressure.set(id, new Set());
+    }
+
     return id;
   }
 
@@ -1146,18 +1221,13 @@ export class OverlayScene {
     return this.fontsInitialized;
   }
 
-  // ==================== DOM OBSTACLE METHODS ====================
+  // ==================== DOM OBSTACLE METHODS (INTERNAL) ====================
 
   /**
-   * Attach a DOM element to physics. The element will follow the physics body
-   * and can have pressure threshold, shadow, and click-to-fall behavior.
-   *
-   * When the element collapses (becomes dynamic), its CSS transform will be
-   * updated each frame to match the physics body position and rotation.
-   *
-   * Shadow creates a cloned DOM element that stays at the original position.
+   * Internal: Attach a DOM element to physics.
+   * Called by spawnObject when element is provided.
    */
-  addDOMObstacle(config: DOMObstacleConfig): DOMObstacleResult {
+  private addDOMObstacleInternal(config: DOMObstacleConfig): DOMObstacleResult {
     const { element, x, y } = config;
     const width = config.width ?? element.offsetWidth;
     const height = config.height ?? element.offsetHeight;

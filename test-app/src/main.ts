@@ -8,6 +8,7 @@ import '@blorkfield/blork-tabs/styles.css';
 // Elements
 const sceneContainer = document.getElementById('scene-container') as HTMLDivElement;
 const sceneWrapper = document.getElementById('scene-wrapper') as HTMLDivElement;
+const contentBox = document.getElementById('content-box') as HTMLDivElement;
 const btnFullscreen = document.getElementById('btn-fullscreen') as HTMLButtonElement;
 const btnFixed = document.getElementById('btn-fixed') as HTMLButtonElement;
 const inputWidth = document.getElementById('input-width') as HTMLInputElement;
@@ -214,6 +215,29 @@ async function createScene(width: number, height: number): Promise<void> {
       clickToFall: { clicks: 2 }
     });
     console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
+  }
+
+  // Add content box as a physics obstacle - the DOM element itself will fall!
+  // Just use spawnObject with 'element' property - unified API handles everything
+  if (contentBox && canvas) {
+    const boxRect = contentBox.getBoundingClientRect();
+    const wrapperRect = sceneWrapper.getBoundingClientRect();
+    const boxX = boxRect.left - wrapperRect.left + boxRect.width / 2;
+    const boxY = boxRect.top - wrapperRect.top + boxRect.height / 2;
+
+    const contentObstacleId = scene.spawnObject({
+      element: contentBox,  // Pass DOM element - it will move with physics!
+      x: boxX,
+      y: boxY,
+      width: boxRect.width,
+      height: boxRect.height,
+      tags: ['content-obstacle', 'grabable'],
+      pressureThreshold: { value: 50 },
+      weight: 100,
+      shadow: { opacity: 0.3 },
+      clickToFall: { clicks: 5 }
+    });
+    console.log('Content box obstacle created:', contentObstacleId, 'at', boxX, boxY);
   }
 
   // Set up initial Rain effect
