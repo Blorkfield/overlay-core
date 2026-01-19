@@ -198,6 +198,8 @@ export class OverlayScene {
     );
   }
 
+
+
   /** Filter drag events - only allow grabbing objects with 'grabable' tag */
   private handleStartDrag = (event: Matter.IEvent<Matter.MouseConstraint> & { body?: Matter.Body }): void => {
     const body = event.body;
@@ -381,10 +383,7 @@ export class OverlayScene {
   /** Check floor segment thresholds and collapse segments that exceed them */
   private checkFloorSegmentThresholds(): void {
     const floorConfig = this.config.floorConfig;
-    // Support legacy floorThreshold for backward compatibility
-    const legacyThreshold = this.config.floorThreshold;
-
-    if (!floorConfig?.threshold && legacyThreshold === undefined) return;
+    if (!floorConfig?.threshold) return;
 
     for (let i = 0; i < this.floorSegments.length; i++) {
       if (this.collapsedSegments.has(i)) continue;
@@ -395,10 +394,7 @@ export class OverlayScene {
         threshold = Array.isArray(floorConfig.threshold)
           ? floorConfig.threshold[i]
           : floorConfig.threshold;
-      } else if (legacyThreshold !== undefined) {
-        threshold = legacyThreshold;
       }
-
       if (threshold === undefined) continue;
 
       const objectIds = this.floorSegmentPressure.get(i);
@@ -502,14 +498,11 @@ export class OverlayScene {
     // Add floor segment pressure if any
     if (this.floorSegmentPressure.size > 0 || this.collapsedSegments.size > 0) {
       const floorConfig = this.config.floorConfig;
-      const legacyThreshold = this.config.floorThreshold;
 
       // Get threshold for display
       let thresholdDisplay: number | string = '∞';
       if (floorConfig?.threshold !== undefined && !Array.isArray(floorConfig.threshold)) {
         thresholdDisplay = floorConfig.threshold;
-      } else if (legacyThreshold !== undefined) {
-        thresholdDisplay = legacyThreshold;
       }
 
       // Build segment pressure display: "seg0=42 seg1=X seg2=55"
@@ -629,12 +622,18 @@ export class OverlayScene {
     const shadowId = `shadow-${entry.id}`;
 
     // Handle DOM element shadows (clone the element)
-    if (entry.domElement) {
+    if (entry.domElement && entry.originalPosition) {
       const shadowElement = entry.domElement.cloneNode(true) as HTMLElement;
       shadowElement.style.opacity = String(opacity);
       shadowElement.style.pointerEvents = 'none';
-      // Keep the current position (left, top, transform) from the cloned element
-      // Don't reset to original transform - shadow should stay where element is now
+      // Explicitly set position using originalPosition
+      // Use setProperty with 'important' to override any CSS rules on the element
+      const width = entry.domElement.offsetWidth;
+      const height = entry.domElement.offsetHeight;
+      shadowElement.style.setProperty('position', 'absolute', 'important');
+      shadowElement.style.setProperty('left', `${entry.originalPosition.x - width / 2}px`, 'important');
+      shadowElement.style.setProperty('top', `${entry.originalPosition.y - height / 2}px`, 'important');
+      shadowElement.style.setProperty('transform', 'rotate(0deg)', 'important');
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;
@@ -2241,11 +2240,10 @@ export class OverlayScene {
     const width = entry.domElement.offsetWidth;
     const height = entry.domElement.offsetHeight;
 
-    // Position element so its center is at the body position
-    // Use translate to offset by half dimensions, then apply rotation
-    entry.domElement.style.left = `${x - width / 2}px`;
-    entry.domElement.style.top = `${y - height / 2}px`;
-    entry.domElement.style.transform = `rotate(${angleDeg}deg)`;
+    // Use setProperty with 'important' to override any CSS rules
+    entry.domElement.style.setProperty('left', `${x - width / 2}px`, 'important');
+    entry.domElement.style.setProperty('top', `${y - height / 2}px`, 'important');
+    entry.domElement.style.setProperty('transform', `rotate(${angleDeg}deg)`, 'important');
   }
 
   private checkTTLExpiration(): void {
