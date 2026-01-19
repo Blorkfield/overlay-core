@@ -378,6 +378,43 @@ export interface TTFTextObstacleConfig {
 }
 
 /**
+ * Configuration for attaching a DOM element to physics.
+ * The element will follow the physics body and can have pressure/shadow/click behavior.
+ */
+export interface DOMObstacleConfig {
+  /** The DOM element to attach to physics */
+  element: HTMLElement;
+  /** X position of the element center */
+  x: number;
+  /** Y position of the element center */
+  y: number;
+  /** Width of the collision body (defaults to element.offsetWidth) */
+  width?: number;
+  /** Height of the collision body (defaults to element.offsetHeight) */
+  height?: number;
+  /** Tags that define object behavior */
+  tags?: string[];
+  /** Pressure threshold config - when reached, element collapses */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Weight for pressure calculation (default: 1) */
+  weight?: number;
+  /** Shadow config - when enabled, a cloned element remains after collapse */
+  shadow?: ShadowConfig;
+  /** Click to fall config - when set, element collapses after being clicked N times */
+  clickToFall?: ClickToFallConfig;
+}
+
+/**
+ * Result of attaching a DOM element to physics
+ */
+export interface DOMObstacleResult {
+  /** ID of the created physics object */
+  id: string;
+  /** The shadow element if shadow was configured (null until collapse) */
+  shadowElement: HTMLElement | null;
+}
+
+/**
  * Information about an available font
  */
 export interface FontInfo {

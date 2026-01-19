@@ -21,7 +21,9 @@ import type {
   TTFTextObstacleConfig,
   FontInfo,
   FontManifest,
-  LetterDebugInfo
+  LetterDebugInfo,
+  DOMObstacleConfig,
+  DOMObstacleResult
 } from './types';
 
 interface TTFGlyphRenderInfo {
@@ -66,6 +68,12 @@ interface ObjectEntry {
   imageSize?: number;
   /** Clicks remaining before this obstacle collapses (undefined = no click behavior) */
   clicksRemaining?: number;
+  /** DOM element linked to this physics body (for DOM obstacles) */
+  domElement?: HTMLElement;
+  /** Shadow DOM element (created on collapse) */
+  domShadowElement?: HTMLElement;
+  /** Original transform state for DOM element */
+  domOriginalTransform?: string;
 }
 
 export class OverlayScene {
@@ -566,6 +574,18 @@ export class OverlayScene {
 
     const opacity = entry.shadow?.opacity ?? 0.3;
     const shadowId = `shadow-${entry.id}`;
+
+    // Handle DOM element shadows (clone the element)
+    if (entry.domElement) {
+      const shadowElement = entry.domElement.cloneNode(true) as HTMLElement;
+      shadowElement.style.opacity = String(opacity);
+      shadowElement.style.pointerEvents = 'none';
+      shadowElement.style.transform = entry.domOriginalTransform || '';
+      // Insert shadow before the original element
+      entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
+      entry.domShadowElement = shadowElement;
+      return;
+    }
 
     // Handle TTF glyph shadows (canvas-rendered text)
     if (entry.ttfGlyph) {
@@ -1124,6 +1144,110 @@ export class OverlayScene {
    */
   areFontsInitialized(): boolean {
     return this.fontsInitialized;
+  }
+
+  // ==================== DOM OBSTACLE METHODS ====================
+
+  /**
+   * Attach a DOM element to physics. The element will follow the physics body
+   * and can have pressure threshold, shadow, and click-to-fall behavior.
+   *
+   * When the element collapses (becomes dynamic), its CSS transform will be
+   * updated each frame to match the physics body position and rotation.
+   *
+   * Shadow creates a cloned DOM element that stays at the original position.
+   */
+  addDOMObstacle(config: DOMObstacleConfig): DOMObstacleResult {
+    const { element, x, y } = config;
+    const width = config.width ?? element.offsetWidth;
+    const height = config.height ?? element.offsetHeight;
+    const tags = config.tags ?? [];
+    const isStatic = !tags.includes('falling');
+
+    // Create a rectangular physics body
+    const body = Matter.Bodies.rectangle(x, y, width, height, {
+      isStatic,
+      label: `dom-${crypto.randomUUID().slice(0, 8)}`,
+      render: { visible: false } // Don't render the body, DOM element is the visual
+    });
+
+    const id = body.label;
+
+    // Determine pressure threshold
+    let pressureThreshold: number | undefined;
+    if (config.pressureThreshold) {
+      pressureThreshold = typeof config.pressureThreshold.value === 'number'
+        ? config.pressureThreshold.value
+        : config.pressureThreshold.value[0];
+    }
+
+    // Determine shadow config
+    const shadow = config.shadow ? { opacity: config.shadow.opacity ?? 0.3 } : undefined;
+
+    // Determine click to fall config
+    const clicksRemaining = config.clickToFall?.clicks;
+
+    // Store original transform for shadow positioning
+    const originalTransform = element.style.transform || '';
+
+    // Setup element for physics-driven positioning
+    element.style.position = 'absolute';
+    element.style.transformOrigin = 'center center';
+
+    const entry: ObjectEntry = {
+      id,
+      body,
+      tags,
+      spawnTime: performance.now(),
+      pressureThreshold,
+      weight: config.weight ?? 1,
+      shadow,
+      originalPosition: shadow || clicksRemaining !== undefined ? { x, y } : undefined,
+      clicksRemaining,
+      domElement: element,
+      domOriginalTransform: originalTransform
+    };
+
+    this.objects.set(id, entry);
+    Matter.Composite.add(this.engine.world, body);
+
+    // Initialize pressure tracking for static obstacles
+    if (isStatic && pressureThreshold !== undefined) {
+      this.obstaclePressure.set(id, new Set());
+    }
+
+    // Add click listener to DOM element for clickToFall behavior
+    // (canvas click handler won't work since element is above canvas)
+    if (clicksRemaining !== undefined) {
+      const clickHandler = () => {
+        const currentEntry = this.objects.get(id);
+        if (!currentEntry) return;
+        if (currentEntry.tags.includes('falling')) return;
+        if (currentEntry.clicksRemaining === undefined) return;
+
+        currentEntry.clicksRemaining--;
+        logger.debug('OverlayScene', `Click on DOM element: ${currentEntry.clicksRemaining} clicks remaining`);
+
+        if (currentEntry.clicksRemaining <= 0) {
+          this.collapseObstacle(currentEntry);
+          element.removeEventListener('click', clickHandler);
+        }
+      };
+      element.addEventListener('click', clickHandler);
+    }
+
+    return {
+      id,
+      shadowElement: null // Will be populated on collapse
+    };
+  }
+
+  /**
+   * Get the shadow element for a DOM obstacle (available after collapse).
+   */
+  getDOMObstacleShadow(id: string): HTMLElement | null {
+    const entry = this.objects.get(id);
+    return entry?.domShadowElement ?? null;
   }
 
   // ==================== TEXT OBSTACLE METHODS ====================
@@ -1760,6 +1884,11 @@ export class OverlayScene {
       if (this.config.wrapHorizontal && entry.tags.includes('falling')) {
         wrapHorizontal(entry.body, this.config.bounds);
       }
+
+      // Update DOM element transforms to follow physics body
+      if (entry.domElement && entry.tags.includes('falling')) {
+        this.updateDOMElementTransform(entry);
+      }
     }
 
     // Draw TTF glyphs using canvas fillText (clean text rendering)
@@ -1843,6 +1972,31 @@ export class OverlayScene {
 
       ctx.restore();
     }
+  }
+
+  /**
+   * Update a DOM element's CSS transform to match its physics body position and rotation.
+   */
+  private updateDOMElementTransform(entry: ObjectEntry): void {
+    if (!entry.domElement) return;
+
+    const body = entry.body;
+    const x = body.position.x;
+    const y = body.position.y;
+    const angle = body.angle;
+
+    // Convert radians to degrees for CSS
+    const angleDeg = angle * (180 / Math.PI);
+
+    // Get element dimensions for centering
+    const width = entry.domElement.offsetWidth;
+    const height = entry.domElement.offsetHeight;
+
+    // Position element so its center is at the body position
+    // Use translate to offset by half dimensions, then apply rotation
+    entry.domElement.style.left = `${x - width / 2}px`;
+    entry.domElement.style.top = `${y - height / 2}px`;
+    entry.domElement.style.transform = `rotate(${angleDeg}deg)`;
   }
 
   private checkTTLExpiration(): void {

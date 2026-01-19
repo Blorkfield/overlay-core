@@ -25,6 +25,9 @@ export type {
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
+  // DOM obstacle types
+  DOMObstacleConfig,
+  DOMObstacleResult,
   // Pressure, weight, floor, shadow, and click types
   PressureThresholdConfig,
   WeightConfig,
