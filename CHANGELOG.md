@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.2
+
+### Patch Changes
+
+- 301e238: fix: text shadow
+
 ## 0.5.1
 
 ### Patch Changes
