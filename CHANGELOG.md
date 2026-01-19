@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.1
+
+### Patch Changes
+
+- 3be52a6: fix: textbox drop
+
 ## 0.5.0
 
 ### Minor Changes
