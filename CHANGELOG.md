@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.3
+
+### Patch Changes
+
+- a06adbc: fix: textbox shadow
+
 ## 0.5.2
 
 ### Patch Changes
