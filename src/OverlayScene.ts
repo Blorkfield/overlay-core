@@ -198,6 +198,8 @@ export class OverlayScene {
     );
   }
 
+
+
   /** Filter drag events - only allow grabbing objects with 'grabable' tag */
   private handleStartDrag = (event: Matter.IEvent<Matter.MouseConstraint> & { body?: Matter.Body }): void => {
     const body = event.body;
@@ -620,12 +622,18 @@ export class OverlayScene {
     const shadowId = `shadow-${entry.id}`;
 
     // Handle DOM element shadows (clone the element)
-    if (entry.domElement) {
+    if (entry.domElement && entry.originalPosition) {
       const shadowElement = entry.domElement.cloneNode(true) as HTMLElement;
       shadowElement.style.opacity = String(opacity);
       shadowElement.style.pointerEvents = 'none';
-      // Keep the current position (left, top, transform) from the cloned element
-      // Don't reset to original transform - shadow should stay where element is now
+      // Explicitly set position using originalPosition
+      // Use setProperty with 'important' to override any CSS rules on the element
+      const width = entry.domElement.offsetWidth;
+      const height = entry.domElement.offsetHeight;
+      shadowElement.style.setProperty('position', 'absolute', 'important');
+      shadowElement.style.setProperty('left', `${entry.originalPosition.x - width / 2}px`, 'important');
+      shadowElement.style.setProperty('top', `${entry.originalPosition.y - height / 2}px`, 'important');
+      shadowElement.style.setProperty('transform', 'rotate(0deg)', 'important');
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;
@@ -2232,11 +2240,10 @@ export class OverlayScene {
     const width = entry.domElement.offsetWidth;
     const height = entry.domElement.offsetHeight;
 
-    // Position element so its center is at the body position
-    // Use translate to offset by half dimensions, then apply rotation
-    entry.domElement.style.left = `${x - width / 2}px`;
-    entry.domElement.style.top = `${y - height / 2}px`;
-    entry.domElement.style.transform = `rotate(${angleDeg}deg)`;
+    // Use setProperty with 'important' to override any CSS rules
+    entry.domElement.style.setProperty('left', `${x - width / 2}px`, 'important');
+    entry.domElement.style.setProperty('top', `${y - height / 2}px`, 'important');
+    entry.domElement.style.setProperty('transform', `rotate(${angleDeg}deg)`, 'important');
   }
 
   private checkTTLExpiration(): void {
