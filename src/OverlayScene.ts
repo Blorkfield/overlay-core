@@ -154,6 +154,9 @@ export class OverlayScene {
     this.floorSegments = boundariesResult.floorSegments;
     Matter.Composite.add(this.engine.world, this.boundaries);
 
+    // Check initial floor integrity (handles minIntegrity > segments case)
+    this.checkInitialFloorIntegrity();
+
     // Setup mouse interaction
     this.mouse = Matter.Mouse.create(canvas);
     this.mouseConstraint = Matter.MouseConstraint.create(this.engine, {
@@ -397,19 +400,64 @@ export class OverlayScene {
       const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
 
       if (pressure >= threshold) {
-        this.collapseFloorSegment(i, pressure, threshold);
+        this.collapseFloorSegment(i, `pressure ${pressure} >= threshold ${threshold}`);
       }
     }
   }
 
   /** Collapse a single floor segment */
-  private collapseFloorSegment(index: number, pressure: number, threshold: number): void {
+  private collapseFloorSegment(index: number, reason: string): void {
     if (this.collapsedSegments.has(index)) return;
     this.collapsedSegments.add(index);
 
     const segment = this.floorSegments[index];
     Matter.Composite.remove(this.engine.world, segment);
-    console.log(`[Pressure] Floor segment ${index} collapsed! (pressure: ${pressure} >= ${threshold})`);
+    logger.debug('OverlayScene', `Floor segment ${index} collapsed: ${reason}`);
+
+    // Check floor integrity after collapse
+    this.checkFloorIntegrity();
+  }
+
+  /** Check if floor integrity requirement is violated and collapse all remaining if so */
+  private checkFloorIntegrity(): void {
+    const minIntegrity = this.config.floorConfig?.minIntegrity;
+    if (minIntegrity === undefined) return;
+
+    const totalSegments = this.floorSegments.length;
+    const remainingSegments = totalSegments - this.collapsedSegments.size;
+
+    if (remainingSegments < minIntegrity && remainingSegments > 0) {
+      logger.debug('OverlayScene', `Floor integrity failed: ${remainingSegments} remaining < ${minIntegrity} required. Collapsing all.`);
+
+      // Collapse all remaining segments
+      for (let i = 0; i < totalSegments; i++) {
+        if (!this.collapsedSegments.has(i)) {
+          this.collapsedSegments.add(i);
+          const segment = this.floorSegments[i];
+          Matter.Composite.remove(this.engine.world, segment);
+          logger.debug('OverlayScene', `Floor segment ${i} collapsed: integrity failure cascade`);
+        }
+      }
+    }
+  }
+
+  /** Check floor integrity on initialization (handles minIntegrity > segments) */
+  private checkInitialFloorIntegrity(): void {
+    const minIntegrity = this.config.floorConfig?.minIntegrity;
+    if (minIntegrity === undefined) return;
+
+    const totalSegments = this.floorSegments.length;
+
+    if (totalSegments < minIntegrity) {
+      logger.debug('OverlayScene', `Floor integrity impossible: ${totalSegments} segments < ${minIntegrity} required. Collapsing all immediately.`);
+
+      // Collapse all segments immediately
+      for (let i = 0; i < totalSegments; i++) {
+        this.collapsedSegments.add(i);
+        const segment = this.floorSegments[i];
+        Matter.Composite.remove(this.engine.world, segment);
+      }
+    }
   }
 
   /** Log a summary of pressure on all obstacles, grouped by word */
@@ -752,6 +800,9 @@ export class OverlayScene {
     this.collapsedSegments.clear();
     this.floorSegmentPressure.clear();
     Matter.Composite.add(this.engine.world, this.boundaries);
+
+    // Check initial floor integrity (handles minIntegrity > segments case)
+    this.checkInitialFloorIntegrity();
 
     // Update render bounds
     this.render.options.width = width;

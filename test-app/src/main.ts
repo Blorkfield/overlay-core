@@ -144,8 +144,11 @@ async function createScene(width: number, height: number): Promise<void> {
     debug: false,
     background: '#16213e',
     floorConfig: {
-      segments: 10,     // Divide floor into 10 segments
-      threshold: 100    // Each segment collapses when weighted pressure reaches 100
+      segments: 10,       // Divide floor into 10 segments
+      threshold: 100,     // Each segment collapses when weighted pressure reaches 100
+      thickness: 20,      // Visible floor thickness
+      color: '#3a4a6a',   // Floor segment color (makes them visible)
+      minIntegrity: 7     // If fewer than 7 segments remain, all collapse
     },
     despawnBelowFloor: 1.0  // Despawn objects 100% of container height below floor
   });

@@ -48,6 +48,14 @@ Static obstacles track how many dynamic objects are resting on them. When the ac
 
 The floor can be divided into independent segments, each with its own pressure threshold. When a segment receives too much weight, it collapses and objects fall through.
 
+| Option | Description |
+|--------|-------------|
+| `thickness` | Segment height in pixels (single value or array per segment) |
+| `color` | Segment fill color (single value or array per segment) - makes floor visible |
+| `minIntegrity` | Minimum segments required. When remaining segments drop below this, all collapse |
+
+Example: With 10 segments and `minIntegrity: 7`, once 4 segments have collapsed (leaving 6), all remaining segments collapse together.
+
 ## Quick Start
 
 ```typescript
@@ -316,7 +324,10 @@ const scene = new OverlayScene(canvas, {
   background: '#16213e',
   floorConfig: {
     segments: 10,
-    threshold: 100
+    threshold: 100,
+    thickness: 20,
+    color: '#3a4a6a',   // Makes floor visible
+    minIntegrity: 7     // All collapse if fewer than 7 remain
   },
   despawnBelowFloor: 1.0
 });
@@ -329,7 +340,10 @@ const scene = new OverlayScene(canvas, {
 | `debug` | false | Show collision wireframes |
 | `background` | transparent | Canvas background color |
 | `floorConfig.segments` | 1 | Number of floor segments |
-| `floorConfig.threshold` | none | Pressure threshold for floor collapse |
+| `floorConfig.threshold` | none | Pressure threshold for collapse (number or array per segment) |
+| `floorConfig.thickness` | 50 | Floor thickness in pixels (number or array per segment) |
+| `floorConfig.color` | none | Floor color - makes segments visible (string or array per segment) |
+| `floorConfig.minIntegrity` | none | Minimum segments required, otherwise all collapse |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
 
 ## Pressure Tracking

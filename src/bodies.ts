@@ -143,7 +143,7 @@ export interface BoundariesResult {
 export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: FloorConfig): BoundariesResult {
   const width = bounds.right - bounds.left;
   const height = bounds.bottom - bounds.top;
-  const options = { isStatic: true, render: { visible: false } };
+  const wallOptions = { isStatic: true, render: { visible: false } };
 
   // Create walls (left and right)
   const walls = [
@@ -153,7 +153,7 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
       bounds.top + height / 2,
       BOUNDARY_THICKNESS,
       height,
-      { ...options, label: 'leftWall' }
+      { ...wallOptions, label: 'leftWall' }
     ),
     // Right wall
     Matter.Bodies.rectangle(
@@ -161,7 +161,7 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
       bounds.top + height / 2,
       BOUNDARY_THICKNESS,
       height,
-      { ...options, label: 'rightWall' }
+      { ...wallOptions, label: 'rightWall' }
     )
   ];
 
@@ -171,14 +171,36 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
   const floorSegments: Matter.Body[] = [];
 
   for (let i = 0; i < segmentCount; i++) {
+    // Get thickness for this segment (default: BOUNDARY_THICKNESS)
+    const thickness = floorConfig?.thickness !== undefined
+      ? (Array.isArray(floorConfig.thickness) ? floorConfig.thickness[i] ?? BOUNDARY_THICKNESS : floorConfig.thickness)
+      : BOUNDARY_THICKNESS;
+
+    // Get color for this segment (undefined = invisible)
+    const color = floorConfig?.color !== undefined
+      ? (Array.isArray(floorConfig.color) ? floorConfig.color[i] : floorConfig.color)
+      : undefined;
+
     const segmentX = bounds.left + (i + 0.5) * segmentWidth;
+    // Position floor so it's visible within bounds (top edge at bounds.bottom - thickness)
+    const segmentY = bounds.bottom - thickness / 2;
+
+    const segmentOptions: Matter.IBodyDefinition = {
+      isStatic: true,
+      label: `floor-segment-${i}`,
+      render: {
+        visible: color !== undefined,
+        fillStyle: color ?? '#888888'
+      }
+    };
+
     floorSegments.push(
       Matter.Bodies.rectangle(
         segmentX,
-        bounds.bottom + BOUNDARY_THICKNESS / 2,
+        segmentY,
         segmentWidth,
-        BOUNDARY_THICKNESS,
-        { ...options, label: `floor-segment-${i}` }
+        thickness,
+        segmentOptions
       )
     );
   }
