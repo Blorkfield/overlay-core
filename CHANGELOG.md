@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.0
+
+### Minor Changes
+
+- c1d6f00: feat: text box config
+
 ## 0.4.3
 
 ### Patch Changes
