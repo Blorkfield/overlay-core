@@ -2,7 +2,7 @@ import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
 import { createBoundaries, createBoundariesWithFloorConfig, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
 import { tintImage } from './imageClip';
-import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
+import { loadFont, getGlyphData, getKerning, measureText, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
@@ -16,6 +16,8 @@ import type {
   Bounds,
   EffectConfig,
   DespawnEffectConfig,
+  TextAlign,
+  TextBounds,
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
@@ -1335,6 +1337,9 @@ export class OverlayScene {
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
 
+    // Set initial DOM element position to match physics body
+    this.updateDOMElementTransform(entry);
+
     // Initialize pressure tracking for static obstacles
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
@@ -1468,13 +1473,71 @@ export class OverlayScene {
     // If no letters found, default to 100
     if (maxDimension === 0) maxDimension = 100;
 
+    // Helper to calculate the width of a line
+    const calculateLineWidth = (line: string): number => {
+      let width = 0;
+      for (const char of line) {
+        if (char === ' ') {
+          width += 20; // Space width
+        } else if (/^[A-Za-z0-9]$/.test(char)) {
+          const dims = charDimensions.get(char);
+          if (dims) {
+            const scale = letterSize / Math.max(dims.width, dims.height);
+            const scaledWidth = dims.width * scale;
+            const extraSpacing = config.letterSpacing !== undefined ? config.letterSpacing - scaledWidth : 0;
+            width += scaledWidth + Math.max(0, extraSpacing);
+          }
+        }
+      }
+      return width;
+    };
+
+    // Calculate line widths for alignment
+    const lineWidths = lines.map(line => calculateLineWidth(line));
+    const align = config.align ?? 'left';
+    const maxLineWidth = Math.max(...lineWidths, 0);
+
+    // Calculate bounds based on alignment
+    let boundsLeft: number;
+    let boundsRight: number;
+    switch (align) {
+      case 'center':
+        boundsLeft = config.x - maxLineWidth / 2;
+        boundsRight = config.x + maxLineWidth / 2;
+        break;
+      case 'right':
+        boundsLeft = config.x - maxLineWidth;
+        boundsRight = config.x;
+        break;
+      default: // 'left'
+        boundsLeft = config.x;
+        boundsRight = config.x + maxLineWidth;
+    }
+    const boundsTop = config.y - letterSize / 2; // Letters are centered on y
+    const totalHeight = lines.length > 0 ? (lines.length - 1) * lineHeight + letterSize : 0;
+    const boundsBottom = boundsTop + totalHeight;
+
     // Track Y position for each line
     let currentY = config.y;
     let globalCharIndex = 0;
 
-    for (const line of lines) {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
       const chars = line.split('');
-      let currentX = config.x;
+
+      // Calculate starting X based on alignment
+      const lineWidth = lineWidths[lineIndex];
+      let currentX: number;
+      switch (align) {
+        case 'center':
+          currentX = config.x - lineWidth / 2;
+          break;
+        case 'right':
+          currentX = config.x - lineWidth;
+          break;
+        default: // 'left'
+          currentX = config.x;
+      }
 
       // New line = end of current word (if we were in one)
       if (inWord) {
@@ -1638,12 +1701,22 @@ export class OverlayScene {
       lineCount: lines.length
     });
 
+    const bounds: TextBounds = {
+      left: boundsLeft,
+      right: boundsRight,
+      top: boundsTop,
+      bottom: boundsBottom,
+      width: boundsRight - boundsLeft,
+      height: boundsBottom - boundsTop
+    };
+
     return {
       letterIds,
       stringTag,
       wordTags,
       letterMap,
-      letterDebugInfo: debugInfo
+      letterDebugInfo: debugInfo,
+      bounds
     };
   }
 
@@ -1736,13 +1809,54 @@ export class OverlayScene {
     // Split text into lines
     const lines = text.split('\n');
 
+    // Calculate line widths for alignment
+    const lineWidths = lines.map(line => measureText(loadedFont, line, fontSize));
+    const align = config.align ?? 'left';
+    const maxLineWidth = Math.max(...lineWidths, 0);
+
+    // Calculate bounds based on alignment
+    // For TTF, y is the baseline, so top is above baseline and bottom is below
+    let boundsLeft: number;
+    let boundsRight: number;
+    switch (align) {
+      case 'center':
+        boundsLeft = x - maxLineWidth / 2;
+        boundsRight = x + maxLineWidth / 2;
+        break;
+      case 'right':
+        boundsLeft = x - maxLineWidth;
+        boundsRight = x;
+        break;
+      default: // 'left'
+        boundsLeft = x;
+        boundsRight = x + maxLineWidth;
+    }
+    // Approximate bounds for TTF: ascent above baseline, descent below
+    // Using fontSize as approximate height, baseline at ~80% from top
+    const boundsTop = y - fontSize * 0.8;
+    const totalHeight = lines.length > 0 ? (lines.length - 1) * lineHeight + fontSize : 0;
+    const boundsBottom = boundsTop + totalHeight;
+
     // Track current Y position for each line
     let currentY = y;
     let globalCharIndex = 0;
 
-    for (const line of lines) {
-      // Track current X position as we place each glyph
-      let currentX = x;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+
+      // Calculate starting X based on alignment
+      const lineWidth = lineWidths[lineIndex];
+      let currentX: number;
+      switch (align) {
+        case 'center':
+          currentX = x - lineWidth / 2;
+          break;
+        case 'right':
+          currentX = x - lineWidth;
+          break;
+        default: // 'left'
+          currentX = x;
+      }
 
       // New line = end of current word (if we were in one)
       if (inWord) {
@@ -1898,13 +2012,23 @@ export class OverlayScene {
       lineCount: lines.length
     });
 
+    const bounds: TextBounds = {
+      left: boundsLeft,
+      right: boundsRight,
+      top: boundsTop,
+      bottom: boundsBottom,
+      width: boundsRight - boundsLeft,
+      height: boundsBottom - boundsTop
+    };
+
     // TTF fonts use font metrics, not PNG dimensions, so debug info is empty
     return {
       letterIds,
       stringTag,
       wordTags,
       letterMap,
-      letterDebugInfo: []
+      letterDebugInfo: [],
+      bounds
     };
   }
 

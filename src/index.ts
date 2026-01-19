@@ -22,6 +22,8 @@ export type {
   RainEffectConfig,
   StreamEffectConfig,
   // Text object types
+  TextAlign,
+  TextBounds,
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,

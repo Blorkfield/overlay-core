@@ -176,9 +176,10 @@ async function createScene(width: number, height: number): Promise<void> {
   await scene.initializeFonts();
   populateFontDropdown();
 
-  // Add initial text obstacles
-  const welcomeX = width * 0.3;
-  const welcomeY = height * 0.3;
+  // Add initial text obstacles - centered at 50% x
+  const centerX = width * 0.5;
+  const welcomeY = height * 0.2;
+  const verticalGap = 30; // Spacing between stacked elements
 
   // "Welcome to Blorkfield" - default font, default color (#6495ED)
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
@@ -187,8 +188,9 @@ async function createScene(width: number, height: number): Promise<void> {
   // Click to fall - letters collapse after being clicked 2 times
   const welcomeResult = await scene.addTextObstacles({
     text: 'Welcome to Blorkfield',
-    x: welcomeX,
+    x: centerX,
     y: welcomeY,
+    align: 'center',  // Center-align text at x position
     letterSize: 60,
     tags: ['welcome-text'],
     pressureThreshold: { value: 9 },
@@ -198,18 +200,24 @@ async function createScene(width: number, height: number): Promise<void> {
   });
   console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
 
-  // "Build Stuff" - Roboto font, lighter gray-blue, 40px below
+  // "Build Stuff" - Roboto font, lighter gray-blue
+  // Left-aligned with the "W" from Welcome using bounds.left
   // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
   // Weight of 10 - when letters collapse, they contribute 10 to pressure below
   // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
   // Click to fall - letters collapse after being clicked 2 times
   const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
+  const buildFontSize = 40;
+  // TTF y is baseline, so add ~80% of fontSize to get the top at bounds.bottom + gap
+  const buildY = welcomeResult.bounds.bottom + verticalGap + (buildFontSize * 0.8);
+  let buildBottom = buildY + buildFontSize * 0.2; // baseline + descent
   if (robotoFont?.fontUrl) {
     const buildResult = await scene.addTTFTextObstacles({
       text: 'Build Stuff',
-      x: welcomeX,
-      y: welcomeY + 60 + 40, // 60 (letter size) + 40px gap
-      fontSize: 40,
+      x: welcomeResult.bounds.left,  // Left-align with Welcome text
+      y: buildY,
+      align: 'left',  // Left-align so x is the left edge
+      fontSize: buildFontSize,
       fontUrl: robotoFont.fontUrl,
       fillColor: '#8BA4C7',
       tags: ['build-text'],
@@ -218,16 +226,17 @@ async function createScene(width: number, height: number): Promise<void> {
       shadow: { opacity: 0.3 },
       clickToFall: { clicks: 2 }
     });
-    console.log('Build text created:', buildResult.stringTag, buildResult.wordTags);
+    console.log('Build text created:', buildResult.stringTag, buildResult.wordTags, 'bounds:', buildResult.bounds);
+    buildBottom = buildResult.bounds.bottom;
   }
 
-  // Add content box as a physics obstacle - the DOM element itself will fall!
-  // Just use spawnObject with 'element' property - unified API handles everything
+  // Add content box as a physics obstacle - centered, below Build Stuff
+  // The DOM element itself will fall!
   if (contentBox && canvas) {
     const boxRect = contentBox.getBoundingClientRect();
-    const wrapperRect = sceneWrapper.getBoundingClientRect();
-    const boxX = boxRect.left - wrapperRect.left + boxRect.width / 2;
-    const boxY = boxRect.top - wrapperRect.top + boxRect.height / 2;
+    // Center the content box at 50% x, positioned below Build Stuff
+    const boxX = centerX;
+    const boxY = buildBottom + verticalGap + boxRect.height / 2;
 
     const contentObstacleId = scene.spawnObject({
       element: contentBox,  // Pass DOM element - it will move with physics!
