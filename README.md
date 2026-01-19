@@ -48,6 +48,15 @@ Static obstacles track how many dynamic objects are resting on them. When the ac
 
 The floor can be divided into independent segments, each with its own pressure threshold. When a segment receives too much weight, it collapses and objects fall through.
 
+| Option | Description |
+|--------|-------------|
+| `thickness` | Segment height in pixels (single value or array per segment) |
+| `color` | Segment fill color (single value or array per segment) - makes floor visible |
+| `minIntegrity` | Minimum segments required. When remaining segments drop below this, all collapse |
+| `segmentWidths` | Proportional widths for each segment (array that sums to 1.0, e.g., `[0.2, 0.3, 0.5]`) |
+
+Example: With 10 segments and `minIntegrity: 7`, once 4 segments have collapsed (leaving 6), all remaining segments collapse together.
+
 ## Quick Start
 
 ```typescript
@@ -71,6 +80,8 @@ scene.start();
 ```
 
 ## Spawning Objects
+
+All objects are created through `spawnObject()` (or `spawnObjectAsync()` for images). The same config supports canvas-rendered shapes, image-based shapes, and DOM elements.
 
 ### Basic Shapes
 
@@ -115,6 +126,57 @@ const id = await scene.spawnObjectAsync({
   imageUrl: '/images/coin.png',
   size: 50,
   tags: ['falling', 'grabable']
+});
+```
+
+### DOM Elements
+
+Pass a DOM element via the `element` property to link it to physics. The element will move with the physics body when it becomes dynamic.
+
+```typescript
+const contentBox = document.getElementById('content-box');
+
+scene.spawnObject({
+  element: contentBox,
+  x: boxX,
+  y: boxY,
+  width: contentBox.offsetWidth,
+  height: contentBox.offsetHeight,
+  tags: ['grabable'],
+  pressureThreshold: { value: 50 },
+  shadow: { opacity: 0.3 },
+  clickToFall: { clicks: 5 }
+});
+```
+
+When a DOM element collapses:
+- The element's CSS transform is updated each frame to follow physics
+- Shadow creates a cloned DOM element at the original position
+
+### Pressure, Shadow, and Click Behavior
+
+These options work on any spawned object (shapes, images, or DOM elements):
+
+```typescript
+scene.spawnObject({
+  x: 200,
+  y: 300,
+  width: 150,
+  height: 30,
+  fillStyle: '#333',
+  tags: ['grabable'],
+
+  // Collapse when 20 units of pressure accumulate
+  pressureThreshold: { value: 20 },
+
+  // This object contributes 5 pressure when resting on something
+  weight: 5,
+
+  // Leave a faded copy when collapsed (true = 0.3 opacity default)
+  shadow: { opacity: 0.3 },
+
+  // Collapse after being clicked 3 times
+  clickToFall: { clicks: 3 }
 });
 ```
 
@@ -263,7 +325,10 @@ const scene = new OverlayScene(canvas, {
   background: '#16213e',
   floorConfig: {
     segments: 10,
-    threshold: 100
+    threshold: 100,
+    thickness: 20,
+    color: '#3a4a6a',   // Makes floor visible
+    minIntegrity: 7     // All collapse if fewer than 7 remain
   },
   despawnBelowFloor: 1.0
 });
@@ -276,7 +341,11 @@ const scene = new OverlayScene(canvas, {
 | `debug` | false | Show collision wireframes |
 | `background` | transparent | Canvas background color |
 | `floorConfig.segments` | 1 | Number of floor segments |
-| `floorConfig.threshold` | none | Pressure threshold for floor collapse |
+| `floorConfig.threshold` | none | Pressure threshold for collapse (number or array per segment) |
+| `floorConfig.thickness` | 50 | Floor thickness in pixels (number or array per segment) |
+| `floorConfig.color` | none | Floor color - makes segments visible (string or array per segment) |
+| `floorConfig.minIntegrity` | none | Minimum segments required, otherwise all collapse |
+| `floorConfig.segmentWidths` | none | Proportional widths for each segment (array that sums to 1.0) |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
 
 ## Pressure Tracking

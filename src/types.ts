@@ -30,6 +30,37 @@ export interface FloorConfig {
    * If not provided, segments have infinite capacity.
    */
   threshold?: number | number[];
+
+  /**
+   * Thickness of floor segments in pixels:
+   * - number: Same thickness for all segments (default: 50)
+   * - number[]: Per-segment thickness (segment 0 uses value[0], etc.)
+   */
+  thickness?: number | number[];
+
+  /**
+   * Color of floor segments (visible when set):
+   * - string: Same color for all segments
+   * - string[]: Per-segment colors (segment 0 uses value[0], etc.)
+   * If not provided, floor segments are invisible.
+   */
+  color?: string | string[];
+
+  /**
+   * Minimum number of segments that must remain for floor integrity.
+   * When remaining segments drops below this value, ALL remaining segments collapse.
+   * Example: segments=10, minIntegrity=7 means once 4+ segments collapse, the rest follow.
+   * If set higher than segments count, floor collapses immediately.
+   */
+  minIntegrity?: number;
+
+  /**
+   * Proportional widths for each segment (must sum to 1.0):
+   * - number[]: Per-segment width proportions (e.g., [0.2, 0.3, 0.5] for 3 segments)
+   * If not provided, segments have equal widths.
+   * Array length should match segments count.
+   */
+  segmentWidths?: number[];
 }
 
 export interface Bounds {
@@ -77,6 +108,8 @@ export interface DespawnEffectConfig {
 export interface ObjectConfig {
   x: number;
   y: number;
+  /** DOM element to link to physics. When provided, element moves with physics body and shadow clones the element */
+  element?: HTMLElement;
   /** Radius for circle/polygon shapes */
   radius?: number;
   /** Width for rectangle objects (ignored if imageUrl is provided) */
@@ -99,6 +132,12 @@ export interface ObjectConfig {
   despawnEffect?: DespawnEffectConfig;
   /** Weight for pressure calculation (default: 1). Higher weight = more pressure contribution */
   weight?: number;
+  /** Pressure threshold config - when reached, object collapses */
+  pressureThreshold?: PressureThresholdConfig;
+  /** Shadow config - when enabled, a visual copy remains after collapse (true for default opacity) */
+  shadow?: ShadowConfig | boolean;
+  /** Click to fall config - when set, object collapses after being clicked N times */
+  clickToFall?: ClickToFallConfig;
 }
 
 /**
@@ -268,15 +307,25 @@ export interface ClickToFallConfig {
 // ==================== TEXT OBSTACLE TYPES ====================
 
 /**
+ * Text alignment option for positioning text obstacles.
+ * - 'left': x coordinate is the left edge of the text (default)
+ * - 'center': x coordinate is the center of the text
+ * - 'right': x coordinate is the right edge of the text
+ */
+export type TextAlign = 'left' | 'center' | 'right';
+
+/**
  * Configuration for creating text objects from strings
  */
 export interface TextObstacleConfig {
   /** The text to create objects from (A-Z, 0-9 supported, supports \n for multiline) */
   text: string;
-  /** X position of the first letter's center */
+  /** X position (interpretation depends on align setting) */
   x: number;
   /** Y position of the letter centers */
   y: number;
+  /** Text alignment - 'left' (default), 'center', or 'right' */
+  align?: TextAlign;
   /** Size of each letter (width/height) */
   letterSize: number;
   /** Spacing between letter centers (default: letterSize) */
@@ -328,6 +377,25 @@ export interface LetterDebugInfo {
 }
 
 /**
+ * Bounding box for text obstacles.
+ * Useful for positioning subsequent elements relative to the text.
+ */
+export interface TextBounds {
+  /** X position of the left edge of the text */
+  left: number;
+  /** X position of the right edge of the text */
+  right: number;
+  /** Y position of the top edge of the text */
+  top: number;
+  /** Y position of the bottom edge of the text */
+  bottom: number;
+  /** Total width of the text */
+  width: number;
+  /** Total height of the text (including all lines) */
+  height: number;
+}
+
+/**
  * Result of creating text obstacles
  */
 export interface TextObstacleResult {
@@ -341,6 +409,8 @@ export interface TextObstacleResult {
   letterMap: Map<string, string>;
   /** Debug info for each letter (for drawing original dimension boxes) */
   letterDebugInfo: LetterDebugInfo[];
+  /** Bounding box of the entire text block */
+  bounds: TextBounds;
 }
 
 /**
@@ -349,10 +419,12 @@ export interface TextObstacleResult {
 export interface TTFTextObstacleConfig {
   /** Text to display (supports \n for multiline) */
   text: string;
-  /** X position of the start of text */
+  /** X position (interpretation depends on align setting) */
   x: number;
   /** Y position of the text baseline */
   y: number;
+  /** Text alignment - 'left' (default), 'center', or 'right' */
+  align?: TextAlign;
   /** Font size in pixels */
   fontSize: number;
   /** URL path to the TTF/OTF font file */

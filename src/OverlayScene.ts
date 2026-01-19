@@ -2,7 +2,7 @@ import Matter from 'matter-js';
 import { createEngine, createRender } from './engine';
 import { createBoundaries, createBoundariesWithFloorConfig, createEntity, createEntityAsync, createObstacle, createObstacleAsync, createBoxObstacleWithInfo, getImageDimensions } from './bodies';
 import { tintImage } from './imageClip';
-import { loadFont, getGlyphData, getKerning, type LoadedFont } from './fontLoader';
+import { loadFont, getGlyphData, getKerning, measureText, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
@@ -16,6 +16,8 @@ import type {
   Bounds,
   EffectConfig,
   DespawnEffectConfig,
+  TextAlign,
+  TextBounds,
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
@@ -153,6 +155,9 @@ export class OverlayScene {
     this.boundaries = [...boundariesResult.walls, ...boundariesResult.floorSegments];
     this.floorSegments = boundariesResult.floorSegments;
     Matter.Composite.add(this.engine.world, this.boundaries);
+
+    // Check initial floor integrity (handles minIntegrity > segments case)
+    this.checkInitialFloorIntegrity();
 
     // Setup mouse interaction
     this.mouse = Matter.Mouse.create(canvas);
@@ -354,12 +359,15 @@ export class OverlayScene {
 
         const dynBounds = dyn.body.bounds;
 
-        // Count resting objects in this segment's horizontal column
+        // Check horizontal overlap with segment
         const horizontalOverlap =
           dynBounds.max.x > segmentBounds.min.x &&
           dynBounds.min.x < segmentBounds.max.x;
 
-        if (horizontalOverlap) {
+        // Check if object is actually near the floor (within 10px of segment top)
+        const nearFloor = dynBounds.max.y >= segmentBounds.min.y - 10;
+
+        if (horizontalOverlap && nearFloor) {
           resting.add(dyn.id);
         }
       }
@@ -397,19 +405,64 @@ export class OverlayScene {
       const pressure = objectIds ? this.calculateWeightedPressure(objectIds) : 0;
 
       if (pressure >= threshold) {
-        this.collapseFloorSegment(i, pressure, threshold);
+        this.collapseFloorSegment(i, `pressure ${pressure} >= threshold ${threshold}`);
       }
     }
   }
 
   /** Collapse a single floor segment */
-  private collapseFloorSegment(index: number, pressure: number, threshold: number): void {
+  private collapseFloorSegment(index: number, reason: string): void {
     if (this.collapsedSegments.has(index)) return;
     this.collapsedSegments.add(index);
 
     const segment = this.floorSegments[index];
     Matter.Composite.remove(this.engine.world, segment);
-    console.log(`[Pressure] Floor segment ${index} collapsed! (pressure: ${pressure} >= ${threshold})`);
+    logger.debug('OverlayScene', `Floor segment ${index} collapsed: ${reason}`);
+
+    // Check floor integrity after collapse
+    this.checkFloorIntegrity();
+  }
+
+  /** Check if floor integrity requirement is violated and collapse all remaining if so */
+  private checkFloorIntegrity(): void {
+    const minIntegrity = this.config.floorConfig?.minIntegrity;
+    if (minIntegrity === undefined) return;
+
+    const totalSegments = this.floorSegments.length;
+    const remainingSegments = totalSegments - this.collapsedSegments.size;
+
+    if (remainingSegments < minIntegrity && remainingSegments > 0) {
+      logger.debug('OverlayScene', `Floor integrity failed: ${remainingSegments} remaining < ${minIntegrity} required. Collapsing all.`);
+
+      // Collapse all remaining segments
+      for (let i = 0; i < totalSegments; i++) {
+        if (!this.collapsedSegments.has(i)) {
+          this.collapsedSegments.add(i);
+          const segment = this.floorSegments[i];
+          Matter.Composite.remove(this.engine.world, segment);
+          logger.debug('OverlayScene', `Floor segment ${i} collapsed: integrity failure cascade`);
+        }
+      }
+    }
+  }
+
+  /** Check floor integrity on initialization (handles minIntegrity > segments) */
+  private checkInitialFloorIntegrity(): void {
+    const minIntegrity = this.config.floorConfig?.minIntegrity;
+    if (minIntegrity === undefined) return;
+
+    const totalSegments = this.floorSegments.length;
+
+    if (totalSegments < minIntegrity) {
+      logger.debug('OverlayScene', `Floor integrity impossible: ${totalSegments} segments < ${minIntegrity} required. Collapsing all immediately.`);
+
+      // Collapse all segments immediately
+      for (let i = 0; i < totalSegments; i++) {
+        this.collapsedSegments.add(i);
+        const segment = this.floorSegments[i];
+        Matter.Composite.remove(this.engine.world, segment);
+      }
+    }
   }
 
   /** Log a summary of pressure on all obstacles, grouped by word */
@@ -753,6 +806,9 @@ export class OverlayScene {
     this.floorSegmentPressure.clear();
     Matter.Composite.add(this.engine.world, this.boundaries);
 
+    // Check initial floor integrity (handles minIntegrity > segments case)
+    this.checkInitialFloorIntegrity();
+
     // Update render bounds
     this.render.options.width = width;
     this.render.options.height = height;
@@ -774,6 +830,23 @@ export class OverlayScene {
    * Without 'falling' tag, object is static.
    */
   spawnObject(config: ObjectConfig): string {
+    // If element is provided, delegate to DOM obstacle logic
+    if (config.element) {
+      const result = this.addDOMObstacleInternal({
+        element: config.element,
+        x: config.x,
+        y: config.y,
+        width: config.width,
+        height: config.height,
+        tags: config.tags,
+        pressureThreshold: config.pressureThreshold,
+        weight: config.weight,
+        shadow: config.shadow === true ? { opacity: 0.3 } : (config.shadow || undefined),
+        clickToFall: config.clickToFall
+      });
+      return result.id;
+    }
+
     const id = crypto.randomUUID();
     const tags = config.tags ?? [];
     const isStatic = !tags.includes('falling');
@@ -798,6 +871,25 @@ export class OverlayScene {
       body = createObstacle(id, config, isStatic);
     }
 
+    // Parse pressure threshold
+    let pressureThreshold: number | undefined;
+    if (config.pressureThreshold) {
+      pressureThreshold = typeof config.pressureThreshold.value === 'number'
+        ? config.pressureThreshold.value
+        : config.pressureThreshold.value[0];
+    }
+
+    // Parse shadow config (can be boolean or ShadowConfig)
+    let shadow: { opacity: number } | undefined;
+    if (config.shadow === true) {
+      shadow = { opacity: 0.3 };
+    } else if (config.shadow && typeof config.shadow === 'object') {
+      shadow = { opacity: config.shadow.opacity ?? 0.3 };
+    }
+
+    // Parse click to fall config
+    const clicksRemaining = config.clickToFall?.clicks;
+
     const entry: ObjectEntry = {
       id,
       body,
@@ -805,10 +897,20 @@ export class OverlayScene {
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect,
-      weight: config.weight ?? 1
+      weight: config.weight ?? 1,
+      pressureThreshold,
+      shadow,
+      originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
+      clicksRemaining
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
+
+    // Initialize pressure tracking for static obstacles with threshold
+    if (isStatic && pressureThreshold !== undefined) {
+      this.obstaclePressure.set(id, new Set());
+    }
+
     return id;
   }
 
@@ -839,6 +941,25 @@ export class OverlayScene {
       body = await createObstacleAsync(id, config, isStatic);
     }
 
+    // Parse pressure threshold
+    let pressureThreshold: number | undefined;
+    if (config.pressureThreshold) {
+      pressureThreshold = typeof config.pressureThreshold.value === 'number'
+        ? config.pressureThreshold.value
+        : config.pressureThreshold.value[0];
+    }
+
+    // Parse shadow config (can be boolean or ShadowConfig)
+    let shadow: { opacity: number } | undefined;
+    if (config.shadow === true) {
+      shadow = { opacity: 0.3 };
+    } else if (config.shadow && typeof config.shadow === 'object') {
+      shadow = { opacity: config.shadow.opacity ?? 0.3 };
+    }
+
+    // Parse click to fall config
+    const clicksRemaining = config.clickToFall?.clicks;
+
     const entry: ObjectEntry = {
       id,
       body,
@@ -846,10 +967,20 @@ export class OverlayScene {
       spawnTime: performance.now(),
       ttl: config.ttl,
       despawnEffect: config.despawnEffect,
-      weight: config.weight ?? 1
+      weight: config.weight ?? 1,
+      pressureThreshold,
+      shadow,
+      originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
+      clicksRemaining
     };
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
+
+    // Initialize pressure tracking for static obstacles with threshold
+    if (isStatic && pressureThreshold !== undefined) {
+      this.obstaclePressure.set(id, new Set());
+    }
+
     return id;
   }
 
@@ -1146,18 +1277,13 @@ export class OverlayScene {
     return this.fontsInitialized;
   }
 
-  // ==================== DOM OBSTACLE METHODS ====================
+  // ==================== DOM OBSTACLE METHODS (INTERNAL) ====================
 
   /**
-   * Attach a DOM element to physics. The element will follow the physics body
-   * and can have pressure threshold, shadow, and click-to-fall behavior.
-   *
-   * When the element collapses (becomes dynamic), its CSS transform will be
-   * updated each frame to match the physics body position and rotation.
-   *
-   * Shadow creates a cloned DOM element that stays at the original position.
+   * Internal: Attach a DOM element to physics.
+   * Called by spawnObject when element is provided.
    */
-  addDOMObstacle(config: DOMObstacleConfig): DOMObstacleResult {
+  private addDOMObstacleInternal(config: DOMObstacleConfig): DOMObstacleResult {
     const { element, x, y } = config;
     const width = config.width ?? element.offsetWidth;
     const height = config.height ?? element.offsetHeight;
@@ -1210,6 +1336,9 @@ export class OverlayScene {
 
     this.objects.set(id, entry);
     Matter.Composite.add(this.engine.world, body);
+
+    // Set initial DOM element position to match physics body
+    this.updateDOMElementTransform(entry);
 
     // Initialize pressure tracking for static obstacles
     if (isStatic && pressureThreshold !== undefined) {
@@ -1344,13 +1473,71 @@ export class OverlayScene {
     // If no letters found, default to 100
     if (maxDimension === 0) maxDimension = 100;
 
+    // Helper to calculate the width of a line
+    const calculateLineWidth = (line: string): number => {
+      let width = 0;
+      for (const char of line) {
+        if (char === ' ') {
+          width += 20; // Space width
+        } else if (/^[A-Za-z0-9]$/.test(char)) {
+          const dims = charDimensions.get(char);
+          if (dims) {
+            const scale = letterSize / Math.max(dims.width, dims.height);
+            const scaledWidth = dims.width * scale;
+            const extraSpacing = config.letterSpacing !== undefined ? config.letterSpacing - scaledWidth : 0;
+            width += scaledWidth + Math.max(0, extraSpacing);
+          }
+        }
+      }
+      return width;
+    };
+
+    // Calculate line widths for alignment
+    const lineWidths = lines.map(line => calculateLineWidth(line));
+    const align = config.align ?? 'left';
+    const maxLineWidth = Math.max(...lineWidths, 0);
+
+    // Calculate bounds based on alignment
+    let boundsLeft: number;
+    let boundsRight: number;
+    switch (align) {
+      case 'center':
+        boundsLeft = config.x - maxLineWidth / 2;
+        boundsRight = config.x + maxLineWidth / 2;
+        break;
+      case 'right':
+        boundsLeft = config.x - maxLineWidth;
+        boundsRight = config.x;
+        break;
+      default: // 'left'
+        boundsLeft = config.x;
+        boundsRight = config.x + maxLineWidth;
+    }
+    const boundsTop = config.y - letterSize / 2; // Letters are centered on y
+    const totalHeight = lines.length > 0 ? (lines.length - 1) * lineHeight + letterSize : 0;
+    const boundsBottom = boundsTop + totalHeight;
+
     // Track Y position for each line
     let currentY = config.y;
     let globalCharIndex = 0;
 
-    for (const line of lines) {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
       const chars = line.split('');
-      let currentX = config.x;
+
+      // Calculate starting X based on alignment
+      const lineWidth = lineWidths[lineIndex];
+      let currentX: number;
+      switch (align) {
+        case 'center':
+          currentX = config.x - lineWidth / 2;
+          break;
+        case 'right':
+          currentX = config.x - lineWidth;
+          break;
+        default: // 'left'
+          currentX = config.x;
+      }
 
       // New line = end of current word (if we were in one)
       if (inWord) {
@@ -1514,12 +1701,22 @@ export class OverlayScene {
       lineCount: lines.length
     });
 
+    const bounds: TextBounds = {
+      left: boundsLeft,
+      right: boundsRight,
+      top: boundsTop,
+      bottom: boundsBottom,
+      width: boundsRight - boundsLeft,
+      height: boundsBottom - boundsTop
+    };
+
     return {
       letterIds,
       stringTag,
       wordTags,
       letterMap,
-      letterDebugInfo: debugInfo
+      letterDebugInfo: debugInfo,
+      bounds
     };
   }
 
@@ -1612,13 +1809,54 @@ export class OverlayScene {
     // Split text into lines
     const lines = text.split('\n');
 
+    // Calculate line widths for alignment
+    const lineWidths = lines.map(line => measureText(loadedFont, line, fontSize));
+    const align = config.align ?? 'left';
+    const maxLineWidth = Math.max(...lineWidths, 0);
+
+    // Calculate bounds based on alignment
+    // For TTF, y is the baseline, so top is above baseline and bottom is below
+    let boundsLeft: number;
+    let boundsRight: number;
+    switch (align) {
+      case 'center':
+        boundsLeft = x - maxLineWidth / 2;
+        boundsRight = x + maxLineWidth / 2;
+        break;
+      case 'right':
+        boundsLeft = x - maxLineWidth;
+        boundsRight = x;
+        break;
+      default: // 'left'
+        boundsLeft = x;
+        boundsRight = x + maxLineWidth;
+    }
+    // Approximate bounds for TTF: ascent above baseline, descent below
+    // Using fontSize as approximate height, baseline at ~80% from top
+    const boundsTop = y - fontSize * 0.8;
+    const totalHeight = lines.length > 0 ? (lines.length - 1) * lineHeight + fontSize : 0;
+    const boundsBottom = boundsTop + totalHeight;
+
     // Track current Y position for each line
     let currentY = y;
     let globalCharIndex = 0;
 
-    for (const line of lines) {
-      // Track current X position as we place each glyph
-      let currentX = x;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+
+      // Calculate starting X based on alignment
+      const lineWidth = lineWidths[lineIndex];
+      let currentX: number;
+      switch (align) {
+        case 'center':
+          currentX = x - lineWidth / 2;
+          break;
+        case 'right':
+          currentX = x - lineWidth;
+          break;
+        default: // 'left'
+          currentX = x;
+      }
 
       // New line = end of current word (if we were in one)
       if (inWord) {
@@ -1774,13 +2012,23 @@ export class OverlayScene {
       lineCount: lines.length
     });
 
+    const bounds: TextBounds = {
+      left: boundsLeft,
+      right: boundsRight,
+      top: boundsTop,
+      bottom: boundsBottom,
+      width: boundsRight - boundsLeft,
+      height: boundsBottom - boundsTop
+    };
+
     // TTF fonts use font metrics, not PNG dimensions, so debug info is empty
     return {
       letterIds,
       stringTag,
       wordTags,
       letterMap,
-      letterDebugInfo: []
+      letterDebugInfo: [],
+      bounds
     };
   }
 

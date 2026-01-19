@@ -22,12 +22,11 @@ export type {
   RainEffectConfig,
   StreamEffectConfig,
   // Text object types
+  TextAlign,
+  TextBounds,
   TextObstacleConfig,
   TextObstacleResult,
   TTFTextObstacleConfig,
-  // DOM obstacle types
-  DOMObstacleConfig,
-  DOMObstacleResult,
   // Pressure, weight, floor, shadow, and click types
   PressureThresholdConfig,
   WeightConfig,
