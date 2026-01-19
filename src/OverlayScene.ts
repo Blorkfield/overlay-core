@@ -633,7 +633,8 @@ export class OverlayScene {
       const shadowElement = entry.domElement.cloneNode(true) as HTMLElement;
       shadowElement.style.opacity = String(opacity);
       shadowElement.style.pointerEvents = 'none';
-      shadowElement.style.transform = entry.domOriginalTransform || '';
+      // Keep the current position (left, top, transform) from the cloned element
+      // Don't reset to original transform - shadow should stay where element is now
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;
