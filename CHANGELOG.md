@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.5
+
+### Patch Changes
+
+- 9fb06ba: fix: docker release
+
 ## 0.5.4
 
 ### Patch Changes
