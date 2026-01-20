@@ -631,9 +631,21 @@ export class OverlayScene {
       const { x, y } = entry.originalPosition;
       const width = entry.domElement.offsetWidth;
       const height = entry.domElement.offsetHeight;
-      shadowElement.style.left = `${x - width / 2}px`;
-      shadowElement.style.top = `${y - height / 2}px`;
-      shadowElement.style.transform = 'rotate(0deg)';
+      const computedLeft = x - width / 2;
+      const computedTop = y - height / 2;
+      console.log('[Shadow Debug]', {
+        originalPosition: { x, y },
+        elementSize: { width, height },
+        computedPosition: { left: computedLeft, top: computedTop },
+        elementCurrentStyle: {
+          left: entry.domElement.style.left,
+          top: entry.domElement.style.top,
+          transform: entry.domElement.style.transform
+        }
+      });
+      shadowElement.style.setProperty('left', `${computedLeft}px`, 'important');
+      shadowElement.style.setProperty('top', `${computedTop}px`, 'important');
+      shadowElement.style.setProperty('transform', 'rotate(0deg)', 'important');
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;
