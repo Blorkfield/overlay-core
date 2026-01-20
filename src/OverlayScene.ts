@@ -626,14 +626,14 @@ export class OverlayScene {
       const shadowElement = entry.domElement.cloneNode(true) as HTMLElement;
       shadowElement.style.opacity = String(opacity);
       shadowElement.style.pointerEvents = 'none';
-      // Explicitly set position using originalPosition
-      // Use setProperty with 'important' to override any CSS rules on the element
+      // Explicitly set shadow position from originalPosition
+      // Don't rely on cloned styles - CSS may override them
+      const { x, y } = entry.originalPosition;
       const width = entry.domElement.offsetWidth;
       const height = entry.domElement.offsetHeight;
-      shadowElement.style.setProperty('position', 'absolute', 'important');
-      shadowElement.style.setProperty('left', `${entry.originalPosition.x - width / 2}px`, 'important');
-      shadowElement.style.setProperty('top', `${entry.originalPosition.y - height / 2}px`, 'important');
-      shadowElement.style.setProperty('transform', 'rotate(0deg)', 'important');
+      shadowElement.style.left = `${x - width / 2}px`;
+      shadowElement.style.top = `${y - height / 2}px`;
+      shadowElement.style.transform = 'rotate(0deg)';
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;

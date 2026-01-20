@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import OverlayCanvas from '../components/OverlayCanvas.svelte';
+---
+<BaseLayout>
+  <div class="canvas-wrapper">
+    <OverlayCanvas client:load />
+  </div>
+</BaseLayout>
+
+<style>
+  .canvas-wrapper {
+    height: auto;
+  }
+</style>
