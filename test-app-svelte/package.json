@@ -1,0 +1,21 @@
+{
+  "name": "overlay-core-test-svelte",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^7.2.4",
+    "@blorkfield/overlay-core": "link:..",
+    "astro": "^5.16.6",
+    "svelte": "^5.46.1"
+  },
+  "devDependencies": {
+    "sirv": "^3.0.2",
+    "typescript": "^5.9.3"
+  }
+}
