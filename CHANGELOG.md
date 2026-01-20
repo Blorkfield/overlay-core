@@ -1,5 +1,12 @@
 # @blorkfield/overlay-core
 
+## 0.5.4
+
+### Patch Changes
+
+- 2a0a160: fix: content shadow
+- e238a1b: fix: release pr
+
 ## 0.5.3
 
 ### Patch Changes
