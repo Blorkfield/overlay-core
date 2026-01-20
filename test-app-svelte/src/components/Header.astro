@@ -1,0 +1,12 @@
+---
+const { headerText } = Astro.props;
+---
+<header class="site-header">
+	<h1 class="site-header__title">{headerText}</h1>
+	<nav class="nav">
+		<a href="/">Home</a>
+		<a href="/products">Products</a>
+		<a href="/about">About</a>
+		<a href="https://auth.blorkfield.com" class="login-btn" target="_blank">Login</a>
+	</nav>
+</header>

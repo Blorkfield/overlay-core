@@ -1,0 +1,35 @@
+---
+import { getImage } from "astro:assets";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Card from "../components/Card.svelte";
+import { products } from "../data/products";
+
+const images = import.meta.glob<{ default: ImageMetadata }>("/src/images/*.*", { eager: true });
+
+const productsWithOptimizedImages = await Promise.all(
+	products.map(async (product) => {
+		const imagePath = `/src/images/${product.bannerImage}`;
+		const imageModule = images[imagePath];
+		const optimizedImage = await getImage({ src: imageModule.default, format: "webp" });
+		return {
+			...product,
+			bannerImage: optimizedImage.src
+		};
+	})
+);
+---
+<BaseLayout headerText="Products">
+	<section class="products-grid">
+		{productsWithOptimizedImages.map((product) =>
+    <Card client:visible item={product} bannerRatio={33.3} modalWidth={70} modalHeight={80} />
+		)}
+	</section>
+</BaseLayout>
+
+<style>
+	.products-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 2rem;
+	}
+</style>

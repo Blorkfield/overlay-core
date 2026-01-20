@@ -7,13 +7,12 @@
   let contentBox: HTMLDivElement;
   let scene: OverlayScene | null = null;
 
-  // Layout constants - matching borkfield-site
+  // Layout constants
   const WELCOME_Y = 80;
   const VERTICAL_GAP = 30;
   const FLOOR_PADDING = 60;
 
   onMount(async () => {
-    // Small delay to ensure DOM is fully ready
     await new Promise(r => setTimeout(r, 10));
 
     const width = container.clientWidth;
@@ -90,7 +89,6 @@
     }
 
     // Content box - centered, below Build Stuff
-    // KEY DIFFERENCE: Position is calculated from physics, not CSS
     const boxRect = contentBox.getBoundingClientRect();
     const boxX = centerX;
     const boxY = buildBottom + VERTICAL_GAP + boxRect.height / 2;
@@ -192,8 +190,6 @@
     height: 100%;
   }
 
-  /* CRITICAL: Content box uses top: 0, not percentage positioning
-     This ensures the element starts at a known position before physics takes over */
   .content-box {
     position: absolute;
     top: 0;
