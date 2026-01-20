@@ -32,7 +32,7 @@
     "dev": "concurrently \"tsup --watch\" \"pnpm -C test-app dev\"",
     "dev:svelte": "concurrently \"tsup --watch\" \"pnpm -C test-app-svelte dev\"",
     "typecheck": "tsc --noEmit",
-    "prepare": "pnpm -C test-app install && pnpm -C test-app-svelte install"
+    "prepare": "[ -d test-app ] && pnpm -C test-app install || true; [ -d test-app-svelte ] && pnpm -C test-app-svelte install || true"
   },
   "dependencies": {
     "matter-js": "^0.19.0",
