@@ -37,7 +37,8 @@
       floorConfig: {
         segments: 10,
         threshold: 100,
-        thickness: 4,
+        thickness: 15,       // Collision thickness (prevents tunneling)
+        visibleThickness: 4, // Only show 4px, rest extends below canvas
         color: '#565f89'
       },
       despawnBelowFloor: 0.5
@@ -101,7 +102,7 @@
       height: boxRect.height,
       tags: ['content-obstacle', 'grabable'],
       pressureThreshold: { value: 100 },
-      weight: { value: 1000 },
+      weight: 1000,
       shadow: { opacity: 0.3 },
       clickToFall: { clicks: 10 }
     });
@@ -120,7 +121,8 @@
       objectConfigs: [{
         objectConfig: {
           imageUrl: '/bf_koban_512.png',
-          tags: ['falling', 'grabable']
+          tags: ['falling', 'grabable'],
+          weight: 3
         },
         probability: 1,
         minScale: 1,
@@ -180,6 +182,7 @@
   .overlay-wrapper {
     position: relative;
     width: 100%;
+    overflow: hidden;
   }
 
   .overlay-container {
