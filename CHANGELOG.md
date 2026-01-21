@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.7
+
+### Patch Changes
+
+- b521280: fix: floor culling
+
 ## 0.5.6
 
 ### Patch Changes
