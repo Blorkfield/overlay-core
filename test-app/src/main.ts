@@ -146,7 +146,8 @@ async function createScene(width: number, height: number): Promise<void> {
     floorConfig: {
       segments: 5,        // Divide floor into 5 segments
       threshold: 100,     // Each segment collapses when weighted pressure reaches 100
-      thickness: 20,      // Visible floor thickness
+      thickness: 15,      // Collision thickness (prevents tunneling at high forces)
+      visibleThickness: 3, // Only show 3px, rest extends below canvas
       color: ['#3a4a6a', '#4a5a7a', '#3a4a6a', '#4a5a7a', '#3a4a6a'],  // Alternating colors
       minIntegrity: 3,    // If fewer than 3 segments remain, all collapse
       segmentWidths: [0.1, 0.2, 0.4, 0.2, 0.1]  // Variable widths (small, medium, large, medium, small)

@@ -192,14 +192,22 @@ export function createBoundariesWithFloorConfig(bounds: Bounds, floorConfig?: Fl
       ? (Array.isArray(floorConfig.thickness) ? floorConfig.thickness[i] ?? BOUNDARY_THICKNESS : floorConfig.thickness)
       : BOUNDARY_THICKNESS;
 
+    // Get visible thickness for this segment (default: same as thickness)
+    const visibleThickness = floorConfig?.visibleThickness !== undefined
+      ? (Array.isArray(floorConfig.visibleThickness) ? floorConfig.visibleThickness[i] ?? thickness : floorConfig.visibleThickness)
+      : thickness;
+
     // Get color for this segment (undefined = invisible)
     const color = floorConfig?.color !== undefined
       ? (Array.isArray(floorConfig.color) ? floorConfig.color[i] : floorConfig.color)
       : undefined;
 
     const segmentX = currentX + segmentWidth / 2;
-    // Position floor so it's visible within bounds (top edge at bounds.bottom - thickness)
-    const segmentY = bounds.bottom - thickness / 2;
+    // Position floor so only visibleThickness pixels show above bounds.bottom
+    // The remaining (thickness - visibleThickness) extends below as hidden collision
+    // Floor top = bounds.bottom - visibleThickness
+    // Floor center = bounds.bottom - visibleThickness + thickness/2
+    const segmentY = bounds.bottom - visibleThickness + thickness / 2;
 
     const segmentOptions: Matter.IBodyDefinition = {
       isStatic: true,

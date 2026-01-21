@@ -32,11 +32,23 @@ export interface FloorConfig {
   threshold?: number | number[];
 
   /**
-   * Thickness of floor segments in pixels:
+   * Thickness of floor segments in pixels (collision body height):
    * - number: Same thickness for all segments (default: 50)
    * - number[]: Per-segment thickness (segment 0 uses value[0], etc.)
    */
   thickness?: number | number[];
+
+  /**
+   * Visible thickness of floor segments in pixels.
+   * When set, only this many pixels are visible above the canvas bottom,
+   * while the remaining (thickness - visibleThickness) extends below as hidden collision.
+   * - number: Same visible thickness for all segments (default: same as thickness)
+   * - number[]: Per-segment visible thickness (segment 0 uses value[0], etc.)
+   *
+   * Example: thickness=15, visibleThickness=2 creates a 15px collision body
+   * but only shows 2px, with 13px of hidden collision below the canvas.
+   */
+  visibleThickness?: number | number[];
 
   /**
    * Color of floor segments (visible when set):
