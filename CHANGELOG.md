@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.8
+
+### Patch Changes
+
+- 8bda8c3: fix: production bundling
+
 ## 0.5.7
 
 ### Patch Changes
