@@ -1,10 +1,35 @@
 import type { Plugin, ViteDevServer, PreviewServer } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join, relative } from 'node:path';
+import { readdir, readFile, stat } from 'node:fs/promises';
+
+/**
+ * Recursively get all files in a directory
+ */
+async function getAllFiles(dir: string, baseDir: string = dir): Promise<{ path: string; relativePath: string }[]> {
+  const files: { path: string; relativePath: string }[] = [];
+  const entries = await readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await getAllFiles(fullPath, baseDir));
+    } else {
+      files.push({
+        path: fullPath,
+        relativePath: relative(baseDir, fullPath)
+      });
+    }
+  }
+
+  return files;
+}
 
 /**
  * Vite plugin that serves bundled assets from the package.
  * Serves fonts at /fonts/ and public assets at root level.
+ *
+ * During build, emits all assets to the output directory.
  *
  * @example
  * ```typescript
@@ -19,11 +44,14 @@ import { dirname, resolve } from 'node:path';
 export function overlayFontsPlugin(): Plugin {
   let fontsDir: string;
   let publicDir: string;
+  let isBuild = false;
 
   return {
     name: 'overlay-core-assets',
 
-    configResolved() {
+    configResolved(config) {
+      isBuild = config.command === 'build';
+
       // Determine the package root directory
       let packageRoot: string;
       try {
@@ -68,6 +96,46 @@ export function overlayFontsPlugin(): Plugin {
       const servePublic = sirv(publicDir, { etag: true });
       server.middlewares.use(servePublic);
     },
+
+    async generateBundle() {
+      if (!isBuild) return;
+
+      // Emit font files
+      try {
+        const fontsDirStat = await stat(fontsDir).catch(() => null);
+        if (fontsDirStat?.isDirectory()) {
+          const fontFiles = await getAllFiles(fontsDir);
+          for (const file of fontFiles) {
+            const content = await readFile(file.path);
+            this.emitFile({
+              type: 'asset',
+              fileName: `fonts/${file.relativePath}`,
+              source: content
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[overlay-core-assets] Failed to emit font files:', err);
+      }
+
+      // Emit public files
+      try {
+        const publicDirStat = await stat(publicDir).catch(() => null);
+        if (publicDirStat?.isDirectory()) {
+          const publicFiles = await getAllFiles(publicDir);
+          for (const file of publicFiles) {
+            const content = await readFile(file.path);
+            this.emitFile({
+              type: 'asset',
+              fileName: file.relativePath,
+              source: content
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[overlay-core-assets] Failed to emit public files:', err);
+      }
+    }
   };
 }
 
