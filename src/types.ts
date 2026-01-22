@@ -449,6 +449,8 @@ export interface TTFTextObstacleConfig {
   ttl?: number;
   /** Fill color for the letters (CSS color string, default: '#ffffff') */
   fillColor?: string;
+  /** Per-character fill colors (overrides fillColor for specific characters by index) */
+  fillColors?: string[];
   /** Line height for multiline text (default: fontSize * 1.2) */
   lineHeight?: number;
   /** Pressure threshold config - when reached, letters collapse */

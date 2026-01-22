@@ -181,15 +181,28 @@ async function createScene(width: number, height: number): Promise<void> {
   const titleY = height * 0.25;
 
   // "@blorkfield/overlay-core" title using Roboto (supports @ and / characters)
+  // Colors from blorkfield-site: muted blue for @blorkfield, gold for /, accent blue for overlay-core
+  const mutedBlue = '#565f89';
+  const accentGold = '#e0af68';
+  const accentBlue = '#7aa2f7';
+
+  // Build per-character color array: @blorkfield (0-10), / (11), overlay-core (12-23)
+  const titleText = '@blorkfield/overlay-core';
+  const titleColors = titleText.split('').map((_, i) => {
+    if (i <= 10) return mutedBlue;      // @blorkfield
+    if (i === 11) return accentGold;    // /
+    return accentBlue;                   // overlay-core
+  });
+
   const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
   const titleResult = await scene.addTTFTextObstacles({
-    text: '@blorkfield/overlay-core',
+    text: titleText,
     x: centerX,
     y: titleY,
     align: 'center',
     fontSize: 50,
     fontUrl: robotoFont!.fontUrl!,
-    fillColor: '#6495ED',
+    fillColors: titleColors,
     tags: ['title-text'],
     pressureThreshold: { value: 9 },
     weight: { value: 10 },
