@@ -8,7 +8,6 @@ import '@blorkfield/blork-tabs/styles.css';
 // Elements
 const sceneContainer = document.getElementById('scene-container') as HTMLDivElement;
 const sceneWrapper = document.getElementById('scene-wrapper') as HTMLDivElement;
-const contentBox = document.getElementById('content-box') as HTMLDivElement;
 const btnFullscreen = document.getElementById('btn-fullscreen') as HTMLButtonElement;
 const btnFixed = document.getElementById('btn-fixed') as HTMLButtonElement;
 const inputWidth = document.getElementById('input-width') as HTMLInputElement;
@@ -177,96 +176,50 @@ async function createScene(width: number, height: number): Promise<void> {
   await scene.initializeFonts();
   populateFontDropdown();
 
-  // Add initial text obstacles - centered at 50% x
+  // Add title text - centered at 50% x
   const centerX = width * 0.5;
-  const welcomeY = height * 0.2;
-  const verticalGap = 30; // Spacing between stacked elements
+  const titleY = height * 0.25;
 
-  // "Welcome to Blorkfield" - default font, default color (#6495ED)
-  // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
-  // Weight of 10 - when letters collapse, they contribute 10 to pressure below
-  // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
-  // Click to fall - letters collapse after being clicked 2 times
-  const welcomeResult = await scene.addTextObstacles({
-    text: 'Welcome to Blorkfield',
+  // "@blorkfield/overlay-core" title using Roboto (supports @ and / characters)
+  // Colors from blorkfield-site: muted blue for @blorkfield, gold for /, accent blue for overlay-core
+  const mutedBlue = '#565f89';
+  const accentGold = '#e0af68';
+  const accentBlue = '#7aa2f7';
+
+  // Build per-character color array: @blorkfield (0-10), / (11), overlay-core (12-23)
+  const titleText = '@blorkfield/overlay-core';
+  const titleColors = titleText.split('').map((_, i) => {
+    if (i <= 10) return mutedBlue;      // @blorkfield
+    if (i === 11) return accentGold;    // /
+    return accentBlue;                   // overlay-core
+  });
+
+  const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
+  const titleResult = await scene.addTTFTextObstacles({
+    text: titleText,
     x: centerX,
-    y: welcomeY,
-    align: 'center',  // Center-align text at x position
-    letterSize: 60,
-    tags: ['welcome-text'],
+    y: titleY,
+    align: 'center',
+    fontSize: 50,
+    fontUrl: robotoFont!.fontUrl!,
+    fillColors: titleColors,
+    tags: ['title-text'],
     pressureThreshold: { value: 9 },
     weight: { value: 10 },
     shadow: { opacity: 0.3 },
     clickToFall: { clicks: 2 }
   });
-  console.log('Welcome text created:', welcomeResult.stringTag, welcomeResult.wordTags);
+  console.log('Title text created:', titleResult.stringTag, titleResult.wordTags);
 
-  // "Build Stuff" - Roboto font, lighter gray-blue
-  // Left-aligned with the "W" from Welcome using bounds.left
-  // Pressure threshold of 9 per letter - letter collapses when 9 objects rest on it
-  // Weight of 10 - when letters collapse, they contribute 10 to pressure below
-  // Shadow enabled - leaves a washed-out copy at 30% opacity when letters collapse
-  // Click to fall - letters collapse after being clicked 2 times
-  const robotoFont = scene.getAvailableFonts().find(f => f.name === 'Roboto');
-  const buildFontSize = 40;
-  // TTF y is baseline, so add ~80% of fontSize to get the top at bounds.bottom + gap
-  const buildY = welcomeResult.bounds.bottom + verticalGap + (buildFontSize * 0.8);
-  let buildBottom = buildY + buildFontSize * 0.2; // baseline + descent
-  if (robotoFont?.fontUrl) {
-    const buildResult = await scene.addTTFTextObstacles({
-      text: 'Build Stuff',
-      x: welcomeResult.bounds.left,  // Left-align with Welcome text
-      y: buildY,
-      align: 'left',  // Left-align so x is the left edge
-      fontSize: buildFontSize,
-      fontUrl: robotoFont.fontUrl,
-      fillColor: '#8BA4C7',
-      tags: ['build-text'],
-      pressureThreshold: { value: 9 },
-      weight: { value: 10 },
-      shadow: { opacity: 0.3 },
-      clickToFall: { clicks: 2 }
-    });
-    console.log('Build text created:', buildResult.stringTag, buildResult.wordTags, 'bounds:', buildResult.bounds);
-    buildBottom = buildResult.bounds.bottom;
-  }
-
-  // Add content box as a physics obstacle - centered, below Build Stuff
-  // The DOM element itself will fall!
-  if (contentBox && canvas) {
-    const boxRect = contentBox.getBoundingClientRect();
-    // Center the content box at 50% x, positioned below Build Stuff
-    const boxX = centerX;
-    const boxY = buildBottom + verticalGap + boxRect.height / 2;
-
-    const contentObstacleId = scene.spawnObject({
-      element: contentBox,  // Pass DOM element - it will move with physics!
-      x: boxX,
-      y: boxY,
-      width: boxRect.width,
-      height: boxRect.height,
-      tags: ['content-obstacle', 'grabable'],
-      pressureThreshold: { value: 50 },
-      weight: 100,
-      shadow: { opacity: 0.3 },
-      clickToFall: { clicks: 5 }
-    });
-    console.log('Content box obstacle created:', contentObstacleId, 'at', boxX, boxY);
-  }
-
-  // Set up initial Rain effect
-  rainEntities.push({
-    id: crypto.randomUUID(),
-    imageUrl: '/bf_koban_512.png',
-    behaviorMode: 'no-follow',
-    probability: 1,
-    minScale: 1,
-    maxScale: 1,
-    baseRadius: 10
+  // Add a simple circle with follow tag
+  scene.spawnObject({
+    x: centerX,
+    y: titleResult.bounds.bottom + 100,
+    radius: 30,
+    fillStyle: '#4a90d9',
+    tags: ['falling', 'follow', 'grabable']
   });
-  checkboxRain.checked = true;
-  rainSpawnRate.value = '3';
-  renderObjectList(rainEntityList, rainEntities, updateRainEffect);
+  console.log('Follow circle spawned');
 
   // Re-initialize effects with new scene
   updateBurstEffect();

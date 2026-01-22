@@ -1801,6 +1801,7 @@ export class OverlayScene {
     const baseTags = config.tags ?? [];
     const isStatic = !baseTags.includes('falling');
     const fillColor = config.fillColor ?? '#ffffff';
+    const fillColors = config.fillColors;
     const lineHeight = config.lineHeight ?? fontSize * 1.2;
 
     const letterIds: string[] = [];
@@ -1971,6 +1972,9 @@ export class OverlayScene {
         // Determine click to fall config
         const clicksRemaining = config.clickToFall?.clicks;
 
+        // Determine fill color for this character (per-char color overrides default)
+        const charFillColor = fillColors?.[globalCharIndex] ?? fillColor;
+
         const entry: ObjectEntry = {
           id,
           body,
@@ -1981,7 +1985,7 @@ export class OverlayScene {
             char,
             fontSize,
             fontFamily,
-            fillColor,
+            fillColor: charFillColor,
             offsetX,
             offsetY
           },
