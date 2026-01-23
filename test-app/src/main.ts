@@ -102,11 +102,11 @@ const availableBehaviorModes: { value: string; label: string }[] = [
 ];
 
 // Available tags for entity spawning
-const spawnableTags = ['falling', 'follow', 'grabable', 'spawned'];
+const spawnableTags = ['falling', 'follow', 'grabable'];
 let selectedSpawnTags: string[] = [];
 
-// Available tags for text obstacle spawning (same as entity tags)
-const textSpawnableTags = ['falling', 'follow', 'grabable', 'spawned', 'text-obstacle'];
+// Available tags for text obstacle spawning
+const textSpawnableTags = ['falling', 'follow', 'grabable', 'text-obstacle'];
 let selectedTextTags: string[] = [];
 
 // Effect object configs storage
