@@ -34,6 +34,10 @@ FROM nginx:alpine
 # Copy built files to nginx
 COPY --from=builder /app/test-app/dist /usr/share/nginx/html
 
+# Copy fonts and public assets
+COPY --from=builder /app/fonts /usr/share/nginx/html/fonts
+COPY --from=builder /app/public /usr/share/nginx/html
+
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
