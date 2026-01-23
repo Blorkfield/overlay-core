@@ -90,9 +90,9 @@ jobs:
             exit 0
           fi
 
-          # Check if there are any source changes compared to main
-          if ! git diff --name-only origin/main...HEAD | grep -qE "^(src/|package\.json|tsconfig\.json|tsup\.config\.ts)"; then
-            echo "No source changes detected, skipping changeset"
+          # Check if there are any relevant changes compared to main
+          if ! git diff --name-only origin/main...HEAD | grep -qE "^(src/|test-app/|fonts/|public/|package\.json|tsconfig\.json|tsup\.config\.ts|Dockerfile|nginx\.conf)"; then
+            echo "No relevant changes detected, skipping changeset"
             exit 0
           fi
 
