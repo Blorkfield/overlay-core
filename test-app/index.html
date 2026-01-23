@@ -355,7 +355,7 @@
         <div class="effect-params">
           <div class="param-row">
             <label>Log Level:</label>
-            <select id="select-log-level" class="select-input">
+            <select id="select-log-level" class="select-input" style="width:120px">
               <option value="warn">Warn (quiet)</option>
               <option value="info">Info</option>
               <option value="debug">Debug (verbose)</option>
@@ -384,32 +384,51 @@
             </select>
           </div>
           <div class="param-row">
-            <label>Type:</label>
-            <select id="select-entity-type" class="select-input select-truncate">
-              <option value="GROUNDED_FOLLOW">Follow</option>
-              <option value="GROUNDED_STATIC">Static</option>
-            </select>
-          </div>
-          <div class="param-row">
             <label>TTL (ms):</label>
             <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
           </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-          <button id="btn-spawn-entity" class="panel-btn">Spawn Entity</button>
-          <button id="btn-spawn-obstacle" class="panel-btn">Add Obstacle</button>
-          <button id="btn-spawn-falling" class="panel-btn">Add Falling</button>
-        </div>
-      </div>
-      <div class="effect-section">
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;gap:6px;align-items:center">
-            <select id="select-release-tag" class="select-input" style="flex:1">
-              <option value="">-- Select Tag --</option>
-            </select>
-            <button id="btn-release-tag" class="panel-btn">Release</button>
+          <div class="param-row">
+            <label>Weight:</label>
+            <input type="number" id="input-entity-weight" value="0" min="0" step="1">
           </div>
-          <button id="btn-release-all" class="panel-btn">Release All</button>
+          <div class="param-row">
+            <label>X:</label>
+            <input type="number" id="input-spawn-x" value="50" step="1" style="width:50px">
+            <select id="select-x-unit" class="select-input" style="width:45px;padding:6px 4px">
+              <option value="percent">%</option>
+              <option value="pixel">px</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label>Y:</label>
+            <input type="number" id="input-spawn-y" value="50" step="1" style="width:50px">
+            <select id="select-y-unit" class="select-input" style="width:45px;padding:6px 4px">
+              <option value="percent">%</option>
+              <option value="pixel">px</option>
+            </select>
+          </div>
+        </div>
+        <div class="tag-picker" style="margin-top:12px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <div style="flex:1;display:flex;flex-direction:column">
+              <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
+              <select id="tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+              </select>
+            </div>
+            <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
+              <button id="btn-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
+              <button id="btn-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column">
+              <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
+              <select id="tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button id="btn-spawn-entity" class="panel-btn" style="width:100%">Spawn Entity</button>
         </div>
       </div>
       <div class="effect-section">
@@ -444,24 +463,58 @@
             <input type="number" id="input-line-spacing" placeholder="30">
           </div>
           <div class="param-row">
-            <label>Origin X (%):</label>
-            <input type="number" id="input-text-origin-x" value="20" min="-50" max="150" step="5">
+            <label>X:</label>
+            <input type="number" id="input-text-origin-x" value="50" step="1" style="width:50px">
+            <select id="select-text-x-unit" class="select-input" style="width:45px;padding:6px 4px">
+              <option value="percent">%</option>
+              <option value="pixel">px</option>
+            </select>
           </div>
           <div class="param-row">
-            <label>Origin Y (%):</label>
-            <input type="number" id="input-text-origin-y" value="30" min="-50" max="150" step="5">
+            <label>Y:</label>
+            <input type="number" id="input-text-origin-y" value="50" step="1" style="width:50px">
+            <select id="select-text-y-unit" class="select-input" style="width:45px;padding:6px 4px">
+              <option value="percent">%</option>
+              <option value="pixel">px</option>
+            </select>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-          <button id="btn-add-text-obstacle" class="panel-btn">Add Text Obstacle</button>
-          <button id="btn-spawn-falling-text" class="panel-btn">Spawn Falling Text</button>
+        <div class="tag-picker" style="margin-top:12px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <div style="flex:1;display:flex;flex-direction:column">
+              <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
+              <select id="text-tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+              </select>
+            </div>
+            <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
+              <button id="btn-text-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
+              <button id="btn-text-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column">
+              <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
+              <select id="text-tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button id="btn-spawn-text" class="panel-btn" style="width:100%">Spawn Text</button>
         </div>
       </div>
       <div class="effect-section">
         <div style="display:flex;flex-direction:column;gap:6px">
-          <button id="btn-remove-entities" class="panel-btn panel-btn-danger">Remove Entities</button>
-          <button id="btn-remove-obstacles" class="panel-btn panel-btn-danger">Remove Obstacles</button>
-          <button id="btn-remove-all" class="panel-btn panel-btn-danger">Remove All</button>
+          <select id="select-action-tag" class="select-input">
+            <option value="">-- Select Tag --</option>
+          </select>
+          <div style="display:flex;gap:6px">
+            <button id="btn-release-tag" class="panel-btn" style="flex:1">Release</button>
+            <button id="btn-remove-tag" class="panel-btn panel-btn-danger" style="flex:1">Remove</button>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button id="btn-release-all" class="panel-btn" style="flex:1">Release All</button>
+            <button id="btn-remove-all" class="panel-btn panel-btn-danger" style="flex:1">Remove All</button>
+          </div>
         </div>
       </div>
     </div>

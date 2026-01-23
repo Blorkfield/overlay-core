@@ -14,17 +14,22 @@ const inputWidth = document.getElementById('input-width') as HTMLInputElement;
 const inputHeight = document.getElementById('input-height') as HTMLInputElement;
 const btnApply = document.getElementById('btn-apply') as HTMLButtonElement;
 const btnSpawnEntity = document.getElementById('btn-spawn-entity') as HTMLButtonElement;
-const btnSpawnObstacle = document.getElementById('btn-spawn-obstacle') as HTMLButtonElement;
-const btnSpawnFalling = document.getElementById('btn-spawn-falling') as HTMLButtonElement;
-const selectReleaseTag = document.getElementById('select-release-tag') as HTMLSelectElement;
+const selectActionTag = document.getElementById('select-action-tag') as HTMLSelectElement;
 const btnReleaseTag = document.getElementById('btn-release-tag') as HTMLButtonElement;
+const btnRemoveTag = document.getElementById('btn-remove-tag') as HTMLButtonElement;
 const btnReleaseAll = document.getElementById('btn-release-all') as HTMLButtonElement;
-const btnRemoveEntities = document.getElementById('btn-remove-entities') as HTMLButtonElement;
-const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HTMLButtonElement;
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
-const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
 const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
+const inputEntityWeight = document.getElementById('input-entity-weight') as HTMLInputElement;
+const inputSpawnX = document.getElementById('input-spawn-x') as HTMLInputElement;
+const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElement;
+const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
+const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
+const tagsAvailable = document.getElementById('tags-available') as HTMLSelectElement;
+const tagsSelected = document.getElementById('tags-selected') as HTMLSelectElement;
+const btnTagAdd = document.getElementById('btn-tag-add') as HTMLButtonElement;
+const btnTagRemove = document.getElementById('btn-tag-remove') as HTMLButtonElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
@@ -37,9 +42,14 @@ const inputLetterSpacing = document.getElementById('input-letter-spacing') as HT
 const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
 const inputLineSpacing = document.getElementById('input-line-spacing') as HTMLInputElement;
 const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLInputElement;
+const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSelectElement;
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
-const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
-const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
+const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
+const textTagsAvailable = document.getElementById('text-tags-available') as HTMLSelectElement;
+const textTagsSelected = document.getElementById('text-tags-selected') as HTMLSelectElement;
+const btnTextTagAdd = document.getElementById('btn-text-tag-add') as HTMLButtonElement;
+const btnTextTagRemove = document.getElementById('btn-text-tag-remove') as HTMLButtonElement;
+const btnSpawnText = document.getElementById('btn-spawn-text') as HTMLButtonElement;
 
 // Settings panel elements
 const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
@@ -85,17 +95,22 @@ const availableImages = [
   { value: '/bf_koban_512.png', label: 'bf_koban_512.png' }
 ];
 
-// Available behavior modes for spawned objects
-const availableBehaviorModes: { value: string; label: string }[] = [
-  { value: 'follow', label: 'Follow' },
-  { value: 'no-follow', label: 'No Follow' }
-];
+// Available tags for effect objects
+const effectObjectTags = ['falling', 'follow', 'grabable'];
+
+// Available tags for entity spawning
+const spawnableTags = ['falling', 'follow', 'grabable'];
+let selectedSpawnTags: string[] = [];
+
+// Available tags for text obstacle spawning
+const textSpawnableTags = ['falling', 'follow', 'grabable', 'text-obstacle'];
+let selectedTextTags: string[] = [];
 
 // Effect object configs storage
 interface EffectObjectUI {
   id: string;
   imageUrl: string;
-  behaviorMode: string;
+  tags: string[];
   probability: number;
   minScale: number;
   maxScale: number;
@@ -289,22 +304,108 @@ function applySize(): void {
   createScene(width, height);
 }
 
+// Tag picker functions
+function renderTagPicker(): void {
+  // Render available tags (those not selected)
+  tagsAvailable.innerHTML = '';
+  spawnableTags
+    .filter(tag => !selectedSpawnTags.includes(tag))
+    .forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      tagsAvailable.appendChild(option);
+    });
+
+  // Render selected tags
+  tagsSelected.innerHTML = '';
+  selectedSpawnTags.forEach(tag => {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    tagsSelected.appendChild(option);
+  });
+}
+
+function moveTagsToSelected(): void {
+  const selected = Array.from(tagsAvailable.selectedOptions).map(opt => opt.value);
+  selectedSpawnTags.push(...selected);
+  renderTagPicker();
+}
+
+function moveTagsToAvailable(): void {
+  const selected = Array.from(tagsSelected.selectedOptions).map(opt => opt.value);
+  selectedSpawnTags = selectedSpawnTags.filter(tag => !selected.includes(tag));
+  renderTagPicker();
+}
+
+// Initialize tag picker
+renderTagPicker();
+
+// Tag picker event listeners
+btnTagAdd.addEventListener('click', moveTagsToSelected);
+btnTagRemove.addEventListener('click', moveTagsToAvailable);
+
+// Text tag picker functions
+function renderTextTagPicker(): void {
+  // Render available tags (those not selected)
+  textTagsAvailable.innerHTML = '';
+  textSpawnableTags
+    .filter(tag => !selectedTextTags.includes(tag))
+    .forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      textTagsAvailable.appendChild(option);
+    });
+
+  // Render selected tags
+  textTagsSelected.innerHTML = '';
+  selectedTextTags.forEach(tag => {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    textTagsSelected.appendChild(option);
+  });
+}
+
+function moveTextTagsToSelected(): void {
+  const selected = Array.from(textTagsAvailable.selectedOptions).map(opt => opt.value);
+  selectedTextTags.push(...selected);
+  renderTextTagPicker();
+}
+
+function moveTextTagsToAvailable(): void {
+  const selected = Array.from(textTagsSelected.selectedOptions).map(opt => opt.value);
+  selectedTextTags = selectedTextTags.filter(tag => !selected.includes(tag));
+  renderTextTagPicker();
+}
+
+// Initialize text tag picker
+renderTextTagPicker();
+
+// Text tag picker event listeners
+btnTextTagAdd.addEventListener('click', moveTextTagsToSelected);
+btnTextTagRemove.addEventListener('click', moveTextTagsToAvailable);
+
 async function spawnRandomEntity(): Promise<void> {
   if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = Math.random() * canvas.height * 0.3 + 50;
+
+  // Calculate spawn position based on unit type (each axis can have its own unit)
+  const inputX = parseFloat(inputSpawnX.value) || 50;
+  const inputY = parseFloat(inputSpawnY.value) || 50;
+  const x = selectXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
+  const y = selectYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
+
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
-  const selectedType = selectEntityType.value;
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
+  const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  // Build tags based on selected type
-  const tags: string[] = ['spawned', 'falling', 'grabable'];
-  if (selectedType === 'GROUNDED_FOLLOW') {
-    tags.push('follow');
-  }
-  console.log('Spawning object with image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞');
+  // Use selected tags from picker
+  const tags = [...selectedSpawnTags];
+  console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
     x,
@@ -313,7 +414,8 @@ async function spawnRandomEntity(): Promise<void> {
     fillStyle: color,
     imageUrl: selectedImage || undefined,
     tags,
-    ttl: ttlValue
+    ttl: ttlValue,
+    weight: weightValue || undefined
   };
 
   // Use async for image objects (extracts shape from alpha), sync otherwise
@@ -324,90 +426,53 @@ async function spawnRandomEntity(): Promise<void> {
   }
 }
 
-function spawnRandomObstacle(): void {
-  if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = Math.random() * canvas.height * 0.5 + canvas.height * 0.2;
-  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.spawnObject({
-    x,
-    y,
-    width: 80 + Math.random() * 100,
-    height: 15 + Math.random() * 10,
-    tags: ['spawned-obstacle'],
-    ttl: ttlValue
-  });
-}
-
-function spawnFallingObstacle(): void {
-  if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = 50;
-  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.spawnObject({
-    x,
-    y,
-    width: 60 + Math.random() * 60,
-    height: 15 + Math.random() * 10,
-    tags: ['falling', 'grabable'],
-    ttl: ttlValue
-  });
-}
-
 // Event listeners
 btnFullscreen.addEventListener('click', setFullscreenMode);
 btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
-btnSpawnObstacle.addEventListener('click', spawnRandomObstacle);
-btnSpawnFalling.addEventListener('click', spawnFallingObstacle);
 
 // Populate tag dropdown with current scene tags
-function populateTagDropdown(): void {
+function populateActionTagDropdown(): void {
   if (!scene) return;
 
-  const currentValue = selectReleaseTag.value;
+  const currentValue = selectActionTag.value;
   const tags = scene.getAllTags();
 
-  selectReleaseTag.innerHTML = '<option value="">-- Select Tag --</option>';
+  selectActionTag.innerHTML = '<option value="">-- Select Tag --</option>';
   tags.forEach(tag => {
     const option = document.createElement('option');
     option.value = tag;
     option.textContent = tag;
-    selectReleaseTag.appendChild(option);
+    selectActionTag.appendChild(option);
   });
 
   // Restore selection if it still exists
   if (tags.includes(currentValue)) {
-    selectReleaseTag.value = currentValue;
+    selectActionTag.value = currentValue;
   }
 }
 
 // Refresh dropdown when clicked/focused
-selectReleaseTag.addEventListener('focus', populateTagDropdown);
-selectReleaseTag.addEventListener('click', populateTagDropdown);
+selectActionTag.addEventListener('focus', populateActionTagDropdown);
+selectActionTag.addEventListener('click', populateActionTagDropdown);
 
 btnReleaseTag.addEventListener('click', () => {
-  const tag = selectReleaseTag.value;
+  const tag = selectActionTag.value;
   if (tag) {
     scene?.releaseObjectsByTag(tag);
   }
 });
 
+btnRemoveTag.addEventListener('click', () => {
+  const tag = selectActionTag.value;
+  if (tag) {
+    scene?.removeObjectsByTag(tag);
+  }
+});
+
 btnReleaseAll.addEventListener('click', () => {
   scene?.releaseAllObjects();
-});
-
-btnRemoveEntities.addEventListener('click', () => {
-  scene?.removeObjectsByTag('falling');
-});
-
-btnRemoveObstacles.addEventListener('click', () => {
-  // Remove static objects (those without 'falling' tag)
-  const allIds = scene?.getObjectIds() ?? [];
-  const dynamicIds = scene?.getObjectIdsByTag('falling') ?? [];
-  const staticIds = allIds.filter(id => !dynamicIds.includes(id));
-  scene?.removeObjects(staticIds);
 });
 
 btnRemoveAll.addEventListener('click', () => {
@@ -425,7 +490,7 @@ selectLogLevel.addEventListener('change', () => {
 
 // ==================== TEXT OBSTACLE LOGIC ====================
 
-async function addTextObstacle(falling: boolean = false): Promise<void> {
+async function spawnTextObstacle(): Promise<void> {
   if (!scene || !canvas) return;
 
   const text = inputTextObstacle.value.trim();
@@ -441,11 +506,17 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const fonts = scene.getAvailableFonts();
   const selectedFont = fonts.find(f => f.name === fontName);
 
-  // Convert origin percentages to pixels
-  const originXPercent = parseFloat(inputTextOriginX.value) || 20;
-  const originYPercent = parseFloat(inputTextOriginY.value) || 30;
-  const startX = (originXPercent / 100) * canvas.width;
-  const y = (originYPercent / 100) * canvas.height;
+  // Calculate position based on unit type (each axis can have its own unit)
+  const inputX = parseFloat(inputTextOriginX.value) || 50;
+  const inputY = parseFloat(inputTextOriginY.value) || 50;
+  const startX = selectTextXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
+  const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
+
+  // Use selected tags from picker - determine static from 'falling' tag
+  const tags = [...selectedTextTags];
+  const isStatic = !tags.includes('falling');
+
+  console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);
 
   let result;
 
@@ -457,8 +528,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       y,
       fontSize: letterSize,
       fontUrl: selectedFont.fontUrl,
-      isStatic: !falling,
-      tags: ['text-obstacle'],
+      isStatic,
+      tags,
       fillColor: letterColor || '#6495ED',
       lineHeight: (letterSize + lineSpacing)
     });
@@ -471,8 +542,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       letterSize,
       letterSpacing,
       fontName,
-      isStatic: !falling,
-      tags: ['text-obstacle'],
+      isStatic,
+      tags,
       letterColor,
       lineHeight: (letterSize + lineSpacing)
     });
@@ -481,8 +552,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   console.log('Created text obstacle:', { text, fontName, letterColor, stringTag: result.stringTag, wordTags: result.wordTags, letterIds: result.letterIds });
 }
 
-btnAddTextObstacle.addEventListener('click', () => addTextObstacle(false));
-btnSpawnFallingText.addEventListener('click', () => addTextObstacle(true));
+btnSpawnText.addEventListener('click', spawnTextObstacle);
 
 // Handle window resize for fullscreen mode
 window.addEventListener('resize', () => {
@@ -545,11 +615,8 @@ requestAnimationFrame(() => {
 function uiToEffectObjects(uiObjects: EffectObjectUI[]): EffectObjectConfig[] {
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   return uiObjects.map((ui) => {
-    // Build tags based on behavior mode
-    const tags = ['effect-spawned', 'grabable'];
-    if (ui.behaviorMode === 'follow') {
-      tags.push('follow');
-    }
+    // Use tags from UI, always add 'effect-spawned' for identification
+    const tags = ['effect-spawned', ...ui.tags];
     return {
       objectConfig: {
         fillStyle: colors[Math.floor(Math.random() * colors.length)],
@@ -666,12 +733,6 @@ function renderObjectList(
         </select>
       </div>
       <div class="entity-row">
-        <label>Behavior</label>
-        <select class="entity-type" data-index="${index}">
-          ${availableBehaviorModes.map((t) => `<option value="${t.value}" ${obj.behaviorMode === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
-        </select>
-      </div>
-      <div class="entity-row">
         <label>Scale</label>
         <input type="number" class="entity-min-scale" data-index="${index}" value="${obj.minScale}" min="0.1" step="0.1">
         <span style="color:#666">to</span>
@@ -689,6 +750,21 @@ function renderObjectList(
         <label style="margin-left:12px">Weight</label>
         <input type="number" class="entity-weight" data-index="${index}" value="${obj.weight ?? ''}" placeholder="1" min="1" step="1">
       </div>
+      <div class="entity-row" style="align-items:stretch">
+        <label style="padding-top:4px">Tags</label>
+        <div style="display:flex;gap:4px;flex:1;min-width:0">
+          <select class="entity-tags-available" data-index="${index}" multiple style="flex:1;min-height:50px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:10px;padding:2px">
+            ${effectObjectTags.filter(t => !obj.tags.includes(t)).map(tag => `<option value="${tag}">${tag}</option>`).join('')}
+          </select>
+          <div style="display:flex;flex-direction:column;justify-content:center;gap:2px">
+            <button class="panel-btn entity-tag-add" data-index="${index}" style="padding:2px 4px;font-size:10px">&gt;&gt;</button>
+            <button class="panel-btn entity-tag-remove" data-index="${index}" style="padding:2px 4px;font-size:10px">&lt;&lt;</button>
+          </div>
+          <select class="entity-tags-selected" data-index="${index}" multiple style="flex:1;min-height:50px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:10px;padding:2px">
+            ${obj.tags.map(tag => `<option value="${tag}">${tag}</option>`).join('')}
+          </select>
+        </div>
+      </div>
     `;
     container.appendChild(item);
   });
@@ -702,10 +778,28 @@ function renderObjectList(
     });
   });
 
-  container.querySelectorAll('.entity-type').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const idx = parseInt((e.target as HTMLSelectElement).dataset.index!);
-      objects[idx].behaviorMode = (e.target as HTMLSelectElement).value;
+  container.querySelectorAll('.entity-tag-add').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt((e.target as HTMLButtonElement).dataset.index!);
+      const availableSelect = container.querySelector(`.entity-tags-available[data-index="${idx}"]`) as HTMLSelectElement;
+      const selected = Array.from(availableSelect.selectedOptions).map(opt => opt.value);
+      selected.forEach(tag => {
+        if (!objects[idx].tags.includes(tag)) {
+          objects[idx].tags.push(tag);
+        }
+      });
+      renderObjectList(container, objects, onUpdate);
+      onUpdate();
+    });
+  });
+
+  container.querySelectorAll('.entity-tag-remove').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt((e.target as HTMLButtonElement).dataset.index!);
+      const selectedSelect = container.querySelector(`.entity-tags-selected[data-index="${idx}"]`) as HTMLSelectElement;
+      const selected = Array.from(selectedSelect.selectedOptions).map(opt => opt.value);
+      objects[idx].tags = objects[idx].tags.filter(t => !selected.includes(t));
+      renderObjectList(container, objects, onUpdate);
       onUpdate();
     });
   });
@@ -775,7 +869,7 @@ function addEffectObject(objects: EffectObjectUI[], container: HTMLDivElement, o
   objects.push({
     id: crypto.randomUUID(),
     imageUrl: '',
-    behaviorMode: 'follow',
+    tags: [],
     probability: 1,
     minScale: 0.8,
     maxScale: 1.2,
