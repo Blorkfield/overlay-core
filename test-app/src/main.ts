@@ -14,8 +14,6 @@ const inputWidth = document.getElementById('input-width') as HTMLInputElement;
 const inputHeight = document.getElementById('input-height') as HTMLInputElement;
 const btnApply = document.getElementById('btn-apply') as HTMLButtonElement;
 const btnSpawnEntity = document.getElementById('btn-spawn-entity') as HTMLButtonElement;
-const btnSpawnObstacle = document.getElementById('btn-spawn-obstacle') as HTMLButtonElement;
-const btnSpawnFalling = document.getElementById('btn-spawn-falling') as HTMLButtonElement;
 const selectReleaseTag = document.getElementById('select-release-tag') as HTMLSelectElement;
 const btnReleaseTag = document.getElementById('btn-release-tag') as HTMLButtonElement;
 const btnReleaseAll = document.getElementById('btn-release-all') as HTMLButtonElement;
@@ -23,8 +21,15 @@ const btnRemoveEntities = document.getElementById('btn-remove-entities') as HTML
 const btnRemoveObstacles = document.getElementById('btn-remove-obstacles') as HTMLButtonElement;
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
-const selectEntityType = document.getElementById('select-entity-type') as HTMLSelectElement;
 const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
+const inputSpawnX = document.getElementById('input-spawn-x') as HTMLInputElement;
+const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElement;
+const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
+const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
+const tagsAvailable = document.getElementById('tags-available') as HTMLSelectElement;
+const tagsSelected = document.getElementById('tags-selected') as HTMLSelectElement;
+const btnTagAdd = document.getElementById('btn-tag-add') as HTMLButtonElement;
+const btnTagRemove = document.getElementById('btn-tag-remove') as HTMLButtonElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
@@ -90,6 +95,10 @@ const availableBehaviorModes: { value: string; label: string }[] = [
   { value: 'follow', label: 'Follow' },
   { value: 'no-follow', label: 'No Follow' }
 ];
+
+// Available tags for entity spawning
+const spawnableTags = ['falling', 'follow', 'grabable', 'spawned'];
+let selectedSpawnTags: string[] = [];
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -289,22 +298,65 @@ function applySize(): void {
   createScene(width, height);
 }
 
+// Tag picker functions
+function renderTagPicker(): void {
+  // Render available tags (those not selected)
+  tagsAvailable.innerHTML = '';
+  spawnableTags
+    .filter(tag => !selectedSpawnTags.includes(tag))
+    .forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      tagsAvailable.appendChild(option);
+    });
+
+  // Render selected tags
+  tagsSelected.innerHTML = '';
+  selectedSpawnTags.forEach(tag => {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    tagsSelected.appendChild(option);
+  });
+}
+
+function moveTagsToSelected(): void {
+  const selected = Array.from(tagsAvailable.selectedOptions).map(opt => opt.value);
+  selectedSpawnTags.push(...selected);
+  renderTagPicker();
+}
+
+function moveTagsToAvailable(): void {
+  const selected = Array.from(tagsSelected.selectedOptions).map(opt => opt.value);
+  selectedSpawnTags = selectedSpawnTags.filter(tag => !selected.includes(tag));
+  renderTagPicker();
+}
+
+// Initialize tag picker
+renderTagPicker();
+
+// Tag picker event listeners
+btnTagAdd.addEventListener('click', moveTagsToSelected);
+btnTagRemove.addEventListener('click', moveTagsToAvailable);
+
 async function spawnRandomEntity(): Promise<void> {
   if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = Math.random() * canvas.height * 0.3 + 50;
+
+  // Calculate spawn position based on unit type (each axis can have its own unit)
+  const inputX = parseFloat(inputSpawnX.value) || 50;
+  const inputY = parseFloat(inputSpawnY.value) || 50;
+  const x = selectXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
+  const y = selectYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
+
   const colors = ['#e94560', '#4a90d9', '#4ae945', '#d9904a', '#9a4ad9'];
   const color = colors[Math.floor(Math.random() * colors.length)];
   const selectedImage = selectEntityImage.value;
-  const selectedType = selectEntityType.value;
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
 
-  // Build tags based on selected type
-  const tags: string[] = ['spawned', 'falling', 'grabable'];
-  if (selectedType === 'GROUNDED_FOLLOW') {
-    tags.push('follow');
-  }
-  console.log('Spawning object with image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞');
+  // Use selected tags from picker
+  const tags = [...selectedSpawnTags];
+  console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞');
 
   const config = {
     x,
@@ -324,43 +376,11 @@ async function spawnRandomEntity(): Promise<void> {
   }
 }
 
-function spawnRandomObstacle(): void {
-  if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = Math.random() * canvas.height * 0.5 + canvas.height * 0.2;
-  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.spawnObject({
-    x,
-    y,
-    width: 80 + Math.random() * 100,
-    height: 15 + Math.random() * 10,
-    tags: ['spawned-obstacle'],
-    ttl: ttlValue
-  });
-}
-
-function spawnFallingObstacle(): void {
-  if (!scene || !canvas) return;
-  const x = Math.random() * canvas.width * 0.8 + canvas.width * 0.1;
-  const y = 50;
-  const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
-  scene.spawnObject({
-    x,
-    y,
-    width: 60 + Math.random() * 60,
-    height: 15 + Math.random() * 10,
-    tags: ['falling', 'grabable'],
-    ttl: ttlValue
-  });
-}
-
 // Event listeners
 btnFullscreen.addEventListener('click', setFullscreenMode);
 btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
-btnSpawnObstacle.addEventListener('click', spawnRandomObstacle);
-btnSpawnFalling.addEventListener('click', spawnFallingObstacle);
 
 // Populate tag dropdown with current scene tags
 function populateTagDropdown(): void {
