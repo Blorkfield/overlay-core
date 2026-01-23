@@ -355,7 +355,7 @@
         <div class="effect-params">
           <div class="param-row">
             <label>Log Level:</label>
-            <select id="select-log-level" class="select-input">
+            <select id="select-log-level" class="select-input" style="width:120px">
               <option value="warn">Warn (quiet)</option>
               <option value="info">Info</option>
               <option value="debug">Debug (verbose)</option>
@@ -386,6 +386,10 @@
           <div class="param-row">
             <label>TTL (ms):</label>
             <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
+          </div>
+          <div class="param-row">
+            <label>Weight:</label>
+            <input type="number" id="input-entity-weight" value="0" min="0" step="1">
           </div>
           <div class="param-row">
             <label>X:</label>
@@ -425,17 +429,6 @@
         </div>
         <div style="margin-top:12px">
           <button id="btn-spawn-entity" class="panel-btn" style="width:100%">Spawn Entity</button>
-        </div>
-      </div>
-      <div class="effect-section">
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;gap:6px;align-items:center">
-            <select id="select-release-tag" class="select-input" style="flex:1">
-              <option value="">-- Select Tag --</option>
-            </select>
-            <button id="btn-release-tag" class="panel-btn">Release</button>
-          </div>
-          <button id="btn-release-all" class="panel-btn">Release All</button>
         </div>
       </div>
       <div class="effect-section">
@@ -511,9 +504,17 @@
       </div>
       <div class="effect-section">
         <div style="display:flex;flex-direction:column;gap:6px">
-          <button id="btn-remove-entities" class="panel-btn panel-btn-danger">Remove Entities</button>
-          <button id="btn-remove-obstacles" class="panel-btn panel-btn-danger">Remove Obstacles</button>
-          <button id="btn-remove-all" class="panel-btn panel-btn-danger">Remove All</button>
+          <select id="select-action-tag" class="select-input">
+            <option value="">-- Select Tag --</option>
+          </select>
+          <div style="display:flex;gap:6px">
+            <button id="btn-release-tag" class="panel-btn" style="flex:1">Release</button>
+            <button id="btn-remove-tag" class="panel-btn panel-btn-danger" style="flex:1">Remove</button>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button id="btn-release-all" class="panel-btn" style="flex:1">Release All</button>
+            <button id="btn-remove-all" class="panel-btn panel-btn-danger" style="flex:1">Remove All</button>
+          </div>
         </div>
       </div>
     </div>
