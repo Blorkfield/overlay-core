@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.5.10
+
+### Patch Changes
+
+- 5332b34: fix: docker changes pipeline trigger
+
 ## 0.5.9
 
 ### Patch Changes
