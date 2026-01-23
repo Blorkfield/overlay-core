@@ -42,9 +42,14 @@ const inputLetterSpacing = document.getElementById('input-letter-spacing') as HT
 const inputLetterColor = document.getElementById('input-letter-color') as HTMLInputElement;
 const inputLineSpacing = document.getElementById('input-line-spacing') as HTMLInputElement;
 const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLInputElement;
+const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSelectElement;
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
-const btnAddTextObstacle = document.getElementById('btn-add-text-obstacle') as HTMLButtonElement;
-const btnSpawnFallingText = document.getElementById('btn-spawn-falling-text') as HTMLButtonElement;
+const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
+const textTagsAvailable = document.getElementById('text-tags-available') as HTMLSelectElement;
+const textTagsSelected = document.getElementById('text-tags-selected') as HTMLSelectElement;
+const btnTextTagAdd = document.getElementById('btn-text-tag-add') as HTMLButtonElement;
+const btnTextTagRemove = document.getElementById('btn-text-tag-remove') as HTMLButtonElement;
+const btnSpawnText = document.getElementById('btn-spawn-text') as HTMLButtonElement;
 
 // Settings panel elements
 const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement;
@@ -99,6 +104,10 @@ const availableBehaviorModes: { value: string; label: string }[] = [
 // Available tags for entity spawning
 const spawnableTags = ['falling', 'follow', 'grabable', 'spawned'];
 let selectedSpawnTags: string[] = [];
+
+// Available tags for text obstacle spawning (same as entity tags)
+const textSpawnableTags = ['falling', 'follow', 'grabable', 'spawned', 'text-obstacle'];
+let selectedTextTags: string[] = [];
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -340,6 +349,48 @@ renderTagPicker();
 btnTagAdd.addEventListener('click', moveTagsToSelected);
 btnTagRemove.addEventListener('click', moveTagsToAvailable);
 
+// Text tag picker functions
+function renderTextTagPicker(): void {
+  // Render available tags (those not selected)
+  textTagsAvailable.innerHTML = '';
+  textSpawnableTags
+    .filter(tag => !selectedTextTags.includes(tag))
+    .forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      textTagsAvailable.appendChild(option);
+    });
+
+  // Render selected tags
+  textTagsSelected.innerHTML = '';
+  selectedTextTags.forEach(tag => {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    textTagsSelected.appendChild(option);
+  });
+}
+
+function moveTextTagsToSelected(): void {
+  const selected = Array.from(textTagsAvailable.selectedOptions).map(opt => opt.value);
+  selectedTextTags.push(...selected);
+  renderTextTagPicker();
+}
+
+function moveTextTagsToAvailable(): void {
+  const selected = Array.from(textTagsSelected.selectedOptions).map(opt => opt.value);
+  selectedTextTags = selectedTextTags.filter(tag => !selected.includes(tag));
+  renderTextTagPicker();
+}
+
+// Initialize text tag picker
+renderTextTagPicker();
+
+// Text tag picker event listeners
+btnTextTagAdd.addEventListener('click', moveTextTagsToSelected);
+btnTextTagRemove.addEventListener('click', moveTextTagsToAvailable);
+
 async function spawnRandomEntity(): Promise<void> {
   if (!scene || !canvas) return;
 
@@ -445,7 +496,7 @@ selectLogLevel.addEventListener('change', () => {
 
 // ==================== TEXT OBSTACLE LOGIC ====================
 
-async function addTextObstacle(falling: boolean = false): Promise<void> {
+async function spawnTextObstacle(): Promise<void> {
   if (!scene || !canvas) return;
 
   const text = inputTextObstacle.value.trim();
@@ -461,11 +512,17 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   const fonts = scene.getAvailableFonts();
   const selectedFont = fonts.find(f => f.name === fontName);
 
-  // Convert origin percentages to pixels
-  const originXPercent = parseFloat(inputTextOriginX.value) || 20;
-  const originYPercent = parseFloat(inputTextOriginY.value) || 30;
-  const startX = (originXPercent / 100) * canvas.width;
-  const y = (originYPercent / 100) * canvas.height;
+  // Calculate position based on unit type (each axis can have its own unit)
+  const inputX = parseFloat(inputTextOriginX.value) || 50;
+  const inputY = parseFloat(inputTextOriginY.value) || 50;
+  const startX = selectTextXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
+  const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
+
+  // Use selected tags from picker - determine static from 'falling' tag
+  const tags = [...selectedTextTags];
+  const isStatic = !tags.includes('falling');
+
+  console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);
 
   let result;
 
@@ -477,8 +534,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       y,
       fontSize: letterSize,
       fontUrl: selectedFont.fontUrl,
-      isStatic: !falling,
-      tags: ['text-obstacle'],
+      isStatic,
+      tags,
       fillColor: letterColor || '#6495ED',
       lineHeight: (letterSize + lineSpacing)
     });
@@ -491,8 +548,8 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
       letterSize,
       letterSpacing,
       fontName,
-      isStatic: !falling,
-      tags: ['text-obstacle'],
+      isStatic,
+      tags,
       letterColor,
       lineHeight: (letterSize + lineSpacing)
     });
@@ -501,8 +558,7 @@ async function addTextObstacle(falling: boolean = false): Promise<void> {
   console.log('Created text obstacle:', { text, fontName, letterColor, stringTag: result.stringTag, wordTags: result.wordTags, letterIds: result.letterIds });
 }
 
-btnAddTextObstacle.addEventListener('click', () => addTextObstacle(false));
-btnSpawnFallingText.addEventListener('click', () => addTextObstacle(true));
+btnSpawnText.addEventListener('click', spawnTextObstacle);
 
 // Handle window resize for fullscreen mode
 window.addEventListener('resize', () => {
