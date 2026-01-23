@@ -1,6 +1,12 @@
 {
   "name": "@blorkfield/overlay-core",
   "version": "0.5.9",
+  "description": "Physics-based overlay scene library for interactive streaming overlays",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blorkfield/overlay-core.git"
+  },
+  "keywords": ["overlay", "physics", "matter-js", "streaming", "interactive"],
   "packageManager": "pnpm@9.15.1",
   "type": "module",
   "main": "./dist/index.cjs",
