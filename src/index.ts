@@ -1,5 +1,6 @@
 export { OverlayScene } from './OverlayScene';
 export { logger, setLogLevel, getLogLevel } from './logger';
+export type { LogLevel } from './logger';
 export { loadFont, getGlyphData, getKerning, measureText, clearFontCache } from './fontLoader';
 export type {
   OverlaySceneConfig,
