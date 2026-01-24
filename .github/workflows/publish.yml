@@ -133,6 +133,10 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update npm for OIDC support
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -142,10 +146,7 @@ jobs:
 
       - name: Publish to npm
         id: publish
-        run: |
-          npm config set registry https://registry.npmjs.org/
-          npm publish --provenance --access public
-          echo "published=true" >> $GITHUB_OUTPUT
+        run: npm publish --access public
 
   # Publish Docker image after npm publish succeeds
   publish-docker:
