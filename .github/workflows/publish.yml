@@ -133,7 +133,6 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -144,10 +143,9 @@ jobs:
       - name: Publish to npm
         id: publish
         run: |
-          pnpm changeset publish --provenance --access public
+          npm config set registry https://registry.npmjs.org/
+          npm publish --provenance --access public
           echo "published=true" >> $GITHUB_OUTPUT
-        env:
-          NPM_CONFIG_PROVENANCE: true
 
   # Publish Docker image after npm publish succeeds
   publish-docker:
