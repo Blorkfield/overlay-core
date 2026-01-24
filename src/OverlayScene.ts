@@ -1560,11 +1560,10 @@ export class OverlayScene {
       for (let i = 0; i < chars.length; i++) {
         const char = chars[i];
 
-        // Handle spaces - use average letter width or letterSpacing config
+        // Handle spaces - use letterSpacing if provided, otherwise use letterSize as space width
         if (char === ' ') {
-          // Use explicit letterSpacing if provided, otherwise use letterSize as space width
-          // TODO Replace this with a configured value
-          currentX += 20;
+          const spaceWidth = config.letterSpacing ?? letterSize;
+          currentX += spaceWidth;
           globalCharIndex++;
           // Space ends the current word
           if (inWord) {
