@@ -4,7 +4,7 @@
   "description": "Physics-based overlay scene library for interactive streaming overlays",
   "repository": {
     "type": "git",
-    "url": "https://github.com/blorkfield/overlay-core.git"
+    "url": "https://github.com/Blorkfield/overlay-core.git"
   },
   "keywords": [
     "overlay",
