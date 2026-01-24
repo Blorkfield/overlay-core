@@ -1,6 +1,6 @@
 {
   "name": "@blorkfield/overlay-core",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Physics-based overlay scene library for interactive streaming overlays",
   "repository": {
     "type": "git",
