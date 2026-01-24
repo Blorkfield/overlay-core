@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.6.2
+
+### Patch Changes
+
+- 0ab5d5b: fix: trusted publisher
+
 ## 0.6.1
 
 ### Patch Changes
