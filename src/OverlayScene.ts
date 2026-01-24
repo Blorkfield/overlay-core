@@ -40,9 +40,9 @@ interface TTFGlyphRenderInfo {
 
 /**
  * Internal representation of a scene object.
- * Behavior is determined by tags:
- * - 'falling': Object is dynamic (not static), affected by gravity
- * - 'follow': Object follows mouse when grounded
+ * All objects are stored uniformly - behavior is determined entirely by tags:
+ * - 'falling': Object is dynamic (affected by gravity). Without this tag, object is static.
+ * - 'follow': Object follows mouse position when grounded
  * - 'grabable': Object can be dragged via mouse constraint
  */
 interface ObjectEntry {
