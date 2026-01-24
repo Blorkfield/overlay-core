@@ -3,7 +3,7 @@ import { logger } from './logger';
 
 const LOG_PREFIX = 'FontLoader';
 
-/** 2D vector representing a point in space */
+/** 2D vector representing a point in screen space */
 export interface Vector2D {
   x: number;
   y: number;
