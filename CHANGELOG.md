@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.6.0
+
+### Minor Changes
+
+- 487214e: feat: trusted publisher
+
 ## 0.5.10
 
 ### Patch Changes
