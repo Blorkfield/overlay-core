@@ -115,6 +115,9 @@ jobs:
     needs: check-release
     if: needs.check-release.outputs.is_release_merge == 'true' || github.event.inputs.force_publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       published: ${{ steps.publish.outputs.published }}
 
@@ -141,10 +144,10 @@ jobs:
       - name: Publish to npm
         id: publish
         run: |
-          pnpm changeset publish
+          pnpm changeset publish --provenance --access public
           echo "published=true" >> $GITHUB_OUTPUT
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
   # Publish Docker image after npm publish succeeds
   publish-docker:

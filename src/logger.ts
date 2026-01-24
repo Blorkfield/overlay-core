@@ -1,4 +1,5 @@
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+/** Log level for controlling console output verbosity */
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
