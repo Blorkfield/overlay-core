@@ -169,7 +169,7 @@ async function createScene(width: number, height: number): Promise<void> {
     gravity: 1,
     wrapHorizontal: true,
     debug: false,
-    background: { color: '#16213e' },
+    background: {},
     floorConfig: {
       segments: 5,        // Divide floor into 5 segments
       threshold: 100,     // Each segment collapses when weighted pressure reaches 100

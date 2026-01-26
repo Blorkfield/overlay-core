@@ -99,18 +99,20 @@ export interface BackgroundImageConfig {
 }
 
 /**
- * Configuration for the transparency/frosted glass layer.
+ * Configuration for the transparency/frosted glass overlay layer.
  * This layer renders on top of everything (including physics objects).
  */
 export interface BackgroundTransparencyConfig {
   /**
-   * Opacity of the transparency layer (0-1).
-   * Lower values create a more transparent/frosted effect.
+   * Opacity of the overlay (0-1).
+   * 0 = fully transparent (no overlay)
+   * 0.3 = light frosted glass
+   * 1 = fully opaque overlay
    */
   opacity: number;
   /**
-   * Optional tint color for the transparency layer (CSS color string).
-   * If not provided, creates a frosted glass effect (semi-transparent white).
+   * Tint color for the overlay (CSS color string).
+   * If not provided, defaults to white for frosted glass effect.
    */
   tintColor?: string;
 }

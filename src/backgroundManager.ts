@@ -152,10 +152,15 @@ export class BackgroundManager {
   }
 
   /**
-   * Check if background is fully transparent (opacity = 1).
+   * Check if background is fully transparent (no color, no image, opacity = 0 or no transparency config).
    */
   isFullyTransparent(): boolean {
-    return this.config?.transparency?.opacity === 1;
+    if (!this.config) return true;
+    // Fully transparent if no color, no image, and either no transparency or opacity 0
+    const noColor = !this.config.color;
+    const noImage = !this.config.image;
+    const noOverlay = !this.config.transparency || this.config.transparency.opacity <= 0;
+    return noColor && noImage && noOverlay;
   }
 
   /**
@@ -332,19 +337,16 @@ export class BackgroundManager {
 
   /**
    * Render the transparency/frosted glass layer.
-   * opacity = 1 means fully transparent (nothing drawn)
-   * opacity = 0 means fully opaque overlay
-   * opacity = 0.7 means light frosted glass (30% overlay)
+   * opacity = 0 means fully transparent (nothing drawn)
+   * opacity = 1 means fully opaque overlay
+   * opacity = 0.3 means light frosted glass
    */
   private renderTransparencyLayer(config: BackgroundTransparencyConfig): void {
-    // Invert: user's opacity=1 means clear, so overlay alpha = 1 - opacity
-    const overlayAlpha = 1 - config.opacity;
-
     // If fully transparent, don't draw anything
-    if (overlayAlpha <= 0) return;
+    if (config.opacity <= 0) return;
 
     this.ctx.save();
-    this.ctx.globalAlpha = overlayAlpha;
+    this.ctx.globalAlpha = config.opacity;
 
     if (config.tintColor) {
       this.ctx.fillStyle = config.tintColor;
