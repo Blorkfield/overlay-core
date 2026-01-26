@@ -6,6 +6,7 @@ import { loadFont, getGlyphData, getKerning, measureText, type LoadedFont } from
 import { logger } from './logger';
 import { applyMouseForce, wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
+import { BackgroundManager } from './backgroundManager';
 import type {
   OverlaySceneConfig,
   ObjectConfig,
@@ -25,7 +26,8 @@ import type {
   FontManifest,
   LetterDebugInfo,
   DOMObstacleConfig,
-  DOMObstacleResult
+  DOMObstacleResult,
+  BackgroundConfig
 } from './types';
 
 interface TTFGlyphRenderInfo {
@@ -105,6 +107,8 @@ export class OverlayScene {
   private floorSegments: Matter.Body[] = [];
   private floorSegmentPressure: Map<number, Set<string>> = new Map(); // segment index -> object IDs
   private collapsedSegments: Set<number> = new Set();
+  // Background manager for layered backgrounds
+  private backgroundManager: BackgroundManager;
 
   static createContainer(
     parent: HTMLElement,
@@ -143,7 +147,6 @@ export class OverlayScene {
       gravity: 1,
       wrapHorizontal: true,
       debug: false,
-      background: 'transparent',
       ...config
     };
     this.engine = createEngine(this.config.gravity!);
@@ -196,6 +199,31 @@ export class OverlayScene {
       (cfg) => this.spawnObjectAsync(cfg),
       (id) => this.objects.get(id)?.body ?? null
     );
+
+    // Setup background manager for layered backgrounds
+    const width = this.config.bounds.right - this.config.bounds.left;
+    const height = this.config.bounds.bottom - this.config.bounds.top;
+    this.backgroundManager = new BackgroundManager({
+      canvas,
+      width,
+      height,
+    });
+
+    // Initialize background config (async but don't block constructor)
+    this.backgroundManager.setConfig(this.config.background).catch((err) => {
+      logger.error('OverlayScene', 'Failed to initialize background', {
+        error: String(err),
+      });
+    });
+
+    // If we have custom background layers, set Matter.js to transparent and hook render events
+    if (this.backgroundManager.hasCustomLayers()) {
+      this.render.options.background = 'transparent';
+    }
+
+    // Hook into Matter.js render events for layered background rendering
+    Matter.Events.on(this.render, 'beforeRender', this.handleBeforeRender);
+    Matter.Events.on(this.render, 'afterRender', this.handleAfterRender);
   }
 
 
@@ -248,6 +276,24 @@ export class OverlayScene {
         this.collapseObstacle(entry);
       }
     }
+  };
+
+  /**
+   * Handler for Matter.js beforeRender event.
+   * Draws base background layers (color + image) before physics objects.
+   */
+  private handleBeforeRender = (): void => {
+    if (this.backgroundManager.hasCustomLayers()) {
+      this.backgroundManager.renderBaseLayers();
+    }
+  };
+
+  /**
+   * Handler for Matter.js afterRender event.
+   * Draws transparency/frosted glass layer after physics objects.
+   */
+  private handleAfterRender = (): void => {
+    this.backgroundManager.renderOverlay();
   };
 
   /** Get a display name for an obstacle (letter char or short ID) */
@@ -777,6 +823,9 @@ export class OverlayScene {
       Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
     }
     this.canvas.removeEventListener('click', this.handleCanvasClick);
+    // Clean up background render event listeners
+    Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
+    Matter.Events.off(this.render, 'afterRender', this.handleAfterRender);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
     this.obstaclePressure.clear();
@@ -796,6 +845,21 @@ export class OverlayScene {
       if (entry.ttfGlyph && entry.body.render) {
         entry.body.render.visible = enabled;
       }
+    }
+  }
+
+  /**
+   * Update the background configuration at runtime.
+   */
+  async setBackground(config: BackgroundConfig | undefined): Promise<void> {
+    await this.backgroundManager.setConfig(config);
+
+    // Update Matter.js background based on whether we have custom layers
+    if (this.backgroundManager.hasCustomLayers()) {
+      this.render.options.background = 'transparent';
+    } else {
+      const bgConfig = this.backgroundManager.getConfig();
+      this.render.options.background = bgConfig?.color ?? 'transparent';
     }
   }
 
@@ -829,6 +893,9 @@ export class OverlayScene {
 
     // Update effect manager bounds
     this.effectManager.setBounds(this.config.bounds);
+
+    // Update background manager dimensions
+    this.backgroundManager.resize(width, height);
   }
 
   // ==================== OBJECT METHODS ====================

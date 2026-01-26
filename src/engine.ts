@@ -19,7 +19,7 @@ export function createRender(
       width: config.bounds.right - config.bounds.left,
       height: config.bounds.bottom - config.bounds.top,
       wireframes: config.debug ?? false,
-      background: config.background ?? 'transparent'
+      background: config.background?.color ?? 'transparent'
     }
   });
   return render;

@@ -3,7 +3,8 @@ export interface OverlaySceneConfig {
   gravity?: number;
   wrapHorizontal?: boolean;
   debug?: boolean;
-  background?: string;
+  /** Background configuration with color, image, and transparency layers */
+  background?: BackgroundConfig;
   /** @deprecated Use floorConfig instead. Pressure threshold for the floor boundary. */
   floorThreshold?: number;
   /** Distance below floor (as fraction of container height) at which objects despawn. Default: 1.0 (100%) */
@@ -73,6 +74,62 @@ export interface FloorConfig {
    * Array length should match segments count.
    */
   segmentWidths?: number[];
+}
+
+// ==================== BACKGROUND TYPES ====================
+
+/**
+ * Image sizing mode for background images.
+ */
+export type BackgroundImageSizing =
+  | 'stretch'  // Scale to fill entire area (may distort aspect ratio)
+  | 'center'   // Display at original size, centered
+  | 'tile'     // Repeat horizontally and vertically
+  | 'cover'    // Scale to cover area, crop if needed (maintain aspect ratio)
+  | 'contain'; // Scale to fit within area, gaps filled by color layer
+
+/**
+ * Configuration for the background image layer.
+ */
+export interface BackgroundImageConfig {
+  /** Image URL or local file path (supports same formats as entity images) */
+  url: string;
+  /** How to size/position the image. Default: 'cover' */
+  sizing?: BackgroundImageSizing;
+}
+
+/**
+ * Configuration for the transparency/frosted glass layer.
+ * This layer renders on top of everything (including physics objects).
+ */
+export interface BackgroundTransparencyConfig {
+  /**
+   * Opacity of the transparency layer (0-1).
+   * Lower values create a more transparent/frosted effect.
+   */
+  opacity: number;
+  /**
+   * Optional tint color for the transparency layer (CSS color string).
+   * If not provided, creates a frosted glass effect (semi-transparent white).
+   */
+  tintColor?: string;
+}
+
+/**
+ * Full background configuration with three layers (bottom to top):
+ * 1. Color layer (BOTTOM) - solid background color
+ * 2. Image layer (MIDDLE) - background image
+ * 3. Transparency layer (TOP) - frosted glass effect with optional tint
+ *
+ * Layers render in order: color → image → physics objects → transparency
+ */
+export interface BackgroundConfig {
+  /** Base background color (bottom layer). Default: 'transparent' */
+  color?: string;
+  /** Background image configuration (middle layer, behind physics objects) */
+  image?: BackgroundImageConfig;
+  /** Transparency/frosted glass effect (top layer, above physics objects) */
+  transparency?: BackgroundTransparencyConfig;
 }
 
 export interface Bounds {

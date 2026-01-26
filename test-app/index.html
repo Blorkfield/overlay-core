@@ -363,6 +363,53 @@
           </div>
         </div>
       </div>
+      <div class="effect-section">
+        <div class="effect-header" style="margin-bottom:8px">
+          <span class="effect-title">Background</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button id="btn-bg-transparent" class="panel-btn" style="flex:1;font-size:11px">Transparent</button>
+          <button id="btn-bg-default" class="panel-btn" style="flex:1;font-size:11px">Default</button>
+        </div>
+        <div class="effect-params">
+          <div class="param-row">
+            <label>Color:</label>
+            <input type="color" id="input-bg-color" value="#16213e" style="width:60px;height:28px;padding:0;border:none;cursor:pointer">
+            <label style="font-size:11px;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="checkbox-bg-color-enabled" checked>
+              Enable
+            </label>
+          </div>
+          <div class="param-row">
+            <label>Image URL:</label>
+            <input type="text" id="input-bg-image" placeholder="/path/to/image.png" style="width:120px">
+          </div>
+          <div class="param-row">
+            <label>Sizing:</label>
+            <select id="select-bg-sizing" class="select-input" style="width:100px">
+              <option value="cover">Cover</option>
+              <option value="contain">Contain</option>
+              <option value="stretch">Stretch</option>
+              <option value="center">Center</option>
+              <option value="tile">Tile</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label>Transparency:</label>
+            <input type="range" id="input-bg-opacity" min="0" max="1" step="0.05" value="0" style="width:80px">
+            <span id="bg-opacity-value" style="font-size:11px;width:30px">0</span>
+          </div>
+          <div class="param-row">
+            <label>Tint Color:</label>
+            <input type="color" id="input-bg-tint" value="#ffffff" style="width:60px;height:28px;padding:0;border:none;cursor:pointer">
+            <label style="font-size:11px;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="checkbox-bg-tint-enabled">
+              Enable
+            </label>
+          </div>
+        </div>
+        <button id="btn-apply-bg" class="panel-btn" style="width:100%;margin-top:8px">Apply Background</button>
+      </div>
     </div>
   </div>
 
