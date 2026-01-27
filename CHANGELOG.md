@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.7.0
+
+### Minor Changes
+
+- 5520059: feat: background
+
 ## 0.6.5
 
 ### Patch Changes
