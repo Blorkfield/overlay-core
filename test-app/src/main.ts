@@ -1,4 +1,4 @@
-import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig, setLogLevel } from '@blorkfield/overlay-core';
+import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, StreamEffectConfig, setLogLevel, BackgroundConfig } from '@blorkfield/overlay-core';
 
 // Set default log level to 'debug' for development (change to 'warn' for quieter output)
 setLogLevel('debug');
@@ -33,6 +33,19 @@ const btnTagRemove = document.getElementById('btn-tag-remove') as HTMLButtonElem
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
+
+// Background elements
+const btnBgTransparent = document.getElementById('btn-bg-transparent') as HTMLButtonElement;
+const btnBgDefault = document.getElementById('btn-bg-default') as HTMLButtonElement;
+const inputBgColor = document.getElementById('input-bg-color') as HTMLInputElement;
+const checkboxBgColorEnabled = document.getElementById('checkbox-bg-color-enabled') as HTMLInputElement;
+const inputBgImage = document.getElementById('input-bg-image') as HTMLInputElement;
+const selectBgSizing = document.getElementById('select-bg-sizing') as HTMLSelectElement;
+const inputBgOpacity = document.getElementById('input-bg-opacity') as HTMLInputElement;
+const bgOpacityValue = document.getElementById('bg-opacity-value') as HTMLSpanElement;
+const inputBgTint = document.getElementById('input-bg-tint') as HTMLInputElement;
+const checkboxBgTintEnabled = document.getElementById('checkbox-bg-tint-enabled') as HTMLInputElement;
+const btnApplyBg = document.getElementById('btn-apply-bg') as HTMLButtonElement;
 
 // Text obstacle elements
 const inputTextObstacle = document.getElementById('input-text-obstacle') as HTMLInputElement;
@@ -156,7 +169,7 @@ async function createScene(width: number, height: number): Promise<void> {
     gravity: 1,
     wrapHorizontal: true,
     debug: false,
-    background: '#16213e',
+    background: { color: '#16213e' },
     floorConfig: {
       segments: 5,        // Divide floor into 5 segments
       threshold: 100,     // Each segment collapses when weighted pressure reaches 100
@@ -486,6 +499,75 @@ checkboxDebug.addEventListener('change', () => {
 selectLogLevel.addEventListener('change', () => {
   setLogLevel(selectLogLevel.value as 'warn' | 'info' | 'debug');
   console.log('Log level set to:', selectLogLevel.value);
+});
+
+// ==================== BACKGROUND CONTROLS ====================
+
+// Transparent preset - fully clear canvas
+btnBgTransparent.addEventListener('click', async () => {
+  if (!scene) return;
+  // Reset UI
+  checkboxBgColorEnabled.checked = false;
+  inputBgImage.value = '';
+  inputBgOpacity.value = '0';
+  bgOpacityValue.textContent = '0';
+  checkboxBgTintEnabled.checked = false;
+  // Apply empty config = transparent
+  await scene.setBackground(undefined);
+  console.log('Background set to transparent');
+});
+
+// Default preset
+btnBgDefault.addEventListener('click', async () => {
+  if (!scene) return;
+  // Reset UI to defaults
+  checkboxBgColorEnabled.checked = true;
+  inputBgColor.value = '#16213e';
+  inputBgImage.value = '';
+  inputBgOpacity.value = '0';
+  bgOpacityValue.textContent = '0';
+  checkboxBgTintEnabled.checked = false;
+  // Apply default
+  await scene.setBackground({ color: '#16213e' });
+  console.log('Background set to default');
+});
+
+// Update opacity display value
+inputBgOpacity.addEventListener('input', () => {
+  bgOpacityValue.textContent = inputBgOpacity.value;
+});
+
+// Apply background configuration
+btnApplyBg.addEventListener('click', async () => {
+  if (!scene) return;
+
+  const colorEnabled = checkboxBgColorEnabled.checked;
+  const color = inputBgColor.value;
+  const imageUrl = inputBgImage.value.trim();
+  const sizing = selectBgSizing.value as 'cover' | 'contain' | 'stretch' | 'center' | 'tile';
+  const opacity = parseFloat(inputBgOpacity.value);
+  const tintEnabled = checkboxBgTintEnabled.checked;
+  const tintColor = inputBgTint.value;
+
+  const bgConfig: BackgroundConfig = {};
+
+  if (colorEnabled) {
+    bgConfig.color = color;
+  }
+
+  if (imageUrl) {
+    bgConfig.image = { url: imageUrl, sizing };
+  }
+
+  if (opacity > 0) {
+    bgConfig.transparency = {
+      opacity,
+      tintColor: tintEnabled ? tintColor : undefined,
+    };
+  }
+
+  console.log('Applying background config:', bgConfig);
+  await scene.setBackground(bgConfig);
 });
 
 // ==================== TEXT OBSTACLE LOGIC ====================

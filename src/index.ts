@@ -2,6 +2,7 @@ export { OverlayScene } from './OverlayScene';
 export { logger, setLogLevel, getLogLevel } from './logger';
 export type { LogLevel } from './logger';
 export { loadFont, getGlyphData, getKerning, measureText, clearFontCache } from './fontLoader';
+export { BackgroundManager } from './backgroundManager';
 export type {
   OverlaySceneConfig,
   Bounds,
@@ -34,6 +35,11 @@ export type {
   FloorConfig,
   ShadowConfig,
   ClickToFallConfig,
+  // Background types
+  BackgroundConfig,
+  BackgroundImageConfig,
+  BackgroundImageSizing,
+  BackgroundTransparencyConfig,
   // Font types
   FontInfo,
   FontManifest
