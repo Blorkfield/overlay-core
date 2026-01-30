@@ -9,15 +9,12 @@ importers:
   .:
     dependencies:
       '@blorkfield/blork-tabs':
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.2.5
+        version: 0.2.5
       '@blorkfield/overlay-core':
         specifier: link:..
         version: link:..
     devDependencies:
-      '@types/sharp':
-        specifier: ^0.32.0
-        version: 0.32.0
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
@@ -33,8 +30,8 @@ importers:
 
 packages:
 
-  '@blorkfield/blork-tabs@0.2.0':
-    resolution: {integrity: sha512-4y5YN3vghPNd+QY7ssa/3EsNyWnJCqFhwpXrVQflKsHOwyALqjMvYXK7n8xLgHQVRiBXhfM77ecoSzGPAf8qZQ==}
+  '@blorkfield/blork-tabs@0.2.5':
+    resolution: {integrity: sha512-93LlxOMkN7BNEfSl6rgJ4KvJw+IArmoGnVKYs/IrprA2803TSBzTuJ0ZP12gfK1d99WLGfoS8NbDGWHE3ZvLLA==}
     engines: {node: '>=18.0.0'}
 
   '@emnapi/runtime@1.8.1':
@@ -446,10 +443,6 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/sharp@0.32.0':
-    resolution: {integrity: sha512-OOi3kL+FZDnPhVzsfD37J88FNeZh6gQsGcLc95NbeURRGvmSjeXiDcyWzF2o3yh/gQAUn2uhh/e+CPCa5nwAxw==}
-    deprecated: This is a stub types definition. sharp provides its own type definitions, so you do not need this installed.
-
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -547,7 +540,7 @@ packages:
 
 snapshots:
 
-  '@blorkfield/blork-tabs@0.2.0': {}
+  '@blorkfield/blork-tabs@0.2.5': {}
 
   '@emnapi/runtime@1.8.1':
     dependencies:
@@ -797,10 +790,6 @@ snapshots:
     optional: true
 
   '@types/estree@1.0.8': {}
-
-  '@types/sharp@0.32.0':
-    dependencies:
-      sharp: 0.34.5
 
   detect-libc@2.1.2: {}
 
