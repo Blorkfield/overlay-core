@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.0
+
+### Minor Changes
+
+- 788d393: feat: mouse set api
+
 ## 0.7.1
 
 ### Patch Changes
