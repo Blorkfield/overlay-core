@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.1
+
+### Patch Changes
+
+- d0e6303: refactor: exposing grab apis
+
 ## 0.8.0
 
 ### Minor Changes
