@@ -223,6 +223,34 @@ export interface DynamicObject {
   tags: string[];
 }
 
+/**
+ * Extended object state for querying and manipulation.
+ * Includes velocity data not present in DynamicObject.
+ */
+export interface ObjectState {
+  id: string;
+  x: number;
+  y: number;
+  velocity: { x: number; y: number };
+  angle: number;
+  tags: string[];
+}
+
+/**
+ * Lifecycle events that can be subscribed to.
+ */
+export type LifecycleEvent = 'objectSpawned' | 'objectRemoved' | 'objectCollision';
+
+/**
+ * Callback type for lifecycle events.
+ * - objectSpawned/objectRemoved: receives the affected object
+ * - objectCollision: receives both colliding objects
+ */
+export type LifecycleCallback<T extends LifecycleEvent> =
+  T extends 'objectCollision'
+    ? (a: ObjectState, b: ObjectState) => void
+    : (object: ObjectState) => void;
+
 export interface UpdateCallbackData {
   /** All dynamic objects (objects with 'falling' tag) */
   objects: DynamicObject[];

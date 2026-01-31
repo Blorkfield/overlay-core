@@ -9,6 +9,9 @@ export type {
   // Core object types (unified model)
   ObjectConfig,
   DynamicObject,
+  ObjectState,
+  LifecycleEvent,
+  LifecycleCallback,
   UpdateCallbackData,
   UpdateCallback,
   ContainerOptions,
