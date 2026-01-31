@@ -4,7 +4,7 @@ import { createBoundaries, createBoundariesWithFloorConfig, createEntity, create
 import { tintImage } from './imageClip';
 import { loadFont, getGlyphData, getKerning, measureText, type LoadedFont } from './fontLoader';
 import { logger } from './logger';
-import { applyMouseForce, wrapHorizontal } from './entity';
+import { wrapHorizontal } from './entity';
 import { EffectManager } from './EffectManager';
 import { BackgroundManager } from './backgroundManager';
 import type {
@@ -92,7 +92,6 @@ export class OverlayScene {
   private objects: Map<string, ObjectEntry> = new Map();
   private boundaries: Matter.Body[] = [];
   private updateCallbacks: UpdateCallback[] = [];
-  private mouseX: number = 0;
   private config: OverlaySceneConfig;
   private animationFrameId: number | null = null;
   private mouse: Matter.Mouse | null = null;
@@ -1262,8 +1261,13 @@ export class OverlayScene {
     return Array.from(tagsSet).sort();
   }
 
-  setMousePosition(x: number, _y: number): void {
-    this.mouseX = x;
+  /**
+   * Set the mouse position for follow behavior.
+   * This overrides the browser mouse position for the 'follow' and 'follow-mouse' tags.
+   * @deprecated Use setFollowTarget('mouse', x, y) instead
+   */
+  setMousePosition(x: number, y: number): void {
+    this.setFollowTarget('mouse', x, y);
   }
 
   /**
@@ -2418,21 +2422,21 @@ export class OverlayScene {
     // Update pressure tracking
     this.updatePressure();
 
+    // Update 'mouse' follow target from browser mouse (if not externally overridden this frame)
+    if (!this.followTargets.has('mouse') && this.mouse) {
+      this.followTargets.set('mouse', { x: this.mouse.position.x, y: this.mouse.position.y });
+    }
+
     // Apply tag-based behaviors to all objects
-    const mouseX = this.mouse?.position.x ?? this.mouseX;
-
     for (const entry of this.objects.values()) {
-      // Only apply mouse force to objects with 'follow' tag, and not if being dragged
       const isDragging = this.mouseConstraint?.body === entry.body;
-      if (!isDragging && entry.tags.includes('follow')) {
-        applyMouseForce(entry.body, mouseX, this.isGrounded(entry.body));
-      }
 
-      // Apply follow-{key} target forces
+      // Apply follow target forces (including 'follow' tag which uses 'mouse' target)
       if (!isDragging) {
         for (const tag of entry.tags) {
-          if (tag.startsWith('follow-')) {
-            const key = tag.slice(7); // Remove 'follow-' prefix
+          // 'follow' tag is an alias for 'follow-mouse'
+          const key = tag === 'follow' ? 'mouse' : (tag.startsWith('follow-') ? tag.slice(7) : null);
+          if (key) {
             const target = this.followTargets.get(key);
             if (target) {
               const grounded = this.isGrounded(entry.body);
