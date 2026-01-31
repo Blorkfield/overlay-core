@@ -1279,6 +1279,14 @@ export class OverlayScene {
    */
   setFollowTarget(key: string, x: number, y: number): void {
     this.followTargets.set(key, { x, y });
+
+    // Sync mouse position to Matter.Mouse for MouseConstraint compatibility
+    if (key === 'mouse' && this.mouse) {
+      this.mouse.position.x = x;
+      this.mouse.position.y = y;
+      this.mouse.absolute.x = x;
+      this.mouse.absolute.y = y;
+    }
   }
 
   /**
@@ -1295,6 +1303,59 @@ export class OverlayScene {
    */
   getFollowTargetKeys(): string[] {
     return Array.from(this.followTargets.keys());
+  }
+
+  // ==================== GRAB/DRAG METHODS ====================
+
+  /**
+   * Programmatically grab an object at the current mouse position.
+   * Uses the externally set mouse position (via setFollowTarget('mouse', x, y))
+   * or the native canvas mouse position if no external position is set.
+   * Only objects with the 'grabable' tag can be grabbed.
+   * @returns The ID of the grabbed object, or null if no grabable object at position
+   */
+  startGrab(): string | null {
+    if (!this.mouseConstraint || !this.mouse) return null;
+
+    const mouseTarget = this.followTargets.get('mouse');
+    const position = mouseTarget ?? { x: this.mouse.position.x, y: this.mouse.position.y };
+
+    const bodies = Matter.Query.point(
+      Matter.Composite.allBodies(this.engine.world),
+      position
+    );
+
+    for (const body of bodies) {
+      const entry = this.findObjectByBody(body);
+      if (entry && entry.tags.includes('grabable')) {
+        this.mouseConstraint.constraint.bodyB = entry.body;
+        this.mouseConstraint.constraint.pointB = {
+          x: position.x - entry.body.position.x,
+          y: position.y - entry.body.position.y
+        };
+        return entry.id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Release any currently grabbed object.
+   */
+  endGrab(): void {
+    if (this.mouseConstraint) {
+      this.mouseConstraint.constraint.bodyB = null;
+    }
+  }
+
+  /**
+   * Get the ID of the currently grabbed object.
+   * @returns The ID of the grabbed object, or null if nothing is grabbed
+   */
+  getGrabbedObject(): string | null {
+    if (!this.mouseConstraint?.constraint.bodyB) return null;
+    const entry = this.findObjectByBody(this.mouseConstraint.constraint.bodyB);
+    return entry?.id ?? null;
   }
 
   // ==================== PHYSICS MANIPULATION METHODS ====================
