@@ -13,6 +13,9 @@ import type {
   UpdateCallback,
   UpdateCallbackData,
   DynamicObject,
+  ObjectState,
+  LifecycleEvent,
+  LifecycleCallback,
   ContainerOptions,
   Bounds,
   EffectConfig,
@@ -109,6 +112,18 @@ export class OverlayScene {
   private collapsedSegments: Set<number> = new Set();
   // Background manager for layered backgrounds
   private backgroundManager: BackgroundManager;
+  // Lifecycle event callbacks
+  private lifecycleCallbacks: {
+    objectSpawned: Array<(object: ObjectState) => void>;
+    objectRemoved: Array<(object: ObjectState) => void>;
+    objectCollision: Array<(a: ObjectState, b: ObjectState) => void>;
+  } = {
+    objectSpawned: [],
+    objectRemoved: [],
+    objectCollision: []
+  };
+  // Follow targets for follow-{key} tagged objects
+  private followTargets: Map<string, { x: number; y: number }> = new Map();
 
   static createContainer(
     parent: HTMLElement,
@@ -224,6 +239,9 @@ export class OverlayScene {
     // Hook into Matter.js render events for layered background rendering
     Matter.Events.on(this.render, 'beforeRender', this.handleBeforeRender);
     Matter.Events.on(this.render, 'afterRender', this.handleAfterRender);
+
+    // Hook into collision events for lifecycle callbacks
+    Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
   }
 
 
@@ -294,6 +312,26 @@ export class OverlayScene {
    */
   private handleAfterRender = (): void => {
     this.backgroundManager.renderOverlay();
+  };
+
+  /**
+   * Handler for Matter.js collision events.
+   * Emits objectCollision lifecycle events.
+   */
+  private handleCollisionStart = (event: Matter.IEventCollision<Matter.Engine>): void => {
+    for (const pair of event.pairs) {
+      const entryA = this.findObjectByBody(pair.bodyA);
+      const entryB = this.findObjectByBody(pair.bodyB);
+
+      // Only emit if both bodies are tracked objects (not boundaries)
+      if (entryA && entryB) {
+        this.emitLifecycleEvent(
+          'objectCollision',
+          this.toObjectState(entryA),
+          this.toObjectState(entryB)
+        );
+      }
+    }
   };
 
   /** Get a display name for an obstacle (letter char or short ID) */
@@ -826,6 +864,8 @@ export class OverlayScene {
     // Clean up background render event listeners
     Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
     Matter.Events.off(this.render, 'afterRender', this.handleAfterRender);
+    // Clean up collision event listener
+    Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
     this.obstaclePressure.clear();
@@ -834,6 +874,12 @@ export class OverlayScene {
     this.floorSegmentPressure.clear();
     this.collapsedSegments.clear();
     this.updateCallbacks = [];
+    // Clear lifecycle callbacks
+    this.lifecycleCallbacks.objectSpawned = [];
+    this.lifecycleCallbacks.objectRemoved = [];
+    this.lifecycleCallbacks.objectCollision = [];
+    // Clear follow targets
+    this.followTargets.clear();
   }
 
   setDebug(enabled: boolean): void {
@@ -990,6 +1036,9 @@ export class OverlayScene {
       this.obstaclePressure.set(id, new Set());
     }
 
+    // Emit objectSpawned event
+    this.emitLifecycleEvent('objectSpawned', this.toObjectState(entry));
+
     return id;
   }
 
@@ -1059,6 +1108,9 @@ export class OverlayScene {
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
     }
+
+    // Emit objectSpawned event
+    this.emitLifecycleEvent('objectSpawned', this.toObjectState(entry));
 
     return id;
   }
@@ -1151,6 +1203,8 @@ export class OverlayScene {
   removeObject(id: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
+    // Emit objectRemoved event before removing
+    this.emitLifecycleEvent('objectRemoved', this.toObjectState(entry));
     Matter.Composite.remove(this.engine.world, entry.body);
     this.objects.delete(id);
   }
@@ -1210,6 +1264,170 @@ export class OverlayScene {
 
   setMousePosition(x: number, _y: number): void {
     this.mouseX = x;
+  }
+
+  /**
+   * Set a follow target position. Objects with 'follow-{key}' tag will
+   * automatically move toward this target each frame.
+   * @param key - The target key (e.g., 'absolute' for 'follow-absolute' tag)
+   * @param x - Target X position
+   * @param y - Target Y position
+   */
+  setFollowTarget(key: string, x: number, y: number): void {
+    this.followTargets.set(key, { x, y });
+  }
+
+  /**
+   * Remove a follow target. Objects with the corresponding tag will stop following.
+   * @param key - The target key to remove
+   */
+  removeFollowTarget(key: string): void {
+    this.followTargets.delete(key);
+  }
+
+  /**
+   * Get all registered follow target keys.
+   * @returns Array of follow target keys
+   */
+  getFollowTargetKeys(): string[] {
+    return Array.from(this.followTargets.keys());
+  }
+
+  // ==================== PHYSICS MANIPULATION METHODS ====================
+
+  /**
+   * Apply a force to an object.
+   * @param objectId - The ID of the object
+   * @param force - The force vector to apply
+   */
+  applyForce(objectId: string, force: { x: number; y: number }): void {
+    const entry = this.objects.get(objectId);
+    if (!entry) return;
+    Matter.Body.applyForce(entry.body, entry.body.position, force);
+  }
+
+  /**
+   * Apply a force to all objects with a specific tag.
+   * @param tag - The tag to match
+   * @param force - The force vector to apply
+   */
+  applyForceToTag(tag: string, force: { x: number; y: number }): void {
+    for (const entry of this.objects.values()) {
+      if (entry.tags.includes(tag)) {
+        Matter.Body.applyForce(entry.body, entry.body.position, force);
+      }
+    }
+  }
+
+  /**
+   * Set the velocity of an object.
+   * @param objectId - The ID of the object
+   * @param velocity - The velocity vector to set
+   */
+  setVelocity(objectId: string, velocity: { x: number; y: number }): void {
+    const entry = this.objects.get(objectId);
+    if (!entry) return;
+    Matter.Body.setVelocity(entry.body, velocity);
+  }
+
+  /**
+   * Set the position of an object.
+   * @param objectId - The ID of the object
+   * @param position - The position to set
+   */
+  setPosition(objectId: string, position: { x: number; y: number }): void {
+    const entry = this.objects.get(objectId);
+    if (!entry) return;
+    Matter.Body.setPosition(entry.body, position);
+  }
+
+  // ==================== OBJECT STATE METHODS ====================
+
+  /**
+   * Get the current state of an object.
+   * @param id - The ID of the object
+   * @returns The object state, or null if not found
+   */
+  getObject(id: string): ObjectState | null {
+    const entry = this.objects.get(id);
+    if (!entry) return null;
+    return {
+      id: entry.id,
+      x: entry.body.position.x,
+      y: entry.body.position.y,
+      velocity: { x: entry.body.velocity.x, y: entry.body.velocity.y },
+      angle: entry.body.angle,
+      tags: [...entry.tags]
+    };
+  }
+
+  /**
+   * Get the current state of all objects with a specific tag.
+   * @param tag - The tag to match
+   * @returns Array of object states
+   */
+  getObjectsByTag(tag: string): ObjectState[] {
+    const result: ObjectState[] = [];
+    for (const entry of this.objects.values()) {
+      if (entry.tags.includes(tag)) {
+        result.push({
+          id: entry.id,
+          x: entry.body.position.x,
+          y: entry.body.position.y,
+          velocity: { x: entry.body.velocity.x, y: entry.body.velocity.y },
+          angle: entry.body.angle,
+          tags: [...entry.tags]
+        });
+      }
+    }
+    return result;
+  }
+
+  // ==================== LIFECYCLE EVENTS ====================
+
+  /**
+   * Subscribe to a lifecycle event.
+   * @param event - The event type to subscribe to
+   * @param callback - The callback to invoke when the event occurs
+   */
+  on<T extends LifecycleEvent>(event: T, callback: LifecycleCallback<T>): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.lifecycleCallbacks[event] as Array<LifecycleCallback<T>>).push(callback);
+  }
+
+  /**
+   * Unsubscribe from a lifecycle event.
+   * @param event - The event type to unsubscribe from
+   * @param callback - The callback to remove
+   */
+  off<T extends LifecycleEvent>(event: T, callback: LifecycleCallback<T>): void {
+    const arr = this.lifecycleCallbacks[event] as Function[];
+    const idx = arr.indexOf(callback as Function);
+    if (idx !== -1) arr.splice(idx, 1);
+  }
+
+  /** Create ObjectState from an ObjectEntry */
+  private toObjectState(entry: ObjectEntry): ObjectState {
+    return {
+      id: entry.id,
+      x: entry.body.position.x,
+      y: entry.body.position.y,
+      velocity: { x: entry.body.velocity.x, y: entry.body.velocity.y },
+      angle: entry.body.angle,
+      tags: [...entry.tags]
+    };
+  }
+
+  /** Emit a lifecycle event to all registered callbacks */
+  private emitLifecycleEvent<T extends LifecycleEvent>(
+    event: T,
+    ...args: T extends 'objectCollision' ? [ObjectState, ObjectState] : [ObjectState]
+  ): void {
+    const callbacks = this.lifecycleCallbacks[event];
+    for (const cb of callbacks) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb as Function)(...args);
+    }
   }
 
   // ==================== PRESSURE TRACKING METHODS ====================
@@ -2208,6 +2426,23 @@ export class OverlayScene {
       const isDragging = this.mouseConstraint?.body === entry.body;
       if (!isDragging && entry.tags.includes('follow')) {
         applyMouseForce(entry.body, mouseX, this.isGrounded(entry.body));
+      }
+
+      // Apply follow-{key} target forces
+      if (!isDragging) {
+        for (const tag of entry.tags) {
+          if (tag.startsWith('follow-')) {
+            const key = tag.slice(7); // Remove 'follow-' prefix
+            const target = this.followTargets.get(key);
+            if (target) {
+              const grounded = this.isGrounded(entry.body);
+              if (grounded) {
+                const direction = Math.sign(target.x - entry.body.position.x);
+                Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * direction, y: 0 });
+              }
+            }
+          }
+        }
       }
 
       // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)
