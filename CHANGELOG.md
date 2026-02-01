@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.3
+
+### Patch Changes
+
+- d56cba0: fix: mouse grab
+
 ## 0.8.2
 
 ### Patch Changes
