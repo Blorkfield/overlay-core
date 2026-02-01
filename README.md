@@ -323,28 +323,27 @@ For scenarios where mouse input comes from an external source (e.g., system-wide
 const canvasX = screenMouseX - canvasOffsetX;
 const canvasY = screenMouseY - canvasOffsetY;
 scene.setFollowTarget('mouse', canvasX, canvasY);
-
-// This position is now used for:
-// - Objects with 'follow' tag (they move toward this position)
-// - Programmatic grab detection via startGrab()
-// - MouseConstraint during drag (grabbed objects follow this position)
 ```
 
 The offset calculation is your responsibility - overlay-core uses whatever position you provide.
 
 ### Programmatic Grab/Release
 
+Grab uses delta-based movement: when grabbed, the entity and mouse become linked. The entity moves BY the same amount as the mouse moves, not TO the mouse position. This ensures the entity stays at its original position on grab and follows mouse movement naturally.
+
 ```typescript
 // Grab object at current mouse position (only 'grabable' tagged objects)
 const grabbedId = scene.startGrab();
 if (grabbedId) {
+  // Entity stays at its current position, now linked to mouse
   console.log(`Grabbed: ${grabbedId}`);
 }
 
-// Update mouse position while dragging - object follows automatically
+// As mouse moves, entity moves by the same delta
+// Mouse moves +50px right → entity moves +50px right
 scene.setFollowTarget('mouse', newX, newY);
 
-// Release the grabbed object
+// Release unlinks entity from mouse
 scene.endGrab();
 
 // Check what's currently grabbed
@@ -354,9 +353,9 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `setFollowTarget('mouse', x, y)` | void | Set mouse position for follow behavior and grab detection |
-| `startGrab()` | string \| null | Grab object at current mouse position, returns object ID |
-| `endGrab()` | void | Release any currently grabbed object |
-| `getGrabbedObject()` | string \| null | Get ID of currently grabbed object |
+| `startGrab()` | string \| null | Link entity at current mouse position to mouse, returns entity ID |
+| `endGrab()` | void | Unlink currently grabbed entity |
+| `getGrabbedObject()` | string \| null | Get ID of currently grabbed entity |
 
 ## Configuration
 
