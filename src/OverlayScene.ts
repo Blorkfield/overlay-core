@@ -1322,11 +1322,20 @@ export class OverlayScene {
         // Fake mouse button state so MouseConstraint doesn't release
         this.mouse.button = 0;
 
+        // Set both ends of the constraint
+        this.mouseConstraint.constraint.pointA = { x: position.x, y: position.y };
         this.mouseConstraint.constraint.bodyB = entry.body;
-        this.mouseConstraint.constraint.pointB = {
-          x: position.x - entry.body.position.x,
-          y: position.y - entry.body.position.y
-        };
+        this.mouseConstraint.constraint.pointB = { x: 0, y: 0 }; // Grab at body center
+
+        console.log('[overlay-core] startGrab success', {
+          entityId: entry.id,
+          mousePosition: position,
+          bodyPosition: { x: entry.body.position.x, y: entry.body.position.y },
+          constraintPointA: this.mouseConstraint.constraint.pointA,
+          constraintPointB: this.mouseConstraint.constraint.pointB,
+          mouseButton: this.mouse.button
+        });
+
         return entry.id;
       }
     }
