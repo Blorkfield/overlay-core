@@ -314,19 +314,23 @@ const allTags = scene.getAllTags();
 
 ## Mouse Position and Grab API
 
-For scenarios where mouse input comes from an external source (e.g., system-wide mouse capture via WebSocket), you can programmatically control mouse position and grab/release behavior.
+For scenarios where mouse input comes from an external source (e.g., system-wide mouse capture via WebSocket), you can programmatically control mouse position and grab/release behavior. This is useful when the canvas is positioned with an offset from the screen origin.
 
 ### Setting Mouse Position
 
 ```typescript
-// Set mouse position from external source (e.g., with offset applied)
-scene.setFollowTarget('mouse', x, y);
+// Apply your offset and set the adjusted position
+const canvasX = screenMouseX - canvasOffsetX;
+const canvasY = screenMouseY - canvasOffsetY;
+scene.setFollowTarget('mouse', canvasX, canvasY);
 
-// This position is used for:
+// This position is now used for:
 // - Objects with 'follow' tag (they move toward this position)
 // - Programmatic grab detection via startGrab()
 // - MouseConstraint during drag (grabbed objects follow this position)
 ```
+
+The offset calculation is your responsibility - overlay-core uses whatever position you provide.
 
 ### Programmatic Grab/Release
 
