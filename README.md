@@ -312,6 +312,48 @@ const tagged = scene.getObjectIdsByTag('falling');
 const allTags = scene.getAllTags();
 ```
 
+## Mouse Position and Grab API
+
+For scenarios where mouse input comes from an external source (e.g., system-wide mouse capture via WebSocket), you can programmatically control mouse position and grab/release behavior.
+
+### Setting Mouse Position
+
+```typescript
+// Set mouse position from external source (e.g., with offset applied)
+scene.setFollowTarget('mouse', x, y);
+
+// This position is used for:
+// - Objects with 'follow' tag (they move toward this position)
+// - Programmatic grab detection via startGrab()
+// - MouseConstraint during drag (grabbed objects follow this position)
+```
+
+### Programmatic Grab/Release
+
+```typescript
+// Grab object at current mouse position (only 'grabable' tagged objects)
+const grabbedId = scene.startGrab();
+if (grabbedId) {
+  console.log(`Grabbed: ${grabbedId}`);
+}
+
+// Update mouse position while dragging - object follows automatically
+scene.setFollowTarget('mouse', newX, newY);
+
+// Release the grabbed object
+scene.endGrab();
+
+// Check what's currently grabbed
+const currentGrab = scene.getGrabbedObject(); // Returns ID or null
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `setFollowTarget('mouse', x, y)` | void | Set mouse position for follow behavior and grab detection |
+| `startGrab()` | string \| null | Grab object at current mouse position, returns object ID |
+| `endGrab()` | void | Release any currently grabbed object |
+| `getGrabbedObject()` | string \| null | Get ID of currently grabbed object |
+
 ## Configuration
 
 ### Scene Config
