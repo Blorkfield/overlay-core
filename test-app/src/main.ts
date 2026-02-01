@@ -188,7 +188,7 @@ async function createScene(width: number, height: number): Promise<void> {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    scene.setMousePosition(x, y);
+    scene.setFollowTarget('mouse', x, y);
   });
 
   // Update stats on each frame

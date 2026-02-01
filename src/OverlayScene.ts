@@ -1262,15 +1262,6 @@ export class OverlayScene {
   }
 
   /**
-   * Set the mouse position for follow behavior.
-   * This overrides the browser mouse position for the 'follow' and 'follow-mouse' tags.
-   * @deprecated Use setFollowTarget('mouse', x, y) instead
-   */
-  setMousePosition(x: number, y: number): void {
-    this.setFollowTarget('mouse', x, y);
-  }
-
-  /**
    * Set a follow target position. Objects with 'follow-{key}' tag will
    * automatically move toward this target each frame.
    * @param key - The target key (e.g., 'absolute' for 'follow-absolute' tag)
