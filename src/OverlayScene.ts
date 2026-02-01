@@ -123,6 +123,14 @@ export class OverlayScene {
   };
   // Follow targets for follow-{key} tagged objects
   private followTargets: Map<string, { x: number; y: number }> = new Map();
+  // Programmatic grab state - tracks initial positions for relative movement
+  private grabState: {
+    entityId: string;
+    grabMouseX: number;
+    grabMouseY: number;
+    grabBodyX: number;
+    grabBodyY: number;
+  } | null = null;
 
   static createContainer(
     parent: HTMLElement,
@@ -1273,10 +1281,26 @@ export class OverlayScene {
 
     // Sync mouse position to Matter.Mouse for MouseConstraint compatibility
     if (key === 'mouse' && this.mouse) {
-      this.mouse.position.x = x;
-      this.mouse.position.y = y;
-      this.mouse.absolute.x = x;
-      this.mouse.absolute.y = y;
+      // If we have an active programmatic grab, use relative movement
+      if (this.grabState && this.mouseConstraint?.constraint.bodyB) {
+        // Calculate delta from initial grab position
+        const deltaX = x - this.grabState.grabMouseX;
+        const deltaY = y - this.grabState.grabMouseY;
+
+        // New position = initial body position + delta
+        const newX = this.grabState.grabBodyX + deltaX;
+        const newY = this.grabState.grabBodyY + deltaY;
+
+        this.mouse.position.x = newX;
+        this.mouse.position.y = newY;
+        this.mouse.absolute.x = newX;
+        this.mouse.absolute.y = newY;
+      } else {
+        this.mouse.position.x = x;
+        this.mouse.position.y = y;
+        this.mouse.absolute.x = x;
+        this.mouse.absolute.y = y;
+      }
     }
   }
 
@@ -1322,18 +1346,34 @@ export class OverlayScene {
         // Fake mouse button state so MouseConstraint doesn't release
         this.mouse.button = 0;
 
-        // Set both ends of the constraint
-        this.mouseConstraint.constraint.pointA = { x: position.x, y: position.y };
+        // Store grab state for relative movement calculation
+        this.grabState = {
+          entityId: entry.id,
+          grabMouseX: position.x,
+          grabMouseY: position.y,
+          grabBodyX: entry.body.position.x,
+          grabBodyY: entry.body.position.y
+        };
+
+        // Set constraint - pointA starts at body position so entity doesn't move
+        this.mouseConstraint.constraint.pointA = {
+          x: entry.body.position.x,
+          y: entry.body.position.y
+        };
         this.mouseConstraint.constraint.bodyB = entry.body;
-        this.mouseConstraint.constraint.pointB = { x: 0, y: 0 }; // Grab at body center
+        this.mouseConstraint.constraint.pointB = { x: 0, y: 0 };
+
+        // Sync mouse position to body position so MouseConstraint doesn't override
+        this.mouse.position.x = entry.body.position.x;
+        this.mouse.position.y = entry.body.position.y;
+        this.mouse.absolute.x = entry.body.position.x;
+        this.mouse.absolute.y = entry.body.position.y;
 
         console.log('[overlay-core] startGrab success', {
           entityId: entry.id,
           mousePosition: position,
           bodyPosition: { x: entry.body.position.x, y: entry.body.position.y },
-          constraintPointA: this.mouseConstraint.constraint.pointA,
-          constraintPointB: this.mouseConstraint.constraint.pointB,
-          mouseButton: this.mouse.button
+          grabState: this.grabState
         });
 
         return entry.id;
@@ -1353,6 +1393,8 @@ export class OverlayScene {
     if (this.mouse) {
       this.mouse.button = -1;
     }
+    // Clear grab state
+    this.grabState = null;
   }
 
   /**
