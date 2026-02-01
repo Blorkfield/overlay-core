@@ -1319,6 +1319,9 @@ export class OverlayScene {
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (entry && entry.tags.includes('grabable')) {
+        // Fake mouse button state so MouseConstraint doesn't release
+        this.mouse.button = 0;
+
         this.mouseConstraint.constraint.bodyB = entry.body;
         this.mouseConstraint.constraint.pointB = {
           x: position.x - entry.body.position.x,
@@ -1336,6 +1339,10 @@ export class OverlayScene {
   endGrab(): void {
     if (this.mouseConstraint) {
       this.mouseConstraint.constraint.bodyB = null;
+    }
+    // Reset mouse button state
+    if (this.mouse) {
+      this.mouse.button = -1;
     }
   }
 
