@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.5
+
+### Patch Changes
+
+- 3d1d1cf: fix: entity interaction
+
 ## 0.8.4
 
 ### Patch Changes
