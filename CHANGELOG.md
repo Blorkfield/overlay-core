@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.2
+
+### Patch Changes
+
+- 4e6b80b: refactor: removing deprecated
+
 ## 0.8.1
 
 ### Patch Changes
