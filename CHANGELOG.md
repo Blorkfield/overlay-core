@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.6
+
+### Patch Changes
+
+- a38f3d0: fix: delta grab
+
 ## 0.8.5
 
 ### Patch Changes
