@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.7
+
+### Patch Changes
+
+- 0fea8cc: fix: grabbing
+
 ## 0.8.6
 
 ### Patch Changes
