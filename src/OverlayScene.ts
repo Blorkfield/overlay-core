@@ -123,6 +123,7 @@ export class OverlayScene {
   };
   // Follow targets for follow-{key} tagged objects
   private followTargets: Map<string, { x: number; y: number }> = new Map();
+<<<<<<< Updated upstream
   // Programmatic grab state - tracks initial positions for relative movement
   private grabState: {
     entityId: string;
@@ -131,6 +132,11 @@ export class OverlayScene {
     grabBodyX: number;
     grabBodyY: number;
   } | null = null;
+=======
+  // Delta-based grab tracking (no constraint physics)
+  private grabbedObjectId: string | null = null;
+  private lastGrabMousePosition: { x: number; y: number } | null = null;
+>>>>>>> Stashed changes
 
   static createContainer(
     parent: HTMLElement,
@@ -1330,10 +1336,9 @@ export class OverlayScene {
    * @returns The ID of the grabbed object, or null if no grabable object at position
    */
   startGrab(): string | null {
-    if (!this.mouseConstraint || !this.mouse) return null;
-
     const mouseTarget = this.followTargets.get('mouse');
-    const position = mouseTarget ?? { x: this.mouse.position.x, y: this.mouse.position.y };
+    const position = mouseTarget ?? (this.mouse ? { x: this.mouse.position.x, y: this.mouse.position.y } : null);
+    if (!position) return null;
 
     const bodies = Matter.Query.point(
       Matter.Composite.allBodies(this.engine.world),
@@ -1343,6 +1348,7 @@ export class OverlayScene {
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (entry && entry.tags.includes('grabable')) {
+<<<<<<< Updated upstream
         // Fake mouse button state so MouseConstraint doesn't release
         this.mouse.button = 0;
 
@@ -1376,6 +1382,11 @@ export class OverlayScene {
           grabState: this.grabState
         });
 
+=======
+        // Just link the entity - no constraint physics, no position change
+        this.grabbedObjectId = entry.id;
+        this.lastGrabMousePosition = { x: position.x, y: position.y };
+>>>>>>> Stashed changes
         return entry.id;
       }
     }
@@ -1386,6 +1397,7 @@ export class OverlayScene {
    * Release any currently grabbed object.
    */
   endGrab(): void {
+<<<<<<< Updated upstream
     if (this.mouseConstraint) {
       this.mouseConstraint.constraint.bodyB = null;
     }
@@ -1395,6 +1407,10 @@ export class OverlayScene {
     }
     // Clear grab state
     this.grabState = null;
+=======
+    this.grabbedObjectId = null;
+    this.lastGrabMousePosition = null;
+>>>>>>> Stashed changes
   }
 
   /**
@@ -1402,9 +1418,7 @@ export class OverlayScene {
    * @returns The ID of the grabbed object, or null if nothing is grabbed
    */
   getGrabbedObject(): string | null {
-    if (!this.mouseConstraint?.constraint.bodyB) return null;
-    const entry = this.findObjectByBody(this.mouseConstraint.constraint.bodyB);
-    return entry?.id ?? null;
+    return this.grabbedObjectId;
   }
 
   // ==================== PHYSICS MANIPULATION METHODS ====================
@@ -2537,9 +2551,23 @@ export class OverlayScene {
       this.followTargets.set('mouse', { x: this.mouse.position.x, y: this.mouse.position.y });
     }
 
+    // Apply delta-based grab movement (no constraint physics)
+    if (this.grabbedObjectId && this.lastGrabMousePosition) {
+      const entry = this.objects.get(this.grabbedObjectId);
+      const mouseTarget = this.followTargets.get('mouse');
+      if (entry && mouseTarget) {
+        const dx = mouseTarget.x - this.lastGrabMousePosition.x;
+        const dy = mouseTarget.y - this.lastGrabMousePosition.y;
+        if (dx !== 0 || dy !== 0) {
+          Matter.Body.translate(entry.body, { x: dx, y: dy });
+        }
+        this.lastGrabMousePosition = { x: mouseTarget.x, y: mouseTarget.y };
+      }
+    }
+
     // Apply tag-based behaviors to all objects
     for (const entry of this.objects.values()) {
-      const isDragging = this.mouseConstraint?.body === entry.body;
+      const isDragging = this.grabbedObjectId === entry.id;
 
       // Apply follow target forces (including 'follow' tag which uses 'mouse' target)
       if (!isDragging) {
