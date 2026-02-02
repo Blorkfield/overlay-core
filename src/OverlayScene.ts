@@ -122,9 +122,11 @@ export class OverlayScene {
   };
   // Follow targets for follow-{key} tagged objects
   private followTargets: Map<string, { x: number; y: number }> = new Map();
-  // Delta-based grab tracking (no constraint physics)
+  // Delta-based grab tracking
   private grabbedObjectId: string | null = null;
   private lastGrabMousePosition: { x: number; y: number } | null = null;
+  private grabbedWasDynamic: boolean = false;
+  private grabVelocity: { x: number; y: number } = { x: 0, y: 0 };
 
   static createContainer(
     parent: HTMLElement,
@@ -178,8 +180,11 @@ export class OverlayScene {
     // Check initial floor integrity (handles minIntegrity > segments case)
     this.checkInitialFloorIntegrity();
 
-    // Setup mouse for position tracking (used by follow targets and grab fallback)
+    // Setup mouse interaction - uses programmatic grab API for unified logic
     this.mouse = Matter.Mouse.create(canvas);
+    canvas.addEventListener('mousedown', this.handleMouseDown);
+    canvas.addEventListener('mousemove', this.handleMouseMove);
+    canvas.addEventListener('mouseup', this.handleMouseUp);
 
     // Handle clicks for click-to-fall behavior
     canvas.addEventListener('click', this.handleCanvasClick);
@@ -218,7 +223,31 @@ export class OverlayScene {
 
     // Hook into collision events for lifecycle callbacks
     Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
-  }  /** Handle canvas clicks for click-to-fall behavior */
+  }
+
+  /** Handle mouse down - start grab via programmatic API */
+  private handleMouseDown = (event: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    this.followTargets.set('mouse', { x, y });
+    this.startGrab();
+  };
+
+  /** Handle mouse move - update follow target for grabbed entity */
+  private handleMouseMove = (event: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    this.followTargets.set('mouse', { x, y });
+  };
+
+  /** Handle mouse up - release grab */
+  private handleMouseUp = (): void => {
+    this.endGrab();
+  };
+
+  /** Handle canvas clicks for click-to-fall behavior */
   private handleCanvasClick = (event: MouseEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -813,6 +842,9 @@ export class OverlayScene {
 
   destroy(): void {
     this.stop();
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown);
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('mouseup', this.handleMouseUp);
     this.canvas.removeEventListener('click', this.handleCanvasClick);
     // Clean up background render event listeners
     Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
@@ -1264,9 +1296,12 @@ export class OverlayScene {
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (entry && entry.tags.includes('grabable')) {
-        // Just link the entity - no constraint physics, no position change
         this.grabbedObjectId = entry.id;
         this.lastGrabMousePosition = { x: position.x, y: position.y };
+        this.grabVelocity = { x: 0, y: 0 };
+        // Remember if it was dynamic, then make static (freezes physics)
+        this.grabbedWasDynamic = !entry.body.isStatic;
+        Matter.Body.setStatic(entry.body, true);
         return entry.id;
       }
     }
@@ -1277,8 +1312,21 @@ export class OverlayScene {
    * Release any currently grabbed object.
    */
   endGrab(): void {
+    // Restore dynamic state and apply release velocity
+    if (this.grabbedObjectId && this.grabbedWasDynamic) {
+      const entry = this.objects.get(this.grabbedObjectId);
+      if (entry) {
+        Matter.Body.setStatic(entry.body, false);
+        // Wake up the body and apply momentum
+        Matter.Sleeping.set(entry.body, false);
+        Matter.Body.setVelocity(entry.body, this.grabVelocity);
+        Matter.Body.setAngularVelocity(entry.body, 0);
+      }
+    }
     this.grabbedObjectId = null;
     this.lastGrabMousePosition = null;
+    this.grabbedWasDynamic = false;
+    this.grabVelocity = { x: 0, y: 0 };
   }
 
   /**
@@ -2419,7 +2467,7 @@ export class OverlayScene {
       this.followTargets.set('mouse', { x: this.mouse.position.x, y: this.mouse.position.y });
     }
 
-    // Apply delta-based grab movement (no constraint physics)
+    // Apply delta-based grab movement
     if (this.grabbedObjectId && this.lastGrabMousePosition) {
       const entry = this.objects.get(this.grabbedObjectId);
       const mouseTarget = this.followTargets.get('mouse');
@@ -2429,6 +2477,8 @@ export class OverlayScene {
         if (dx !== 0 || dy !== 0) {
           Matter.Body.translate(entry.body, { x: dx, y: dy });
         }
+        // Track velocity for release momentum (smoothed)
+        this.grabVelocity = { x: dx * 0.5 + this.grabVelocity.x * 0.5, y: dy * 0.5 + this.grabVelocity.y * 0.5 };
         this.lastGrabMousePosition = { x: mouseTarget.x, y: mouseTarget.y };
       }
     }
