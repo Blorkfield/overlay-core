@@ -109,14 +109,14 @@ const availableImages = [
 ];
 
 // Available tags for effect objects
-const effectObjectTags = ['falling', 'follow', 'grabable'];
+const effectObjectTags = ['falling', 'window_follow', 'grabable'];
 
 // Available tags for entity spawning
-const spawnableTags = ['falling', 'follow', 'grabable'];
+const spawnableTags = ['falling', 'window_follow', 'grabable'];
 let selectedSpawnTags: string[] = [];
 
 // Available tags for text obstacle spawning
-const textSpawnableTags = ['falling', 'follow', 'grabable', 'text-obstacle'];
+const textSpawnableTags = ['falling', 'window_follow', 'grabable', 'text-obstacle'];
 let selectedTextTags: string[] = [];
 
 // Effect object configs storage
@@ -239,15 +239,15 @@ async function createScene(width: number, height: number): Promise<void> {
   });
   console.log('Title text created:', titleResult.stringTag, titleResult.wordTags);
 
-  // Add a simple circle with follow tag
+  // Add a simple circle with window_follow tag
   scene.spawnObject({
     x: centerX,
     y: titleResult.bounds.bottom + 100,
     radius: 30,
     fillStyle: '#4a90d9',
-    tags: ['falling', 'follow', 'grabable']
+    tags: ['falling', 'window_follow', 'grabable']
   });
-  console.log('Follow circle spawned');
+  console.log('window_follow circle spawned');
 
   // Re-initialize effects with new scene
   updateBurstEffect();
