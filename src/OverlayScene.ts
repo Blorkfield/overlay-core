@@ -95,7 +95,6 @@ export class OverlayScene {
   private config: OverlaySceneConfig;
   private animationFrameId: number | null = null;
   private mouse: Matter.Mouse | null = null;
-  private mouseConstraint: Matter.MouseConstraint | null = null;
   private effectManager: EffectManager;
   private fonts: FontInfo[] = [];
   private fontsInitialized: boolean = false;
@@ -123,14 +122,9 @@ export class OverlayScene {
   };
   // Follow targets for follow-{key} tagged objects
   private followTargets: Map<string, { x: number; y: number }> = new Map();
-  // Programmatic grab state - tracks initial positions for relative movement
-  private grabState: {
-    entityId: string;
-    grabMouseX: number;
-    grabMouseY: number;
-    grabBodyX: number;
-    grabBodyY: number;
-  } | null = null;
+  // Delta-based grab tracking (no constraint physics)
+  private grabbedObjectId: string | null = null;
+  private lastGrabMousePosition: { x: number; y: number } | null = null;
 
   static createContainer(
     parent: HTMLElement,
@@ -184,36 +178,11 @@ export class OverlayScene {
     // Check initial floor integrity (handles minIntegrity > segments case)
     this.checkInitialFloorIntegrity();
 
-    // Setup mouse interaction
+    // Setup mouse for position tracking (used by follow targets and grab fallback)
     this.mouse = Matter.Mouse.create(canvas);
-    this.mouseConstraint = Matter.MouseConstraint.create(this.engine, {
-      mouse: this.mouse,
-      constraint: {
-        stiffness: 0.2,
-        render: { visible: false }
-      }
-    });
-    Matter.Composite.add(this.engine.world, this.mouseConstraint);
-
-    // Allow page scrolling - Matter.js adds wheel listeners that block scrolling
-    // We need to remove them and allow default scroll behavior
-    const wheelHandler = (this.mouse as unknown as { mousewheel: EventListener }).mousewheel;
-    if (wheelHandler) {
-      canvas.removeEventListener('mousewheel', wheelHandler);
-      canvas.removeEventListener('DOMMouseScroll', wheelHandler);
-      canvas.removeEventListener('wheel', wheelHandler);
-    }
-    // Allow touch scrolling on mobile
-    canvas.style.touchAction = 'pan-x pan-y';
-
-    // Filter grabbing based on 'grabable' tag
-    Matter.Events.on(this.mouseConstraint, 'startdrag', this.handleStartDrag);
 
     // Handle clicks for click-to-fall behavior
     canvas.addEventListener('click', this.handleCanvasClick);
-
-    // Keep render in sync with mouse for pixel ratio
-    this.render.mouse = this.mouse;
 
     // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
@@ -249,27 +218,7 @@ export class OverlayScene {
 
     // Hook into collision events for lifecycle callbacks
     Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
-  }
-
-
-
-  /** Filter drag events - only allow grabbing objects with 'grabable' tag */
-  private handleStartDrag = (event: Matter.IEvent<Matter.MouseConstraint> & { body?: Matter.Body }): void => {
-    const body = event.body;
-    if (!body) return;
-
-    // Find the object entry for this body
-    const entry = this.findObjectByBody(body);
-
-    // If object doesn't have 'grabable' tag, release the constraint immediately
-    if (!entry || !entry.tags.includes('grabable')) {
-      if (this.mouseConstraint) {
-        this.mouseConstraint.constraint.bodyB = null;
-      }
-    }
-  };
-
-  /** Handle canvas clicks for click-to-fall behavior */
+  }  /** Handle canvas clicks for click-to-fall behavior */
   private handleCanvasClick = (event: MouseEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -864,9 +813,6 @@ export class OverlayScene {
 
   destroy(): void {
     this.stop();
-    if (this.mouseConstraint) {
-      Matter.Events.off(this.mouseConstraint, 'startdrag', this.handleStartDrag);
-    }
     this.canvas.removeEventListener('click', this.handleCanvasClick);
     // Clean up background render event listeners
     Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
@@ -1278,30 +1224,6 @@ export class OverlayScene {
    */
   setFollowTarget(key: string, x: number, y: number): void {
     this.followTargets.set(key, { x, y });
-
-    // Sync mouse position to Matter.Mouse for MouseConstraint compatibility
-    if (key === 'mouse' && this.mouse) {
-      // If we have an active programmatic grab, use relative movement
-      if (this.grabState && this.mouseConstraint?.constraint.bodyB) {
-        // Calculate delta from initial grab position
-        const deltaX = x - this.grabState.grabMouseX;
-        const deltaY = y - this.grabState.grabMouseY;
-
-        // New position = initial body position + delta
-        const newX = this.grabState.grabBodyX + deltaX;
-        const newY = this.grabState.grabBodyY + deltaY;
-
-        this.mouse.position.x = newX;
-        this.mouse.position.y = newY;
-        this.mouse.absolute.x = newX;
-        this.mouse.absolute.y = newY;
-      } else {
-        this.mouse.position.x = x;
-        this.mouse.position.y = y;
-        this.mouse.absolute.x = x;
-        this.mouse.absolute.y = y;
-      }
-    }
   }
 
   /**
@@ -1330,10 +1252,9 @@ export class OverlayScene {
    * @returns The ID of the grabbed object, or null if no grabable object at position
    */
   startGrab(): string | null {
-    if (!this.mouseConstraint || !this.mouse) return null;
-
     const mouseTarget = this.followTargets.get('mouse');
-    const position = mouseTarget ?? { x: this.mouse.position.x, y: this.mouse.position.y };
+    const position = mouseTarget ?? (this.mouse ? { x: this.mouse.position.x, y: this.mouse.position.y } : null);
+    if (!position) return null;
 
     const bodies = Matter.Query.point(
       Matter.Composite.allBodies(this.engine.world),
@@ -1343,39 +1264,9 @@ export class OverlayScene {
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (entry && entry.tags.includes('grabable')) {
-        // Fake mouse button state so MouseConstraint doesn't release
-        this.mouse.button = 0;
-
-        // Store grab state for relative movement calculation
-        this.grabState = {
-          entityId: entry.id,
-          grabMouseX: position.x,
-          grabMouseY: position.y,
-          grabBodyX: entry.body.position.x,
-          grabBodyY: entry.body.position.y
-        };
-
-        // Set constraint - pointA starts at body position so entity doesn't move
-        this.mouseConstraint.constraint.pointA = {
-          x: entry.body.position.x,
-          y: entry.body.position.y
-        };
-        this.mouseConstraint.constraint.bodyB = entry.body;
-        this.mouseConstraint.constraint.pointB = { x: 0, y: 0 };
-
-        // Sync mouse position to body position so MouseConstraint doesn't override
-        this.mouse.position.x = entry.body.position.x;
-        this.mouse.position.y = entry.body.position.y;
-        this.mouse.absolute.x = entry.body.position.x;
-        this.mouse.absolute.y = entry.body.position.y;
-
-        console.log('[overlay-core] startGrab success', {
-          entityId: entry.id,
-          mousePosition: position,
-          bodyPosition: { x: entry.body.position.x, y: entry.body.position.y },
-          grabState: this.grabState
-        });
-
+        // Just link the entity - no constraint physics, no position change
+        this.grabbedObjectId = entry.id;
+        this.lastGrabMousePosition = { x: position.x, y: position.y };
         return entry.id;
       }
     }
@@ -1386,15 +1277,8 @@ export class OverlayScene {
    * Release any currently grabbed object.
    */
   endGrab(): void {
-    if (this.mouseConstraint) {
-      this.mouseConstraint.constraint.bodyB = null;
-    }
-    // Reset mouse button state
-    if (this.mouse) {
-      this.mouse.button = -1;
-    }
-    // Clear grab state
-    this.grabState = null;
+    this.grabbedObjectId = null;
+    this.lastGrabMousePosition = null;
   }
 
   /**
@@ -1402,9 +1286,7 @@ export class OverlayScene {
    * @returns The ID of the grabbed object, or null if nothing is grabbed
    */
   getGrabbedObject(): string | null {
-    if (!this.mouseConstraint?.constraint.bodyB) return null;
-    const entry = this.findObjectByBody(this.mouseConstraint.constraint.bodyB);
-    return entry?.id ?? null;
+    return this.grabbedObjectId;
   }
 
   // ==================== PHYSICS MANIPULATION METHODS ====================
@@ -2537,9 +2419,23 @@ export class OverlayScene {
       this.followTargets.set('mouse', { x: this.mouse.position.x, y: this.mouse.position.y });
     }
 
+    // Apply delta-based grab movement (no constraint physics)
+    if (this.grabbedObjectId && this.lastGrabMousePosition) {
+      const entry = this.objects.get(this.grabbedObjectId);
+      const mouseTarget = this.followTargets.get('mouse');
+      if (entry && mouseTarget) {
+        const dx = mouseTarget.x - this.lastGrabMousePosition.x;
+        const dy = mouseTarget.y - this.lastGrabMousePosition.y;
+        if (dx !== 0 || dy !== 0) {
+          Matter.Body.translate(entry.body, { x: dx, y: dy });
+        }
+        this.lastGrabMousePosition = { x: mouseTarget.x, y: mouseTarget.y };
+      }
+    }
+
     // Apply tag-based behaviors to all objects
     for (const entry of this.objects.values()) {
-      const isDragging = this.mouseConstraint?.body === entry.body;
+      const isDragging = this.grabbedObjectId === entry.id;
 
       // Apply follow target forces (including 'follow' tag which uses 'mouse' target)
       if (!isDragging) {
