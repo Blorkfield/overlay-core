@@ -27,7 +27,7 @@ Objects don't have fixed types. Instead, their behavior is determined by string 
 | Tag | Behavior |
 |-----|----------|
 | `falling` | Object is dynamic and affected by gravity |
-| `follow` | Object follows mouse position when grounded |
+| `window_follow` | Object follows mouse position when grounded |
 | `grabable` | Object can be dragged via mouse constraint |
 
 Without the `falling` tag, objects are static and won't move.
@@ -153,6 +153,11 @@ When a DOM element collapses:
 - The element's CSS transform is updated each frame to follow physics
 - Shadow creates a cloned DOM element at the original position
 
+```typescript
+// Get the shadow element after collapse (if shadow was configured)
+const shadowEl = scene.getDOMObstacleShadow(id);
+```
+
 ### Pressure, Shadow, and Click Behavior
 
 These options work on any spawned object (shapes, images, or DOM elements):
@@ -225,6 +230,25 @@ const result = await scene.addTTFTextObstacles({
 });
 ```
 
+### Managing Text Obstacles
+
+```typescript
+// Spawn text that immediately falls (already has 'falling' tag)
+const result = await scene.spawnFallingTextObstacles(config);
+const result = await scene.spawnFallingTTFTextObstacles(config);
+
+// Release text obstacles (add 'falling' tag)
+scene.releaseTextObstacles(wordTag);
+
+// Release letters one by one with delay
+await scene.releaseTextObstaclesSequentially(wordTag, 100);        // 100ms delay
+await scene.releaseTextObstaclesSequentially(wordTag, 100, true);  // reverse order
+
+// Get debug info for letter positioning
+const debugInfo = scene.getLetterDebugInfo(wordTag);
+const allDebug = scene.getAllLetterDebugInfo();
+```
+
 ## Effects
 
 Effects are persistent spawning mechanisms that create objects over time.
@@ -294,22 +318,45 @@ scene.setEffect({
 ```typescript
 // Release objects (make them fall)
 scene.releaseObject(id);
+scene.releaseObjects([id1, id2]);
 scene.releaseObjectsByTag('my-text');
 scene.releaseAllObjects();
 
 // Remove objects
 scene.removeObject(id);
+scene.removeObjects([id1, id2]);
 scene.removeObjectsByTag('welcome-text');
 scene.removeAllObjects();
+scene.removeAll();              // Alias for removeAllObjects
+scene.removeAllByTag('tag');    // Alias for removeObjectsByTag
 
 // Add or remove tags
 scene.addTag(id, 'falling');
+scene.addFallingTag(id);        // Convenience for adding 'falling' tag
 scene.removeTag(id, 'grabable');
 
 // Get object info
 const ids = scene.getObjectIds();
 const tagged = scene.getObjectIdsByTag('falling');
 const allTags = scene.getAllTags();
+
+// Get full object state
+const obj = scene.getObject(id);           // Returns ObjectState or null
+const objs = scene.getObjectsByTag('tag'); // Returns ObjectState[]
+```
+
+## Physics Manipulation
+
+```typescript
+// Apply force to objects
+scene.applyForce(id, { x: 0.01, y: -0.02 });
+scene.applyForceToTag('falling', { x: 0.005, y: 0 });
+
+// Set velocity directly
+scene.setVelocity(id, { x: 5, y: -10 });
+
+// Set position directly
+scene.setPosition(id, { x: 100, y: 200 });
 ```
 
 ## Mouse Position and Grab API
@@ -352,9 +399,11 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `setFollowTarget('mouse', x, y)` | void | Set mouse position for follow behavior and grab detection |
+| `setFollowTarget(key, x, y)` | void | Set a follow target position (e.g., 'mouse' for grab/follow behavior) |
+| `removeFollowTarget(key)` | void | Remove a follow target |
+| `getFollowTargetKeys()` | string[] | Get all active follow target keys |
 | `startGrab()` | string \| null | Link entity at current mouse position to mouse, returns entity ID |
-| `endGrab()` | void | Unlink currently grabbed entity |
+| `endGrab()` | void | Unlink currently grabbed entity (applies release velocity) |
 | `getGrabbedObject()` | string \| null | Get ID of currently grabbed entity |
 
 ## Configuration
@@ -393,6 +442,34 @@ const scene = new OverlayScene(canvas, {
 | `floorConfig.segmentWidths` | none | Proportional widths for each segment (array that sums to 1.0) |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
 
+### Background Configuration
+
+The `background` option supports multiple formats:
+
+```typescript
+// Simple color
+background: '#16213e'
+background: 'transparent'
+
+// Full configuration with layers
+background: {
+  color: '#16213e',              // Base color layer
+  image: {
+    url: '/images/bg.png',
+    sizing: 'cover'              // 'stretch' | 'center' | 'tile' | 'cover' | 'contain'
+  },
+  transparency: {
+    mode: 'checkerboard',        // Visual indicator for transparent areas
+    color1: '#ffffff',
+    color2: '#cccccc',
+    size: 10
+  }
+}
+
+// Change background at runtime
+await scene.setBackground({ color: '#000000' });
+```
+
 ## Pressure Tracking
 
 ```typescript
@@ -409,7 +486,11 @@ const allPressure = scene.getAllPressure();
 const summary = scene.getPressureSummary();
 ```
 
-## Update Callbacks
+## Callbacks and Events
+
+### Update Callback
+
+Called every frame with all dynamic object states:
 
 ```typescript
 scene.onUpdate((data) => {
@@ -418,6 +499,30 @@ scene.onUpdate((data) => {
     console.log(obj.id, obj.x, obj.y, obj.angle, obj.tags);
   }
 });
+```
+
+### Lifecycle Events
+
+Subscribe to object lifecycle events:
+
+```typescript
+// Object spawned
+scene.on('objectSpawned', (obj) => {
+  console.log(`Spawned: ${obj.id}`, obj.x, obj.y);
+});
+
+// Object removed
+scene.on('objectRemoved', (obj) => {
+  console.log(`Removed: ${obj.id}`);
+});
+
+// Objects collided
+scene.on('objectCollision', (a, b) => {
+  console.log(`Collision: ${a.id} hit ${b.id}`);
+});
+
+// Unsubscribe
+scene.off('objectSpawned', myCallback);
 ```
 
 ## Font Setup
@@ -496,6 +601,22 @@ Add the font file and reference it in the manifest:
 }
 ```
 
+### Font API
+
+```typescript
+// Initialize fonts from a directory
+await scene.initializeFonts('/fonts/');
+
+// Check initialization status
+if (scene.areFontsInitialized()) {
+  // Get available fonts
+  const fonts = scene.getAvailableFonts();      // Returns FontInfo[]
+  const font = scene.getFontByName('Roboto');   // Returns FontInfo | undefined
+  const font = scene.getFontByIndex(0);         // Returns FontInfo | undefined
+  const defaultFont = scene.getDefaultFont();   // Returns first font or undefined
+}
+```
+
 ## Logging
 
 ```typescript
@@ -536,18 +657,61 @@ The package is written in TypeScript and ships with full type definitions. All c
 
 ```typescript
 import type {
+  // Scene configuration
   OverlaySceneConfig,
+  Bounds,
+  ContainerOptions,
+  FloorConfig,
+
+  // Object types
   ObjectConfig,
+  DynamicObject,
+  ObjectState,
+  ShapeConfig,
+  ShapePreset,
+  DespawnEffectConfig,
+
+  // Text obstacle types
   TextObstacleConfig,
+  TextObstacleResult,
   TTFTextObstacleConfig,
+  TextAlign,
+  TextBounds,
+
+  // Effect types
   EffectConfig,
+  EffectType,
+  EffectObjectConfig,
+  BaseEffectConfig,
   BurstEffectConfig,
   RainEffectConfig,
   StreamEffectConfig,
+
+  // Pressure, weight, shadow, click types
   PressureThresholdConfig,
   WeightConfig,
   ShadowConfig,
   ClickToFallConfig,
-  FloorConfig
+
+  // Background types
+  BackgroundConfig,
+  BackgroundImageConfig,
+  BackgroundImageSizing,
+  BackgroundTransparencyConfig,
+
+  // Font types
+  FontInfo,
+  FontManifest,
+  LoadedFont,
+  GlyphData,
+
+  // Lifecycle types
+  LifecycleEvent,
+  LifecycleCallback,
+  UpdateCallback,
+  UpdateCallbackData,
+
+  // Logging
+  LogLevel
 } from '@blorkfield/overlay-core';
 ```
