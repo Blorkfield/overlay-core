@@ -1,6 +1,6 @@
 {
   "name": "@blorkfield/overlay-core",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "license": "GPL-3.0",
   "description": "Physics-based overlay scene library for interactive streaming overlays",
   "repository": {

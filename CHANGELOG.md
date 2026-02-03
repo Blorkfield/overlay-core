@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.9
+
+### Patch Changes
+
+- 5e786e6: refactor: export tags
+
 ## 0.8.8
 
 ### Patch Changes
