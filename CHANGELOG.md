@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.8
+
+### Patch Changes
+
+- eaca996: refactor: renaming follow
+
 ## 0.8.7
 
 ### Patch Changes
