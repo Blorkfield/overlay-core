@@ -173,7 +173,7 @@ export interface DespawnEffectConfig {
  * Unified configuration for spawning scene objects.
  * Objects are configured via tags that define their behavior:
  * - 'falling': Object is dynamic and affected by gravity (without this tag, object is static)
- * - 'window_follow': Object follows mouse position when grounded within the canvas window
+ * - 'follow_window': Object follows mouse position when grounded within the canvas window
  * - 'grabable': Object can be dragged via mouse constraint
  */
 export interface ObjectConfig {

@@ -47,7 +47,7 @@ interface TTFGlyphRenderInfo {
  * Internal representation of a scene object.
  * All objects are stored uniformly - behavior is determined entirely by tags:
  * - 'falling': Object is dynamic (affected by gravity). Without this tag, object is static.
- * - 'window_follow': Object follows mouse position when grounded (walks toward mouse)
+ * - 'follow_window': Object follows mouse position when grounded (walks toward mouse)
  * - 'grabable': Object can be grabbed and moved with mouse
  */
 interface ObjectEntry {
@@ -935,7 +935,7 @@ export class OverlayScene {
    * Spawn an object synchronously.
    * Object behavior is determined by tags:
    * - 'falling': Object is dynamic (affected by gravity)
-   * - 'window_follow': Object follows mouse when grounded (walks toward mouse)
+   * - 'follow_window': Object follows mouse when grounded (walks toward mouse)
    * - 'grabable': Object can be grabbed and moved with mouse
    * Without 'falling' tag, object is static.
    */
@@ -2487,11 +2487,11 @@ export class OverlayScene {
     for (const entry of this.objects.values()) {
       const isDragging = this.grabbedObjectId === entry.id;
 
-      // Apply follow target forces (including 'window_follow' tag which uses 'mouse' target)
+      // Apply follow target forces (including 'follow_window' tag which uses 'mouse' target)
       if (!isDragging) {
         for (const tag of entry.tags) {
-          // 'window_follow' tag is an alias for 'follow-mouse'
-          const key = tag === 'window_follow' ? 'mouse' : (tag.startsWith('follow-') ? tag.slice(7) : null);
+          // 'follow_window' tag is an alias for 'follow-mouse'
+          const key = tag === 'follow_window' ? 'mouse' : (tag.startsWith('follow-') ? tag.slice(7) : null);
           if (key) {
             const target = this.followTargets.get(key);
             if (target) {

@@ -22,13 +22,24 @@ pnpm add @blorkfield/overlay-core
 
 ### Tag Based Behavior
 
-Objects don't have fixed types. Instead, their behavior is determined by string tags:
+Objects don't have fixed types. Instead, their behavior is determined by string tags. Import the tag constants to avoid magic strings:
 
-| Tag | Behavior |
-|-----|----------|
-| `falling` | Object is dynamic and affected by gravity |
-| `window_follow` | Object follows mouse position when grounded |
-| `grabable` | Object can be dragged via mouse constraint |
+```typescript
+import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
+
+// Use individual constants
+scene.spawnObject({ tags: [TAG_FALLING, TAG_GRABABLE], ... });
+
+// Or destructure from TAGS object
+const { FALLING, GRABABLE } = TAGS;
+scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
+```
+
+| Constant | Value | Behavior |
+|----------|-------|----------|
+| `TAG_FALLING` / `TAGS.FALLING` | `'falling'` | Object is dynamic and affected by gravity |
+| `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
+| `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
 
 Without the `falling` tag, objects are static and won't move.
 
@@ -712,6 +723,12 @@ import type {
   UpdateCallbackData,
 
   // Logging
-  LogLevel
+  LogLevel,
+
+  // Tags
+  Tag
 } from '@blorkfield/overlay-core';
+
+// Tag constants (values, not types)
+import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
 ```
