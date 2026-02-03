@@ -3,6 +3,8 @@ export { logger, setLogLevel, getLogLevel } from './logger';
 export type { LogLevel } from './logger';
 export { loadFont, getGlyphData, getKerning, measureText, clearFontCache } from './fontLoader';
 export { BackgroundManager } from './backgroundManager';
+export { TAG_FALLING, TAG_FOLLOW_WINDOW, TAG_GRABABLE, TAGS } from './tags';
+export type { Tag } from './tags';
 export type {
   OverlaySceneConfig,
   Bounds,
