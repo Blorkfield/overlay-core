@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.10
+
+### Patch Changes
+
+- 8103d11: fix: entity catch
+
 ## 0.8.9
 
 ### Patch Changes
