@@ -389,6 +389,8 @@ The offset calculation is your responsibility - overlay-core uses whatever posit
 
 Grab uses delta-based movement: when grabbed, the entity and mouse become linked. The entity moves BY the same amount as the mouse moves, not TO the mouse position. This ensures the entity stays at its original position on grab and follows mouse movement naturally.
 
+Grab detection uses a two-pass approach to handle fast-moving bodies. The first pass does an exact point query at the click position. If that misses (the body tunneled through the cursor between frames), a second pass sweeps the body's recent position history (last 5 frames, 20px radius) to catch it. This means you can grab entities even when they are moving quickly.
+
 ```typescript
 // Grab object at current mouse position (only 'grabable' tagged objects)
 const grabbedId = scene.startGrab();
