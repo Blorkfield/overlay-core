@@ -131,6 +131,8 @@ export class OverlayScene {
   private bodyPositionHistory: Map<number, Array<{ x: number; y: number }>> = new Map();
   private readonly grabHistoryFrames = 5;
   private readonly grabHistoryRadius = 20;
+  // Number of physics substeps per frame — more substeps = better collision at high speeds, more CPU
+  private readonly substeps = 2;
 
   static createContainer(
     parent: HTMLElement,
@@ -320,6 +322,7 @@ export class OverlayScene {
           this.toObjectState(entryB)
         );
       }
+
     }
   };
 
@@ -831,7 +834,6 @@ export class OverlayScene {
 
   start(): void {
     Matter.Render.run(this.render);
-    Matter.Runner.run(this.runner, this.engine);
     this.loop();
   }
 
@@ -2479,6 +2481,12 @@ export class OverlayScene {
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
+    // Step physics multiple times per frame with a smaller timestep (substepping)
+    const substepDelta = 1000 / 60 / this.substeps;
+    for (let i = 0; i < this.substeps; i++) {
+      Matter.Engine.update(this.engine, substepDelta);
+    }
+
     // Update effects (spawn objects)
     this.effectManager.update();
 
@@ -2553,6 +2561,7 @@ export class OverlayScene {
         }
         this.bodyPositionHistory.set(entry.body.id, history);
       }
+
     }
 
     // Draw TTF glyphs using canvas fillText (clean text rendering)
