@@ -5,8 +5,6 @@ export interface OverlaySceneConfig {
   debug?: boolean;
   /** Background configuration with color, image, and transparency layers */
   background?: BackgroundConfig;
-  /** @deprecated Use floorConfig instead. Pressure threshold for the floor boundary. */
-  floorThreshold?: number;
   /** Distance below floor (as fraction of container height) at which objects despawn. Default: 1.0 (100%) */
   despawnBelowFloor?: number;
   /** Configuration for floor segments and thresholds */
