@@ -599,7 +599,7 @@ export class OverlayScene {
     }
 
     if (parts.length > 0) {
-      console.log('[Pressure]', parts.join(' '));
+      logger.debug('[Pressure]', parts.join(' '));
     }
   }
 
@@ -1297,7 +1297,7 @@ export class OverlayScene {
       position
     );
 
-    logger.info("OverlayScene", "Grabbed position " + position + ", had \"" + bodies.length + "\"");
+    logger.debug("OverlayScene", "Grabbed position " + position + ", had \"" + bodies.length + "\"");
 
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
