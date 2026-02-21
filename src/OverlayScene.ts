@@ -127,6 +127,12 @@ export class OverlayScene {
   private lastGrabMousePosition: { x: number; y: number } | null = null;
   private grabbedWasDynamic: boolean = false;
   private grabVelocity: { x: number; y: number } = { x: 0, y: 0 };
+  // Position history for sweep-based grab detection (catches fast-moving bodies)
+  private bodyPositionHistory: Map<number, Array<{ x: number; y: number }>> = new Map();
+  private readonly grabHistoryFrames = 5;
+  private readonly grabHistoryRadius = 20;
+  // Number of physics substeps per frame — more substeps = better collision at high speeds, more CPU
+  private readonly substeps = 2;
 
   static createContainer(
     parent: HTMLElement,
@@ -316,6 +322,7 @@ export class OverlayScene {
           this.toObjectState(entryB)
         );
       }
+
     }
   };
 
@@ -595,7 +602,7 @@ export class OverlayScene {
     }
 
     if (parts.length > 0) {
-      console.log('[Pressure]', parts.join(' '));
+      logger.debug('[Pressure]', parts.join(' '));
     }
   }
 
@@ -827,7 +834,6 @@ export class OverlayScene {
 
   start(): void {
     Matter.Render.run(this.render);
-    Matter.Runner.run(this.runner, this.engine);
     this.loop();
   }
 
@@ -1293,6 +1299,8 @@ export class OverlayScene {
       position
     );
 
+    logger.debug("OverlayScene", "Grabbed position " + position + ", had \"" + bodies.length + "\"");
+
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (entry && entry.tags.includes('grabable')) {
@@ -1305,6 +1313,27 @@ export class OverlayScene {
         return entry.id;
       }
     }
+
+    // Point query missed — sweep recent position history to catch fast-moving bodies
+    const r2 = this.grabHistoryRadius * this.grabHistoryRadius;
+    for (const entry of this.objects.values()) {
+      if (!entry.tags.includes('grabable')) continue;
+      const history = this.bodyPositionHistory.get(entry.body.id);
+      if (!history) continue;
+      for (const pastPos of history) {
+        const dx = position.x - pastPos.x;
+        const dy = position.y - pastPos.y;
+        if (dx * dx + dy * dy <= r2) {
+          this.grabbedObjectId = entry.id;
+          this.lastGrabMousePosition = { x: position.x, y: position.y };
+          this.grabVelocity = { x: 0, y: 0 };
+          this.grabbedWasDynamic = !entry.body.isStatic;
+          Matter.Body.setStatic(entry.body, true);
+          return entry.id;
+        }
+      }
+    }
+
     return null;
   }
 
@@ -1321,6 +1350,8 @@ export class OverlayScene {
         Matter.Sleeping.set(entry.body, false);
         Matter.Body.setVelocity(entry.body, this.grabVelocity);
         Matter.Body.setAngularVelocity(entry.body, 0);
+        // Clear history so the released body isn't immediately re-grabbed by stale positions
+        this.bodyPositionHistory.delete(entry.body.id);
       }
     }
     this.grabbedObjectId = null;
@@ -2450,6 +2481,12 @@ export class OverlayScene {
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
+    // Step physics multiple times per frame with a smaller timestep (substepping)
+    const substepDelta = 1000 / 60 / this.substeps;
+    for (let i = 0; i < this.substeps; i++) {
+      Matter.Engine.update(this.engine, substepDelta);
+    }
+
     // Update effects (spawn objects)
     this.effectManager.update();
 
@@ -2514,6 +2551,17 @@ export class OverlayScene {
       if (entry.domElement && entry.tags.includes('falling')) {
         this.updateDOMElementTransform(entry);
       }
+
+      // Record position history for grabable dynamic bodies (sweep grab detection)
+      if (entry.tags.includes('grabable') && !entry.body.isStatic) {
+        const history = this.bodyPositionHistory.get(entry.body.id) ?? [];
+        history.push({ x: entry.body.position.x, y: entry.body.position.y });
+        if (history.length > this.grabHistoryFrames) {
+          history.shift();
+        }
+        this.bodyPositionHistory.set(entry.body.id, history);
+      }
+
     }
 
     // Draw TTF glyphs using canvas fillText (clean text rendering)
