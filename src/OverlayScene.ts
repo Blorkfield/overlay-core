@@ -94,7 +94,6 @@ export class OverlayScene {
   private updateCallbacks: UpdateCallback[] = [];
   private config: OverlaySceneConfig;
   private animationFrameId: number | null = null;
-  private mouse: Matter.Mouse | null = null;
   private effectManager: EffectManager;
   private fonts: FontInfo[] = [];
   private fontsInitialized: boolean = false;
@@ -186,8 +185,6 @@ export class OverlayScene {
     // Check initial floor integrity (handles minIntegrity > segments case)
     this.checkInitialFloorIntegrity();
 
-    // Setup mouse interaction - uses programmatic grab API for unified logic
-    this.mouse = Matter.Mouse.create(canvas);
     canvas.addEventListener('mousedown', this.handleMouseDown);
     canvas.addEventListener('mousemove', this.handleMouseMove);
     canvas.addEventListener('mouseup', this.handleMouseUp);
@@ -1290,8 +1287,7 @@ export class OverlayScene {
    * @returns The ID of the grabbed object, or null if no grabable object at position
    */
   startGrab(): string | null {
-    const mouseTarget = this.followTargets.get('mouse');
-    const position = mouseTarget ?? (this.mouse ? { x: this.mouse.position.x, y: this.mouse.position.y } : null);
+    const position = this.followTargets.get('mouse') ?? null;
     if (!position) return null;
 
     const bodies = Matter.Query.point(
@@ -2498,11 +2494,6 @@ export class OverlayScene {
 
     // Update pressure tracking
     this.updatePressure();
-
-    // Update 'mouse' follow target from browser mouse (if not externally overridden this frame)
-    if (!this.followTargets.has('mouse') && this.mouse) {
-      this.followTargets.set('mouse', { x: this.mouse.position.x, y: this.mouse.position.y });
-    }
 
     // Apply delta-based grab movement
     if (this.grabbedObjectId && this.lastGrabMousePosition) {
