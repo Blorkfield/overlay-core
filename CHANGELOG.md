@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.8.11
+
+### Patch Changes
+
+- fa26278: fix: scroll
+
 ## 0.8.10
 
 ### Patch Changes
