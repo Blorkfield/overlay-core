@@ -30,7 +30,8 @@ import type {
   LetterDebugInfo,
   DOMObstacleConfig,
   DOMObstacleResult,
-  BackgroundConfig
+  BackgroundConfig,
+  Vector2
 } from './types';
 
 interface TTFGlyphRenderInfo {
@@ -132,6 +133,8 @@ export class OverlayScene {
   private readonly grabHistoryRadius = 20;
   // Number of physics substeps per frame — more substeps = better collision at high speeds, more CPU
   private readonly substeps = 2;
+  // Per-tag gravity overrides: bodies with a matching tag use this gravity instead of the scene gravity
+  private tagGravity: Map<string, Vector2> = new Map();
 
   static createContainer(
     parent: HTMLElement,
@@ -894,6 +897,41 @@ export class OverlayScene {
     this.config.gravity = gravity;
     this.engine.gravity.x = gravity.x;
     this.engine.gravity.y = gravity.y;
+  }
+
+  /**
+   * Set a gravity override for a specific tag. Dynamic objects with this tag will use
+   * this gravity instead of the scene gravity. Pass `null` to remove the override.
+   * @example
+   * scene.setTagGravity('floaty', { x: 0, y: -0.3 }); // Objects with 'floaty' tag float upward
+   * scene.setTagGravity('floaty', null);               // Remove override, restore scene gravity
+   */
+  setTagGravity(tag: string, gravity: Vector2 | null): void {
+    if (gravity === null) {
+      this.tagGravity.delete(tag);
+      // Restore ignoreGravity=false for any bodies that had this tag
+      for (const entry of this.objects.values()) {
+        if (entry.tags.includes(tag) && !entry.body.isStatic) {
+          (entry.body as any).ignoreGravity = false;
+        }
+      }
+    } else {
+      this.tagGravity.set(tag, gravity);
+    }
+  }
+
+  /**
+   * Get the gravity override for a specific tag, or undefined if none is set.
+   */
+  getTagGravity(tag: string): Vector2 | undefined {
+    return this.tagGravity.get(tag);
+  }
+
+  /**
+   * Get all active tag gravity overrides.
+   */
+  getAllTagGravities(): ReadonlyMap<string, Vector2> {
+    return this.tagGravity;
   }
 
   /**
@@ -2491,6 +2529,27 @@ export class OverlayScene {
   // ==================== PRIVATE ====================
 
   private loop = (): void => {
+    // Apply per-tag gravity overrides before the physics step
+    if (this.tagGravity.size > 0) {
+      for (const entry of this.objects.values()) {
+        if (entry.body.isStatic || !entry.tags.includes('falling')) continue;
+        let customGravity: Vector2 | undefined;
+        for (const tag of entry.tags) {
+          customGravity = this.tagGravity.get(tag);
+          if (customGravity) break;
+        }
+        if (customGravity) {
+          (entry.body as any).ignoreGravity = true;
+          Matter.Body.applyForce(entry.body, entry.body.position, {
+            x: customGravity.x * entry.body.mass,
+            y: customGravity.y * entry.body.mass,
+          });
+        } else {
+          (entry.body as any).ignoreGravity = false;
+        }
+      }
+    }
+
     // Step physics multiple times per frame with a smaller timestep (substepping)
     const substepDelta = 1000 / 60 / this.substeps;
     for (let i = 0; i < this.substeps; i++) {

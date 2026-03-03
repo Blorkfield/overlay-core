@@ -432,131 +432,156 @@
         <button id="btn-apply-gravity" class="panel-btn" style="width:100%;margin-top:8px">Apply Gravity</button>
       </div>
       <div class="effect-section">
+        <div class="effect-header" style="margin-bottom:8px">
+          <span class="effect-title">Tag Gravity Overrides</span>
+        </div>
         <div class="effect-params">
           <div class="param-row">
-            <label>Image:</label>
-            <select id="select-entity-image" class="select-input select-truncate">
-              <option value="">None</option>
-              <option value="/bf_koban_512.png">bf_koban_512.png</option>
-            </select>
+            <label>Tag:</label>
+            <input type="text" id="input-tag-gravity-tag" placeholder="tag name" style="width:80px">
           </div>
           <div class="param-row">
-            <label>TTL (ms):</label>
-            <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
-          </div>
-          <div class="param-row">
-            <label>Weight:</label>
-            <input type="number" id="input-entity-weight" value="0" min="0" step="1">
-          </div>
-          <div class="param-row">
-            <label>X:</label>
-            <input type="number" id="input-spawn-x" value="50" step="1" style="width:50px">
-            <select id="select-x-unit" class="select-input" style="width:45px;padding:6px 4px">
-              <option value="percent">%</option>
-              <option value="pixel">px</option>
-            </select>
-          </div>
-          <div class="param-row">
-            <label>Y:</label>
-            <input type="number" id="input-spawn-y" value="50" step="1" style="width:50px">
-            <select id="select-y-unit" class="select-input" style="width:45px;padding:6px 4px">
-              <option value="percent">%</option>
-              <option value="pixel">px</option>
-            </select>
+            <label style="min-width:auto">X:</label>
+            <input type="number" id="input-tag-gravity-x" value="0" step="0.1" style="width:60px">
+            <label style="min-width:auto;margin-left:12px">Y:</label>
+            <input type="number" id="input-tag-gravity-y" value="-1" step="0.1" style="width:60px">
           </div>
         </div>
-        <div class="tag-picker" style="margin-top:12px">
-          <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
-          <div style="display:flex;gap:8px;align-items:stretch">
-            <div style="flex:1;display:flex;flex-direction:column">
-              <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
-              <select id="tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
-              </select>
-            </div>
-            <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
-              <button id="btn-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
-              <button id="btn-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
-            </div>
-            <div style="flex:1;display:flex;flex-direction:column">
-              <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
-              <select id="tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
-              </select>
-            </div>
-          </div>
-        </div>
-        <div style="margin-top:12px">
-          <button id="btn-spawn-entity" class="panel-btn" style="width:100%">Spawn Entity</button>
-        </div>
+        <button id="btn-set-tag-gravity" class="panel-btn" style="width:100%;margin-top:8px">Set Tag Gravity</button>
+        <div id="tag-gravity-list" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div class="effect-section">
-        <div class="effect-header" style="margin-bottom:8px">
-          <span class="effect-title">Text Obstacles</span>
+        <div class="param-row" style="margin-bottom:12px">
+          <label>Spawn Type:</label>
+          <select id="select-spawn-type" class="select-input" style="flex:1">
+            <option value="entity">Entity</option>
+            <option value="text">Text Obstacle</option>
+          </select>
         </div>
-        <div class="effect-params">
-          <div class="param-row">
-            <label>Text:</label>
-            <input type="text" id="input-text-obstacle" value="ABCDEFGHIJKLMNOPQRSTUVWXYZ" style="width:120px" placeholder="A-Z, 0-9">
-          </div>
-          <div class="param-row">
-            <label>Font:</label>
-            <select id="select-font" class="select-input">
-              <!-- Populated dynamically from API -->
-            </select>
-          </div>
-          <div class="param-row">
-            <label>Letter Size:</label>
-            <input type="number" id="input-letter-size" value="60" min="20" max="200">
-          </div>
-          <div class="param-row">
-            <label>Letter Spacing:</label>
-            <input type="number" id="input-letter-spacing" value="0" min="0" max="200">
-          </div>
-          <div class="param-row">
-            <label>Color:</label>
-            <input type="text" id="input-letter-color" placeholder="#ff0000" style="width:80px">
-          </div>
-          <div class="param-row">
-            <label>Line Spacing:</label>
-            <input type="number" id="input-line-spacing" placeholder="30">
-          </div>
-          <div class="param-row">
-            <label>X:</label>
-            <input type="number" id="input-text-origin-x" value="50" step="1" style="width:50px">
-            <select id="select-text-x-unit" class="select-input" style="width:45px;padding:6px 4px">
-              <option value="percent">%</option>
-              <option value="pixel">px</option>
-            </select>
-          </div>
-          <div class="param-row">
-            <label>Y:</label>
-            <input type="number" id="input-text-origin-y" value="50" step="1" style="width:50px">
-            <select id="select-text-y-unit" class="select-input" style="width:45px;padding:6px 4px">
-              <option value="percent">%</option>
-              <option value="pixel">px</option>
-            </select>
-          </div>
-        </div>
-        <div class="tag-picker" style="margin-top:12px">
-          <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
-          <div style="display:flex;gap:8px;align-items:stretch">
-            <div style="flex:1;display:flex;flex-direction:column">
-              <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
-              <select id="text-tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+
+        <!-- Entity fields -->
+        <div id="spawn-entity-fields">
+          <div class="effect-params">
+            <div class="param-row">
+              <label>Image:</label>
+              <select id="select-entity-image" class="select-input select-truncate">
+                <option value="">None</option>
+                <option value="/bf_koban_512.png">bf_koban_512.png</option>
               </select>
             </div>
-            <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
-              <button id="btn-text-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
-              <button id="btn-text-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
+            <div class="param-row">
+              <label>TTL (ms):</label>
+              <input type="number" id="input-entity-ttl" placeholder="∞" min="0" step="100">
             </div>
-            <div style="flex:1;display:flex;flex-direction:column">
-              <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
-              <select id="text-tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px">
+            <div class="param-row">
+              <label>Weight:</label>
+              <input type="number" id="input-entity-weight" value="0" min="0" step="1">
+            </div>
+            <div class="param-row">
+              <label>X:</label>
+              <input type="number" id="input-spawn-x" value="50" step="1" style="width:50px">
+              <select id="select-x-unit" class="select-input" style="width:45px;padding:6px 4px">
+                <option value="percent">%</option>
+                <option value="pixel">px</option>
+              </select>
+            </div>
+            <div class="param-row">
+              <label>Y:</label>
+              <input type="number" id="input-spawn-y" value="50" step="1" style="width:50px">
+              <select id="select-y-unit" class="select-input" style="width:45px;padding:6px 4px">
+                <option value="percent">%</option>
+                <option value="pixel">px</option>
               </select>
             </div>
           </div>
+          <div class="tag-picker" style="margin-top:12px">
+            <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
+            <div style="display:flex;gap:8px;align-items:stretch">
+              <div style="flex:1;display:flex;flex-direction:column">
+                <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
+                <select id="tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px"></select>
+              </div>
+              <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <button id="btn-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
+                <button id="btn-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column">
+                <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
+                <select id="tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px"></select>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button id="btn-spawn-entity" class="panel-btn" style="width:100%">Spawn Entity</button>
+          </div>
         </div>
-        <div style="margin-top:12px">
-          <button id="btn-spawn-text" class="panel-btn" style="width:100%">Spawn Text</button>
+
+        <!-- Text Obstacle fields -->
+        <div id="spawn-text-fields" style="display:none">
+          <div class="effect-params">
+            <div class="param-row">
+              <label>Text:</label>
+              <input type="text" id="input-text-obstacle" value="ABCDEFGHIJKLMNOPQRSTUVWXYZ" style="width:120px" placeholder="A-Z, 0-9">
+            </div>
+            <div class="param-row">
+              <label>Font:</label>
+              <select id="select-font" class="select-input">
+                <!-- Populated dynamically from API -->
+              </select>
+            </div>
+            <div class="param-row">
+              <label>Letter Size:</label>
+              <input type="number" id="input-letter-size" value="60" min="20" max="200">
+            </div>
+            <div class="param-row">
+              <label>Letter Spacing:</label>
+              <input type="number" id="input-letter-spacing" value="0" min="0" max="200">
+            </div>
+            <div class="param-row">
+              <label>Color:</label>
+              <input type="text" id="input-letter-color" placeholder="#ff0000" style="width:80px">
+            </div>
+            <div class="param-row">
+              <label>Line Spacing:</label>
+              <input type="number" id="input-line-spacing" placeholder="30">
+            </div>
+            <div class="param-row">
+              <label>X:</label>
+              <input type="number" id="input-text-origin-x" value="50" step="1" style="width:50px">
+              <select id="select-text-x-unit" class="select-input" style="width:45px;padding:6px 4px">
+                <option value="percent">%</option>
+                <option value="pixel">px</option>
+              </select>
+            </div>
+            <div class="param-row">
+              <label>Y:</label>
+              <input type="number" id="input-text-origin-y" value="50" step="1" style="width:50px">
+              <select id="select-text-y-unit" class="select-input" style="width:45px;padding:6px 4px">
+                <option value="percent">%</option>
+                <option value="pixel">px</option>
+              </select>
+            </div>
+          </div>
+          <div class="tag-picker" style="margin-top:12px">
+            <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
+            <div style="display:flex;gap:8px;align-items:stretch">
+              <div style="flex:1;display:flex;flex-direction:column">
+                <div style="font-size:10px;color:#666;margin-bottom:4px">Available</div>
+                <select id="text-tags-available" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px"></select>
+              </div>
+              <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <button id="btn-text-tag-add" class="panel-btn" style="padding:4px 8px;font-size:14px">&gt;&gt;</button>
+                <button id="btn-text-tag-remove" class="panel-btn" style="padding:4px 8px;font-size:14px">&lt;&lt;</button>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column">
+                <div style="font-size:10px;color:#666;margin-bottom:4px">Selected</div>
+                <select id="text-tags-selected" multiple style="flex:1;min-height:80px;background:#1a1a2e;border:1px solid #3a3a5a;border-radius:4px;color:#fff;font-size:11px;padding:4px"></select>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button id="btn-spawn-text" class="panel-btn" style="width:100%">Spawn Text</button>
+          </div>
         </div>
       </div>
       <div class="effect-section">

@@ -75,9 +75,17 @@ const entityPanel = document.getElementById('entity-panel') as HTMLDivElement;
 const entityDragHandle = document.getElementById('entity-drag-handle') as HTMLDivElement;
 const entityCollapseBtn = document.getElementById('entity-collapse') as HTMLButtonElement;
 const entityContent = document.getElementById('entity-content') as HTMLDivElement;
+const selectSpawnType = document.getElementById('select-spawn-type') as HTMLSelectElement;
+const spawnEntityFields = document.getElementById('spawn-entity-fields') as HTMLDivElement;
+const spawnTextFields = document.getElementById('spawn-text-fields') as HTMLDivElement;
 const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
 const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
 const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
+const inputTagGravityTag = document.getElementById('input-tag-gravity-tag') as HTMLInputElement;
+const inputTagGravityX = document.getElementById('input-tag-gravity-x') as HTMLInputElement;
+const inputTagGravityY = document.getElementById('input-tag-gravity-y') as HTMLInputElement;
+const btnSetTagGravity = document.getElementById('btn-set-tag-gravity') as HTMLButtonElement;
+const tagGravityList = document.getElementById('tag-gravity-list') as HTMLDivElement;
 
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
@@ -451,6 +459,12 @@ btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
 
+selectSpawnType.addEventListener('change', () => {
+  const isText = selectSpawnType.value === 'text';
+  spawnEntityFields.style.display = isText ? 'none' : '';
+  spawnTextFields.style.display = isText ? '' : 'none';
+});
+
 // Populate tag dropdown with current scene tags
 function populateActionTagDropdown(): void {
   if (!scene) return;
@@ -507,6 +521,40 @@ btnApplyGravity.addEventListener('click', () => {
   const gx = parseFloat(inputGravityX.value);
   const gy = parseFloat(inputGravityY.value);
   scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy });
+});
+
+function renderTagGravityList(): void {
+  if (!scene) { tagGravityList.innerHTML = ''; return; }
+  const overrides = scene.getAllTagGravities();
+  if (overrides.size === 0) {
+    tagGravityList.innerHTML = '<div style="font-size:11px;color:#555;font-style:italic">No overrides set.</div>';
+    return;
+  }
+  tagGravityList.innerHTML = '';
+  for (const [tag, g] of overrides) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;background:#1a1a2e;padding:4px 6px;border-radius:4px';
+    row.innerHTML = `
+      <span style="flex:1;color:#ccc">${tag}</span>
+      <span style="color:#888">x:${g.x} y:${g.y}</span>
+      <button class="panel-btn" style="padding:2px 6px;font-size:10px" data-tag="${tag}">Remove</button>
+    `;
+    row.querySelector('button')!.addEventListener('click', () => {
+      scene?.setTagGravity(tag, null);
+      renderTagGravityList();
+    });
+    tagGravityList.appendChild(row);
+  }
+}
+
+btnSetTagGravity.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = inputTagGravityTag.value.trim();
+  if (!tag) return;
+  const gx = parseFloat(inputTagGravityX.value);
+  const gy = parseFloat(inputTagGravityY.value);
+  scene.setTagGravity(tag, { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy });
+  renderTagGravityList();
 });
 
 selectLogLevel.addEventListener('change', () => {

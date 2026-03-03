@@ -651,6 +651,30 @@ scene.setGravity({ x: 1, y: 0 });      // Sideways gravity
 scene.destroy();                        // Clean up resources
 ```
 
+### Per-Tag Gravity Overrides
+
+Dynamic objects with a specific tag can have their own gravity, independent of the scene gravity.
+
+```typescript
+// Objects tagged 'floaty' float upward instead of falling
+scene.setTagGravity('floaty', { x: 0, y: -0.3 });
+
+// Objects tagged 'sideways' drift to the right
+scene.setTagGravity('sideways', { x: 0.5, y: 0 });
+
+// Zero gravity for 'floaty' tag (hover in place)
+scene.setTagGravity('floaty', { x: 0, y: 0 });
+
+// Remove override — objects revert to scene gravity
+scene.setTagGravity('floaty', null);
+
+// Query overrides
+const g = scene.getTagGravity('floaty');       // Vector2 | undefined
+const all = scene.getAllTagGravities();         // ReadonlyMap<string, Vector2>
+```
+
+When a body has multiple tags with gravity overrides, the first matching tag wins. The `falling` tag is still required for the override to apply (only dynamic objects are affected).
+
 ## Examples
 
 Working examples are provided in the `/examples` directory:
