@@ -70,11 +70,14 @@ const settingsDragHandle = document.getElementById('settings-drag-handle') as HT
 const settingsCollapseBtn = document.getElementById('settings-collapse') as HTMLButtonElement;
 const settingsContent = document.getElementById('settings-content') as HTMLDivElement;
 
-// Entity panel elements
+// Scene management panel elements
 const entityPanel = document.getElementById('entity-panel') as HTMLDivElement;
 const entityDragHandle = document.getElementById('entity-drag-handle') as HTMLDivElement;
 const entityCollapseBtn = document.getElementById('entity-collapse') as HTMLButtonElement;
 const entityContent = document.getElementById('entity-content') as HTMLDivElement;
+const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
+const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
+const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
 
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
@@ -163,10 +166,13 @@ async function createScene(width: number, height: number): Promise<void> {
   canvas.height = height;
   sceneWrapper.insertBefore(canvas, sceneWrapper.firstChild);
 
+  const gx = parseFloat(inputGravityX.value);
+  const gy = parseFloat(inputGravityY.value);
+
   // Create scene
   scene = new OverlayScene(canvas, {
     bounds: { top: 0, bottom: height, left: 0, right: width },
-    gravity: 1,
+    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy },
     wrapHorizontal: true,
     debug: false,
     background: { color: '#16213e' },
@@ -494,6 +500,13 @@ btnRemoveAll.addEventListener('click', () => {
 
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
+});
+
+btnApplyGravity.addEventListener('click', () => {
+  if (!scene) return;
+  const gx = parseFloat(inputGravityX.value);
+  const gy = parseFloat(inputGravityY.value);
+  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy });
 });
 
 selectLogLevel.addEventListener('change', () => {

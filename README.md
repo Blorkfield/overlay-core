@@ -82,7 +82,7 @@ const { canvas, bounds } = OverlayScene.createContainer(container, {
 // Create scene
 const scene = new OverlayScene(canvas, {
   bounds,
-  gravity: 1,
+  gravity: { x: 0, y: 1 },
   wrapHorizontal: true,
   background: 'transparent'
 });
@@ -426,7 +426,7 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 ```typescript
 const scene = new OverlayScene(canvas, {
   bounds: { top: 0, bottom: 600, left: 0, right: 800 },
-  gravity: 1,
+  gravity: { x: 0, y: 1 },
   wrapHorizontal: true,
   debug: false,
   background: '#16213e',
@@ -443,7 +443,7 @@ const scene = new OverlayScene(canvas, {
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `gravity` | 1 | Gravity strength |
+| `gravity` | `{ x: 0, y: 1 }` | Gravity vector. Both axes support negative values |
 | `wrapHorizontal` | true | Objects wrap around screen edges |
 | `debug` | false | Show collision wireframes |
 | `background` | transparent | Canvas background color |
@@ -641,11 +641,14 @@ setLogLevel('debug');  // Options: debug, info, warn, error
 ## Lifecycle
 
 ```typescript
-scene.start();           // Start simulation
-scene.stop();            // Pause simulation
-scene.resize(w, h);      // Resize canvas and bounds
-scene.setDebug(true);    // Toggle wireframe mode
-scene.destroy();         // Clean up resources
+scene.start();                          // Start simulation
+scene.stop();                           // Pause simulation
+scene.resize(w, h);                     // Resize canvas and bounds
+scene.setDebug(true);                   // Toggle wireframe mode
+scene.setGravity({ x: 0, y: -1 });     // Set gravity (negative y = upward)
+scene.setGravity({ x: 0, y: 0 });      // Zero gravity
+scene.setGravity({ x: 1, y: 0 });      // Sideways gravity
+scene.destroy();                        // Clean up resources
 ```
 
 ## Examples
@@ -673,6 +676,7 @@ import type {
   // Scene configuration
   OverlaySceneConfig,
   Bounds,
+  Vector2,
   ContainerOptions,
   FloorConfig,
 

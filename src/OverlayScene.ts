@@ -167,7 +167,7 @@ export class OverlayScene {
   constructor(canvas: HTMLCanvasElement, config: OverlaySceneConfig) {
     this.canvas = canvas;
     this.config = {
-      gravity: 1,
+      gravity: { x: 0, y: 1 },
       wrapHorizontal: true,
       debug: false,
       ...config
@@ -880,6 +880,20 @@ export class OverlayScene {
         entry.body.render.visible = enabled;
       }
     }
+  }
+
+  /**
+   * Set gravity at runtime. Supports any direction including negative values.
+   * @example
+   * scene.setGravity({ x: 0, y: 1 });   // Normal downward gravity
+   * scene.setGravity({ x: 0, y: -1 });  // Upward gravity
+   * scene.setGravity({ x: 1, y: 0 });   // Sideways gravity
+   * scene.setGravity({ x: 0, y: 0 });   // Zero gravity
+   */
+  setGravity(gravity: { x: number; y: number }): void {
+    this.config.gravity = gravity;
+    this.engine.gravity.x = gravity.x;
+    this.engine.gravity.y = gravity.y;
   }
 
   /**

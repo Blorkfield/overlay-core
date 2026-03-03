@@ -8,6 +8,7 @@ export type { Tag } from './tags';
 export type {
   OverlaySceneConfig,
   Bounds,
+  Vector2,
   // Core object types (unified model)
   ObjectConfig,
   DynamicObject,

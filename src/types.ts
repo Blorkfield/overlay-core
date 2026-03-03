@@ -1,6 +1,15 @@
+/**
+ * 2D vector with x and y components.
+ */
+export interface Vector2 {
+  x: number;
+  y: number;
+}
+
 export interface OverlaySceneConfig {
   bounds: Bounds;
-  gravity?: number;
+  /** Gravity vector. Default: { x: 0, y: 1 }. Negative y = upward gravity. */
+  gravity?: Vector2;
   wrapHorizontal?: boolean;
   debug?: boolean;
   /** Background configuration with color, image, and transparency layers */
