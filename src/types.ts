@@ -222,6 +222,14 @@ export interface ObjectConfig {
    * Supports negative values (e.g. { x: 0, y: -1 } for upward gravity).
    */
   gravityOverride?: Vector2;
+  /**
+   * Target for the 'follow_window' tag. Can be:
+   * - 'mouse' (default) — follows the mouse cursor
+   * - An entity ID — follows that specific entity
+   * - A tag string — follows the first entity found with that tag
+   * Only used when 'follow_window' is in tags.
+   */
+  followTarget?: string;
 }
 
 /**

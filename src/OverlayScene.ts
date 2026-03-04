@@ -84,6 +84,10 @@ interface ObjectEntry {
   domOriginalTransform?: string;
   /** Per-object gravity override — overrides scene gravity for this body only */
   gravityOverride?: Vector2;
+  /** Target for follow_window tag — 'mouse', an entity ID, or a tag string. Default: 'mouse' */
+  followTarget?: string;
+  /** Auto-assigned identity tag (entity-<shortId>). Cannot be removed. */
+  entityTag: string;
 }
 
 export class OverlayScene {
@@ -744,6 +748,7 @@ export class OverlayScene {
         id: shadowId,
         body,
         tags: ['shadow'],
+        entityTag: shadowId,
         spawnTime: performance.now(),
         weight: 0,
         ttfGlyph: {
@@ -780,6 +785,7 @@ export class OverlayScene {
       id: shadowId,
       body: result.body,
       tags: ['shadow'],
+      entityTag: shadowId,
       spawnTime: performance.now(),
       weight: 0 // Shadows don't contribute to pressure
     };
@@ -917,6 +923,18 @@ export class OverlayScene {
   }
 
   /**
+   * Set or change the follow target for an object's 'follow_window' tag.
+   * Target can be 'mouse', an entity ID, or a tag string (follows first matching entity).
+   * Adds 'follow_window' tag if not already present.
+   */
+  setFollowWindowTarget(id: string, target: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    entry.followTarget = target;
+    this.addTag(id, 'follow_window');
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {
@@ -994,7 +1012,13 @@ export class OverlayScene {
     }
 
     const id = crypto.randomUUID();
+    const entityDescriptor = config.imageUrl
+      ? (config.imageUrl.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'image')
+      : config.radius ? 'circle'
+      : config.shape?.type ?? 'rect';
+    const entityTag = `${entityDescriptor.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 16)}-${id.slice(0, 4)}`;
     const tags = [...(config.tags ?? [])];
+    tags.push(entityTag);
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
@@ -1051,7 +1075,9 @@ export class OverlayScene {
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
       clicksRemaining,
-      gravityOverride: config.gravityOverride
+      gravityOverride: config.gravityOverride,
+      followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      entityTag,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
@@ -1074,7 +1100,13 @@ export class OverlayScene {
    */
   async spawnObjectAsync(config: ObjectConfig): Promise<string> {
     const id = crypto.randomUUID();
+    const entityDescriptor = config.imageUrl
+      ? (config.imageUrl.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'image')
+      : config.radius ? 'circle'
+      : config.shape?.type ?? 'rect';
+    const entityTag = `${entityDescriptor.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 16)}-${id.slice(0, 4)}`;
     const tags = [...(config.tags ?? [])];
+    tags.push(entityTag);
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
@@ -1129,7 +1161,9 @@ export class OverlayScene {
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
       clicksRemaining,
-      gravityOverride: config.gravityOverride
+      gravityOverride: config.gravityOverride,
+      followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      entityTag,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
@@ -1178,6 +1212,8 @@ export class OverlayScene {
       } else if (tag === 'gravity_override') {
         if (!entry.gravityOverride) entry.gravityOverride = { x: 0, y: 0 };
         this.gravityOverrideEntries.add(entry);
+      } else if (tag === 'follow_window') {
+        if (!entry.followTarget) entry.followTarget = 'mouse';
       }
     }
   }
@@ -1188,6 +1224,10 @@ export class OverlayScene {
   removeTag(id: string, tag: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
+    if (tag === entry.entityTag) {
+      logger.warn('OverlayScene', `Cannot remove entity tag '${tag}' from '${id}' — entity tags are permanent identifiers and cannot be removed`);
+      return;
+    }
     const index = entry.tags.indexOf(tag);
     if (index !== -1) {
       entry.tags.splice(index, 1);
@@ -1196,6 +1236,8 @@ export class OverlayScene {
       } else if (tag === 'gravity_override') {
         this.gravityOverrideEntries.delete(entry);
         entry.gravityOverride = undefined;
+      } else if (tag === 'follow_window') {
+        entry.followTarget = undefined;
       }
     }
   }
@@ -1717,6 +1759,8 @@ export class OverlayScene {
     });
 
     const id = body.label;
+    const entityTag = `dom-${id.slice(4, 8)}`;
+    tags.push(entityTag);
 
     // Determine pressure threshold
     let pressureThreshold: number | undefined;
@@ -1743,6 +1787,7 @@ export class OverlayScene {
       id,
       body,
       tags,
+      entityTag,
       spawnTime: performance.now(),
       pressureThreshold,
       weight: config.weight ?? 1,
@@ -2013,11 +2058,10 @@ export class OverlayScene {
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
-        const tags = [...baseTags, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
-
         const id = crypto.randomUUID();
-
-        // Create clipped letter body at the center position
+        const safeChar = char.match(/[a-zA-Z0-9]/) ? char.toLowerCase() : 'sym';
+        const entityTag = `letter-${safeChar}-${id.slice(0, 4)}`;
+        const tags = [...baseTags, entityTag, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
         const objectConfig: ObjectConfig = {
           x: centerX,
           y: centerY,
@@ -2074,7 +2118,8 @@ export class OverlayScene {
           originalPosition: shadow || clicksRemaining !== undefined ? { x: centerX, y: centerY } : undefined,
           imageUrl: shadow || clicksRemaining !== undefined ? imageUrl : undefined,
           imageSize: shadow || clicksRemaining !== undefined ? letterSize : undefined,
-          clicksRemaining
+          clicksRemaining,
+          entityTag,
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
@@ -2317,7 +2362,9 @@ export class OverlayScene {
         wordTagsSet.add(wordTag);
 
         const id = crypto.randomUUID();
-        const tags = [...baseTags, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const safeChar = char.match(/[a-zA-Z0-9]/) ? char.toLowerCase() : 'sym';
+        const entityTag = `letter-${safeChar}-${id.slice(0, 4)}`;
+        const tags = [...baseTags, entityTag, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
@@ -2402,7 +2449,8 @@ export class OverlayScene {
           weight,
           shadow,
           originalPosition: shadow || clicksRemaining !== undefined ? { x: body.position.x, y: body.position.y } : undefined,
-          clicksRemaining
+          clicksRemaining,
+          entityTag,
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
@@ -2576,21 +2624,33 @@ export class OverlayScene {
     for (const entry of this.objects.values()) {
       const isDragging = this.grabbedObjectId === entry.id;
 
-      // Apply follow target forces (including 'follow_window' tag which uses 'mouse' target)
-      if (!isDragging) {
-        for (const tag of entry.tags) {
-          // 'follow_window' tag is an alias for 'follow-mouse'
-          const key = tag === 'follow_window' ? 'mouse' : (tag.startsWith('follow-') ? tag.slice(7) : null);
-          if (key) {
-            const target = this.followTargets.get(key);
-            if (target) {
-              const grounded = this.isGrounded(entry.body);
-              if (grounded) {
-                const direction = Math.sign(target.x - entry.body.position.x);
-                Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * direction, y: 0 });
-              }
+      // Apply follow_window tag behavior — target drives what to follow
+      if (!isDragging && entry.tags.includes('follow_window')) {
+        const targetKey = entry.followTarget ?? 'mouse';
+        let targetPos: { x: number; y: number } | undefined;
+
+        // 1. Named follow target (e.g. 'mouse')
+        targetPos = this.followTargets.get(targetKey);
+
+        // 2. Entity ID
+        if (!targetPos) {
+          const targetEntry = this.objects.get(targetKey);
+          if (targetEntry) targetPos = targetEntry.body.position;
+        }
+
+        // 3. Tag — follow first entity with matching tag (excluding self)
+        if (!targetPos) {
+          for (const e of this.objects.values()) {
+            if (e !== entry && e.tags.includes(targetKey)) {
+              targetPos = e.body.position;
+              break;
             }
           }
+        }
+
+        if (targetPos && this.isGrounded(entry.body)) {
+          const direction = Math.sign(targetPos.x - entry.body.position.x);
+          Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * direction, y: 0 });
         }
       }
 

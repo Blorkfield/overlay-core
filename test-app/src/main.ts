@@ -29,7 +29,7 @@ const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElemen
 const entityTagButtons: Record<string, HTMLElement> = {
   static: document.getElementById('entity-tag-static') as HTMLButtonElement,
   grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
-  follow_window: document.getElementById('entity-tag-follow-window') as HTMLButtonElement,
+  follow_window: document.getElementById('entity-tag-follow-window') as HTMLDivElement,
   gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
 };
 const statsEl = document.getElementById('stats') as HTMLDivElement;
@@ -91,6 +91,10 @@ const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInp
 inputEntityGovX.addEventListener('click', e => e.stopPropagation());
 inputEntityGovY.addEventListener('click', e => e.stopPropagation());
 
+const selectFollowTarget = document.getElementById('select-follow-target') as HTMLSelectElement;
+selectFollowTarget.addEventListener('click', e => e.stopPropagation());
+selectFollowTarget.addEventListener('mousedown', e => e.stopPropagation());
+
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
 const effectsDragHandle = document.getElementById('effects-drag-handle') as HTMLDivElement;
@@ -145,6 +149,23 @@ function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<st
 }
 
 setupTagButtons(entityTagButtons, activeEntityTags);
+
+const BEHAVIOR_TAGS = new Set(['static', 'grabable', 'gravity_override', 'follow_window', 'shadow']);
+
+// When follow_window is toggled on, populate the target dropdown from the live scene
+entityTagButtons['follow_window'].addEventListener('click', () => {
+  if (!activeEntityTags.has('follow_window')) return;
+  const allTags = scene
+    ? [...new Set(scene.getAllTags())].filter(t => !BEHAVIOR_TAGS.has(t)).sort()
+    : [];
+  selectFollowTarget.innerHTML = '<option value="mouse">mouse</option>';
+  for (const tag of allTags) {
+    const opt = document.createElement('option');
+    opt.value = tag;
+    opt.textContent = tag;
+    selectFollowTarget.appendChild(opt);
+  }
+});
 
 // Text letters default to static
 activeTextTags.add('static');
@@ -274,15 +295,15 @@ async function createScene(width: number, height: number): Promise<void> {
   });
   console.log('Title text created:', titleResult.stringTag, titleResult.wordTags);
 
-  // Add a simple circle with window_follow tag
+  // Add a simple circle for testbed use
   scene.spawnObject({
     x: centerX,
     y: titleResult.bounds.bottom + 100,
     radius: 30,
     fillStyle: '#4a90d9',
-    tags: ['window_follow', 'grabable']
+    tags: ['grabable'],
   });
-  console.log('window_follow circle spawned');
+  console.log('inert circle spawned');
 
   // Re-initialize effects with new scene
   updateBurstEffect();
@@ -368,11 +389,13 @@ async function spawnRandomEntity(): Promise<void> {
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override');
+  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override' && t !== 'follow_window');
   const gravityOverride = activeEntityTags.has('gravity_override') ? {
     x: parseFloat(inputEntityGovX.value) || 0,
     y: parseFloat(inputEntityGovY.value) || 0
   } : undefined;
+  if (activeEntityTags.has('follow_window')) tags.push('follow_window');
+  const followTarget = activeEntityTags.has('follow_window') ? selectFollowTarget.value : undefined;
   console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
@@ -384,7 +407,8 @@ async function spawnRandomEntity(): Promise<void> {
     tags,
     ttl: ttlValue,
     weight: weightValue || undefined,
-    gravityOverride
+    gravityOverride,
+    followTarget
   };
 
   // Use async for image objects (extracts shape from alpha), sync otherwise

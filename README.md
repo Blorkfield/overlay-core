@@ -41,7 +41,7 @@ scene.spawnObject({ tags: [STATIC], ... });
 | Constant | Value | Behavior |
 |----------|-------|----------|
 | `TAG_STATIC` / `TAGS.STATIC` | `'static'` | Object is a static obstacle, not affected by gravity. Without this tag, objects are dynamic by default. |
-| `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
+| `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object walks toward a target when grounded (default: mouse) |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
 | `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
 
@@ -55,6 +55,43 @@ scene.removeTag(id, 'grabable');    // prevent grabbing
 ```
 
 The `gravity_override` tag carries a value (a Vector2). Use `setObjectGravityOverride` to set the value and activate the tag, or pass it via `gravityOverride` in spawn config. Removing the tag restores scene gravity.
+
+### Entity Tags
+
+Every spawned object is automatically assigned a permanent, human-readable **entity tag** that serves as its stable identity. The format is derived from the object's shape or image:
+
+| Object type | Entity tag format | Example |
+|-------------|-------------------|---------|
+| Circle | `circle-<4hex>` | `circle-a3f2` |
+| Rectangle | `rect-<4hex>` | `rect-b1c4` |
+| Image-based | `<filename>-<4hex>` | `cat-e9d2` |
+| Text letter | `letter-<char>-<4hex>` | `letter-h-7a3f` |
+| DOM element | `dom-<4hex>` | `dom-5c21` |
+
+Entity tags appear in `getAllTags()` alongside all other tags, making them usable as follow targets or for runtime queries. They **cannot be removed** — calling `removeTag(id, entityTag)` will log a warning and return without effect. This ensures every object always has a stable, identifiable tag.
+
+### `follow_window` Tag Target
+
+The `follow_window` tag walks an object toward a target when grounded. The default target is `'mouse'`. You can change it at any time:
+
+```typescript
+// Follow the mouse (default)
+scene.addTag(id, 'follow_window');
+
+// Follow a named target (e.g., another entity's tag)
+scene.setFollowWindowTarget(id, 'circle-a3f2');
+
+// Follow any entity that has a given tag
+scene.setFollowWindowTarget(id, 'letter-h-7a3f');
+
+// Follow a string/word group tag
+scene.setFollowWindowTarget(id, 'title-text');
+
+// Stop following by removing the tag
+scene.removeTag(id, 'follow_window');
+```
+
+Target resolution order: named follow targets (e.g., `'mouse'`) → object ID → first object with a matching tag.
 
 ### Pressure System
 
@@ -357,9 +394,10 @@ scene.removeAllByTag('tag');    // Alias for removeObjectsByTag
 
 // Add or remove tags — tags drive behavior, changes take effect immediately
 scene.addTag(id, 'grabable');
-scene.removeTag(id, 'static');    // releases a static object to fall
-scene.addTag(id, 'static');       // freezes a dynamic object in place
-scene.addFallingTag(id);          // convenience: removes 'static', adds 'grabable'
+scene.removeTag(id, 'static');            // releases a static object to fall
+scene.addTag(id, 'static');              // freezes a dynamic object in place
+scene.addFallingTag(id);                 // convenience: removes 'static', adds 'grabable'
+scene.setFollowWindowTarget(id, 'mouse'); // change what a follow_window object walks toward
 
 // Get object info
 const ids = scene.getObjectIds();

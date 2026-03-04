@@ -96,6 +96,21 @@
     .tag-btn.active .tag-value-inputs input {
       border-bottom-color: rgba(74, 144, 217, 0.6);
     }
+    .tag-select {
+      background: #1a1a2e;
+      border: none;
+      border-bottom: 1px solid #555;
+      color: #ccc;
+      font-size: 10px;
+      font-family: monospace;
+      outline: none;
+      cursor: pointer;
+      max-width: 80px;
+    }
+    .tag-btn.active .tag-select {
+      border-bottom-color: rgba(74, 144, 217, 0.6);
+      color: #4a90d9;
+    }
     .select-input {
       padding: 8px;
       border: 1px solid #4a4a6a;
@@ -535,7 +550,12 @@
             <div style="display:flex;flex-wrap:wrap;gap:6px">
               <button class="tag-btn" id="entity-tag-static">static</button>
               <button class="tag-btn" id="entity-tag-grabable">grabable</button>
-              <button class="tag-btn" id="entity-tag-follow-window">follow_window</button>
+              <div class="tag-btn" id="entity-tag-follow-window" role="button" tabindex="0">
+                follow_window
+                <span class="tag-value-inputs">
+                  <select id="select-follow-target" class="tag-select"></select>
+                </span>
+              </div>
               <div class="tag-btn" id="entity-tag-gravity-override" role="button" tabindex="0">
                 gravity_override
                 <span class="tag-value-inputs">
