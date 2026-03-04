@@ -102,6 +102,9 @@ const inputCtrlVelY = document.getElementById('input-ctrl-vel-y') as HTMLInputEl
 const btnCtrlVelocity = document.getElementById('btn-ctrl-velocity') as HTMLButtonElement;
 const inputCtrlSpin = document.getElementById('input-ctrl-spin') as HTMLInputElement;
 const btnCtrlSpin = document.getElementById('btn-ctrl-spin') as HTMLButtonElement;
+const inputCtrlScaleX = document.getElementById('input-ctrl-scale-x') as HTMLInputElement;
+const inputCtrlScaleY = document.getElementById('input-ctrl-scale-y') as HTMLInputElement;
+const btnCtrlScale = document.getElementById('btn-ctrl-scale') as HTMLButtonElement;
 
 // Stop clicks on the inline inputs from toggling the tag buttons
 inputEntityGovX.addEventListener('click', e => e.stopPropagation());
@@ -553,6 +556,17 @@ btnCtrlSpin.addEventListener('click', () => {
   if (!tag || isNaN(omega)) return;
   for (const id of scene.getObjectIdsByTag(tag)) {
     scene.setObjectAngularVelocity(id, omega);
+  }
+});
+
+btnCtrlScale.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const sx = parseFloat(inputCtrlScaleX.value);
+  const sy = parseFloat(inputCtrlScaleY.value);
+  if (!tag || isNaN(sx) || isNaN(sy) || sx <= 0 || sy <= 0) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setObjectScale(id, sx, sy);
   }
 });
 

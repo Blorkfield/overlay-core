@@ -94,6 +94,14 @@ interface ObjectEntry {
   originalMass?: number;
   /** Auto-assigned identity tag (entity-<shortId>). Cannot be removed. */
   entityTag: string;
+  /** Current scale X (default 1). Tracks cumulative scale applied via setObjectScale. */
+  scaleX?: number;
+  /** Current scale Y (default 1). Tracks cumulative scale applied via setObjectScale. */
+  scaleY?: number;
+  /** Original sprite xScale at spawn — used to compute absolute sprite scale. Only set for sprite bodies. */
+  baseSpriteSX?: number;
+  /** Original sprite yScale at spawn — used to compute absolute sprite scale. Only set for sprite bodies. */
+  baseSpriteSY?: number;
 }
 
 export class OverlayScene {
@@ -989,6 +997,29 @@ export class OverlayScene {
   }
 
   /**
+   * Set the absolute scale of an object on each axis. Both physics collision shape and
+   * sprite rendering are updated together. Scaling changes the body's mass proportionally
+   * (area scales by x*y). Use setObjectMassOverride afterwards if you need a fixed mass.
+   * @param x - Scale factor on the X axis (1 = original size)
+   * @param y - Scale factor on the Y axis (1 = original size)
+   */
+  setObjectScale(id: string, x: number, y: number): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    const currentX = entry.scaleX ?? 1;
+    const currentY = entry.scaleY ?? 1;
+    // Matter.Body.scale applies a relative ratio, so divide by current to get the delta
+    Matter.Body.scale(entry.body, x / currentX, y / currentY);
+    // Update sprite scale absolutely (relative to original spawn scale)
+    if (entry.body.render.sprite && entry.baseSpriteSX !== undefined) {
+      entry.body.render.sprite.xScale = entry.baseSpriteSX * x;
+      entry.body.render.sprite.yScale = entry.baseSpriteSY! * y;
+    }
+    entry.scaleX = x;
+    entry.scaleY = y;
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {
@@ -1149,6 +1180,10 @@ export class OverlayScene {
       massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
       originalMass: tags.includes('mass_override') ? naturalMass : undefined,
       entityTag,
+      scaleX: 1,
+      scaleY: 1,
+      baseSpriteSX: body.render.sprite?.xScale,
+      baseSpriteSY: body.render.sprite?.yScale,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
@@ -1254,6 +1289,10 @@ export class OverlayScene {
       massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
       originalMass: tags.includes('mass_override') ? naturalMass : undefined,
       entityTag,
+      scaleX: 1,
+      scaleY: 1,
+      baseSpriteSX: body.render.sprite?.xScale,
+      baseSpriteSY: body.render.sprite?.yScale,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);

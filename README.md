@@ -411,6 +411,7 @@ scene.setObjectMassOverride(id, null);   // restore natural mass
 scene.setPosition(id, { x: 400, y: 300 });      // teleport object
 scene.setVelocity(id, { x: 10, y: 0 });         // launch object rightward
 scene.setObjectAngularVelocity(id, Math.PI);     // set spin (rad/s)
+scene.setObjectScale(id, 2, 2);                  // scale x and y independently
 
 // Get object info
 const ids = scene.getObjectIds();
@@ -440,6 +441,11 @@ scene.setPosition(id, { x: 100, y: 200 });
 // Positive = counter-clockwise, negative = clockwise
 scene.setObjectAngularVelocity(id, Math.PI);  // half-rotation per second CCW
 scene.setObjectAngularVelocity(id, 0);        // stop spinning
+
+// Scale an object (updates both physics shape and sprite rendering)
+scene.setObjectScale(id, 2, 2);    // double size uniformly
+scene.setObjectScale(id, 2, 0.5);  // stretch wide, squash tall
+scene.setObjectScale(id, 1, 1);    // restore original size
 ```
 
 ## Mouse Position and Grab API
