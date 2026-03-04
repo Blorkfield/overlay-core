@@ -15,6 +15,9 @@ export const TAG_GRABABLE = 'grabable' as const;
 /** Object uses its own gravity vector instead of the scene gravity (set via gravityOverride in ObjectConfig) */
 export const TAG_GRAVITY_OVERRIDE = 'gravity_override' as const;
 
+/** Multiplies movement speed for follow_window and future movement behaviors. Negative values cause the object to run away from its target. */
+export const TAG_SPEED_OVERRIDE = 'speed_override' as const;
+
 /**
  * All available tags as a const object for destructuring.
  * @example
@@ -27,6 +30,7 @@ export const TAGS = {
   FOLLOW_WINDOW: TAG_FOLLOW_WINDOW,
   GRABABLE: TAG_GRABABLE,
   GRAVITY_OVERRIDE: TAG_GRAVITY_OVERRIDE,
+  SPEED_OVERRIDE: TAG_SPEED_OVERRIDE,
 } as const;
 
 /** Type for valid tag values */

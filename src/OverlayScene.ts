@@ -86,6 +86,8 @@ interface ObjectEntry {
   gravityOverride?: Vector2;
   /** Target for follow_window tag — 'mouse', an entity ID, or a tag string. Default: 'mouse' */
   followTarget?: string;
+  /** Speed multiplier for follow_window and future movement behaviors. Default: 1. Negative = run away. */
+  speedOverride?: number;
   /** Auto-assigned identity tag (entity-<shortId>). Cannot be removed. */
   entityTag: string;
 }
@@ -141,6 +143,8 @@ export class OverlayScene {
   private readonly substeps = 2;
   // Tracks only the bodies with a gravity override — engine gravity handles everyone else
   private gravityOverrideEntries: Set<ObjectEntry> = new Set();
+  // Tracks only the bodies with a speed override — others use the default force magnitude
+  private speedOverrideEntries: Set<ObjectEntry> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -935,6 +939,23 @@ export class OverlayScene {
   }
 
   /**
+   * Set or change the speed multiplier for an object's movement (follow_window and future
+   * movement behaviors). Pass null to remove the override and reset to default speed.
+   * Negative values cause the object to run away from its target.
+   * Adds 'speed_override' tag if not already present.
+   */
+  setObjectSpeedOverride(id: string, speed: number | null): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (speed === null) {
+      this.removeTag(id, 'speed_override');
+    } else {
+      entry.speedOverride = speed;
+      this.addTag(id, 'speed_override');
+    }
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {
@@ -1022,6 +1043,9 @@ export class OverlayScene {
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
+    if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
+      tags.push('speed_override');
+    }
     const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object`, {
@@ -1077,10 +1101,12 @@ export class OverlayScene {
       clicksRemaining,
       gravityOverride: config.gravityOverride,
       followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
       entityTag,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
+    if (config.speedOverride !== undefined) this.speedOverrideEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
@@ -1109,6 +1135,9 @@ export class OverlayScene {
     tags.push(entityTag);
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
+    }
+    if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
+      tags.push('speed_override');
     }
     const isStatic = tags.includes('static');
 
@@ -1163,10 +1192,12 @@ export class OverlayScene {
       clicksRemaining,
       gravityOverride: config.gravityOverride,
       followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
       entityTag,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
+    if (config.speedOverride !== undefined) this.speedOverrideEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
@@ -1214,6 +1245,9 @@ export class OverlayScene {
         this.gravityOverrideEntries.add(entry);
       } else if (tag === 'follow_window') {
         if (!entry.followTarget) entry.followTarget = 'mouse';
+      } else if (tag === 'speed_override') {
+        if (entry.speedOverride === undefined) entry.speedOverride = 1;
+        this.speedOverrideEntries.add(entry);
       }
     }
   }
@@ -1238,6 +1272,9 @@ export class OverlayScene {
         entry.gravityOverride = undefined;
       } else if (tag === 'follow_window') {
         entry.followTarget = undefined;
+      } else if (tag === 'speed_override') {
+        this.speedOverrideEntries.delete(entry);
+        entry.speedOverride = undefined;
       }
     }
   }
@@ -1286,6 +1323,7 @@ export class OverlayScene {
     this.emitLifecycleEvent('objectRemoved', this.toObjectState(entry));
     Matter.Composite.remove(this.engine.world, entry.body);
     this.gravityOverrideEntries.delete(entry);
+    this.speedOverrideEntries.delete(entry);
     this.objects.delete(id);
   }
 
@@ -1301,6 +1339,7 @@ export class OverlayScene {
     }
     this.objects.clear();
     this.gravityOverrideEntries.clear();
+    this.speedOverrideEntries.clear();
   }
 
   removeObjectsByTag(tag: string): void {
@@ -2650,7 +2689,8 @@ export class OverlayScene {
 
         if (targetPos && this.isGrounded(entry.body)) {
           const direction = Math.sign(targetPos.x - entry.body.position.x);
-          Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * direction, y: 0 });
+          const speedMult = entry.speedOverride ?? 1;
+          Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * speedMult * direction, y: 0 });
         }
       }
 

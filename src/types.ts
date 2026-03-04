@@ -230,6 +230,11 @@ export interface ObjectConfig {
    * Only used when 'follow_window' is in tags.
    */
   followTarget?: string;
+  /**
+   * Speed multiplier for follow_window and future movement behaviors. Automatically adds the
+   * 'speed_override' tag. Default: 1. Negative values cause the object to run away from its target.
+   */
+  speedOverride?: number;
 }
 
 /**

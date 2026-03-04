@@ -44,6 +44,7 @@ scene.spawnObject({ tags: [STATIC], ... });
 | `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object walks toward a target when grounded (default: mouse) |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
 | `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
+| `TAG_SPEED_OVERRIDE` / `TAGS.SPEED_OVERRIDE` | `'speed_override'` | Multiplies movement speed for `follow_window` and future movement behaviors. Negative = run away from target. |
 
 Tags can be added and removed at runtime to change behavior dynamically:
 
@@ -55,6 +56,8 @@ scene.removeTag(id, 'grabable');    // prevent grabbing
 ```
 
 The `gravity_override` tag carries a value (a Vector2). Use `setObjectGravityOverride` to set the value and activate the tag, or pass it via `gravityOverride` in spawn config. Removing the tag restores scene gravity.
+
+The `speed_override` tag carries a numeric multiplier. Use `setObjectSpeedOverride` to set the value and activate the tag, or pass it via `speedOverride` in spawn config. Removing the tag restores default speed.
 
 ### Entity Tags
 
@@ -398,6 +401,8 @@ scene.removeTag(id, 'static');            // releases a static object to fall
 scene.addTag(id, 'static');              // freezes a dynamic object in place
 scene.addFallingTag(id);                 // convenience: removes 'static', adds 'grabable'
 scene.setFollowWindowTarget(id, 'mouse'); // change what a follow_window object walks toward
+scene.setObjectSpeedOverride(id, 2);     // double movement speed (negative = run away)
+scene.setObjectSpeedOverride(id, null);  // remove speed override
 
 // Get object info
 const ids = scene.getObjectIds();
@@ -742,6 +747,32 @@ Tags are the source of truth for all behavior. Boolean tags (presence = active, 
 | `grabable` | Can be grabbed and dragged with the mouse |
 | `follow_window` | Walks toward mouse position when grounded |
 | `gravity_override` | Uses its own gravity vector instead of scene gravity (value set via `setObjectGravityOverride`) |
+| `speed_override` | Multiplies movement speed for `follow_window` and future movement behaviors (value set via `setObjectSpeedOverride`). Negative = runs away from target. Default multiplier: 1 |
+
+### Speed Override
+
+Objects with `follow_window` move toward their target at default speed. `speed_override` multiplies this force. Negative values reverse the direction, causing the object to run away.
+
+```typescript
+// Spawn a fast follower
+scene.spawnObject({
+  tags: ['follow_window'],
+  speedOverride: 3,   // 3× normal speed — automatically adds 'speed_override' tag
+  // ...
+});
+
+// Spawn a coward that runs away from the mouse
+scene.spawnObject({
+  tags: ['follow_window'],
+  speedOverride: -2,  // flees at 2× speed
+  // ...
+});
+
+// Change speed at runtime
+scene.setObjectSpeedOverride(id, 5);   // very fast follower
+scene.setObjectSpeedOverride(id, -1);  // now runs away at normal speed
+scene.setObjectSpeedOverride(id, null); // remove override, restore default speed
+```
 
 ## Examples
 

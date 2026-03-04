@@ -31,6 +31,7 @@ const entityTagButtons: Record<string, HTMLElement> = {
   grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
   follow_window: document.getElementById('entity-tag-follow-window') as HTMLDivElement,
   gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
+  speed_override: document.getElementById('entity-tag-speed-override') as HTMLDivElement,
 };
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
@@ -86,10 +87,12 @@ const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputEle
 const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
 const inputEntityGovX = document.getElementById('input-entity-gov-x') as HTMLInputElement;
 const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInputElement;
+const inputEntitySpeed = document.getElementById('input-entity-speed') as HTMLInputElement;
 
-// Stop clicks on the inline inputs from toggling the gravity_override tag button
+// Stop clicks on the inline inputs from toggling the gravity_override / speed_override tag buttons
 inputEntityGovX.addEventListener('click', e => e.stopPropagation());
 inputEntityGovY.addEventListener('click', e => e.stopPropagation());
+inputEntitySpeed.addEventListener('click', e => e.stopPropagation());
 
 const selectFollowTarget = document.getElementById('select-follow-target') as HTMLSelectElement;
 selectFollowTarget.addEventListener('click', e => e.stopPropagation());
@@ -150,7 +153,7 @@ function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<st
 
 setupTagButtons(entityTagButtons, activeEntityTags);
 
-const BEHAVIOR_TAGS = new Set(['static', 'grabable', 'gravity_override', 'follow_window', 'shadow']);
+const BEHAVIOR_TAGS = new Set(['static', 'grabable', 'gravity_override', 'follow_window', 'speed_override', 'shadow']);
 
 // When follow_window is toggled on, populate the target dropdown from the live scene
 entityTagButtons['follow_window'].addEventListener('click', () => {
@@ -389,13 +392,14 @@ async function spawnRandomEntity(): Promise<void> {
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override' && t !== 'follow_window');
+  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override' && t !== 'follow_window' && t !== 'speed_override');
   const gravityOverride = activeEntityTags.has('gravity_override') ? {
     x: parseFloat(inputEntityGovX.value) || 0,
     y: parseFloat(inputEntityGovY.value) || 0
   } : undefined;
   if (activeEntityTags.has('follow_window')) tags.push('follow_window');
   const followTarget = activeEntityTags.has('follow_window') ? selectFollowTarget.value : undefined;
+  const speedOverride = activeEntityTags.has('speed_override') ? (parseFloat(inputEntitySpeed.value) || 1) : undefined;
   console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
@@ -408,7 +412,8 @@ async function spawnRandomEntity(): Promise<void> {
     ttl: ttlValue,
     weight: weightValue || undefined,
     gravityOverride,
-    followTarget
+    followTarget,
+    speedOverride
   };
 
   // Use async for image objects (extracts shape from alpha), sync otherwise
