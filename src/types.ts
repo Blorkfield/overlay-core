@@ -1,6 +1,15 @@
+/**
+ * 2D vector with x and y components.
+ */
+export interface Vector2 {
+  x: number;
+  y: number;
+}
+
 export interface OverlaySceneConfig {
   bounds: Bounds;
-  gravity?: number;
+  /** Gravity vector. Default: { x: 0, y: 1 }. Negative y = upward gravity. */
+  gravity?: Vector2;
   wrapHorizontal?: boolean;
   debug?: boolean;
   /** Background configuration with color, image, and transparency layers */
@@ -207,6 +216,12 @@ export interface ObjectConfig {
   shadow?: ShadowConfig | boolean;
   /** Click to fall config - when set, object collapses after being clicked N times */
   clickToFall?: ClickToFallConfig;
+  /**
+   * Per-object gravity override. When set, this object ignores scene gravity and uses
+   * this vector instead. Automatically adds the 'gravity_override' tag.
+   * Supports negative values (e.g. { x: 0, y: -1 } for upward gravity).
+   */
+  gravityOverride?: Vector2;
 }
 
 /**

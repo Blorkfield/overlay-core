@@ -1,9 +1,10 @@
 import Matter from 'matter-js';
-import type { OverlaySceneConfig } from './types';
+import type { OverlaySceneConfig, Vector2 } from './types';
 
-export function createEngine(gravity: number): Matter.Engine {
+export function createEngine(gravity: Vector2): Matter.Engine {
   const engine = Matter.Engine.create();
-  engine.gravity.y = gravity;
+  engine.gravity.x = gravity.x;
+  engine.gravity.y = gravity.y;
   return engine;
 }
 

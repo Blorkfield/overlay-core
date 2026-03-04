@@ -40,6 +40,7 @@ scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
 | `TAG_FALLING` / `TAGS.FALLING` | `'falling'` | Object is dynamic and affected by gravity |
 | `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
+| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity (set via `gravityOverride` in config) |
 
 Without the `falling` tag, objects are static and won't move.
 
@@ -82,7 +83,7 @@ const { canvas, bounds } = OverlayScene.createContainer(container, {
 // Create scene
 const scene = new OverlayScene(canvas, {
   bounds,
-  gravity: 1,
+  gravity: { x: 0, y: 1 },
   wrapHorizontal: true,
   background: 'transparent'
 });
@@ -426,7 +427,7 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 ```typescript
 const scene = new OverlayScene(canvas, {
   bounds: { top: 0, bottom: 600, left: 0, right: 800 },
-  gravity: 1,
+  gravity: { x: 0, y: 1 },
   wrapHorizontal: true,
   debug: false,
   background: '#16213e',
@@ -443,7 +444,7 @@ const scene = new OverlayScene(canvas, {
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `gravity` | 1 | Gravity strength |
+| `gravity` | `{ x: 0, y: 1 }` | Gravity vector. Both axes support negative values |
 | `wrapHorizontal` | true | Objects wrap around screen edges |
 | `debug` | false | Show collision wireframes |
 | `background` | transparent | Canvas background color |
@@ -641,12 +642,52 @@ setLogLevel('debug');  // Options: debug, info, warn, error
 ## Lifecycle
 
 ```typescript
-scene.start();           // Start simulation
-scene.stop();            // Pause simulation
-scene.resize(w, h);      // Resize canvas and bounds
-scene.setDebug(true);    // Toggle wireframe mode
-scene.destroy();         // Clean up resources
+scene.start();                          // Start simulation
+scene.stop();                           // Pause simulation
+scene.resize(w, h);                     // Resize canvas and bounds
+scene.setDebug(true);                   // Toggle wireframe mode
+scene.setGravity({ x: 0, y: -1 });     // Set gravity (negative y = upward)
+scene.setGravity({ x: 0, y: 0 });      // Zero gravity
+scene.setGravity({ x: 1, y: 0 });      // Sideways gravity
+scene.destroy();                        // Clean up resources
 ```
+
+### Per-Object Gravity Override
+
+Individual dynamic objects can have their own gravity vector, independent of the scene gravity. This is done via the `gravityOverride` field in `ObjectConfig`, which automatically adds the `gravity_override` tag to the object.
+
+```typescript
+// Spawn a floaty object that drifts upward
+scene.spawnObject({
+  x: 200, y: 300,
+  radius: 20,
+  fillStyle: '#4a90d9',
+  tags: ['falling', 'grabable'],
+  gravityOverride: { x: 0, y: -0.3 }  // floats upward
+});
+
+// Zero gravity — hovers in place
+scene.spawnObject({
+  x: 400, y: 200,
+  radius: 15,
+  fillStyle: '#e94560',
+  tags: ['falling'],
+  gravityOverride: { x: 0, y: 0 }
+});
+
+// Change or clear a gravity override at runtime
+scene.setObjectGravityOverride(id, { x: 0.5, y: 0 }); // drift sideways
+scene.setObjectGravityOverride(id, null);               // restore scene gravity
+```
+
+Tags are either boolean (presence = true) or carry a value. `gravity_override` is a value tag — its Vector2 value is set via `gravityOverride` in the config. Boolean tags (`falling`, `grabable`, `follow_window`) need no value.
+
+| Tag | Type | Behavior |
+|-----|------|----------|
+| `falling` | boolean | Dynamic body affected by gravity |
+| `grabable` | boolean | Can be grabbed with mouse |
+| `follow_window` | boolean | Walks toward mouse when grounded |
+| `gravity_override` | Vector2 | Uses own gravity instead of scene gravity |
 
 ## Examples
 
@@ -673,6 +714,7 @@ import type {
   // Scene configuration
   OverlaySceneConfig,
   Bounds,
+  Vector2,
   ContainerOptions,
   FloorConfig,
 
@@ -732,5 +774,5 @@ import type {
 } from '@blorkfield/overlay-core';
 
 // Tag constants (values, not types)
-import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
+import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW, TAG_GRAVITY_OVERRIDE } from '@blorkfield/overlay-core';
 ```

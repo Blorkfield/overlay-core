@@ -26,10 +26,12 @@ const inputSpawnX = document.getElementById('input-spawn-x') as HTMLInputElement
 const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElement;
 const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
 const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
-const tagsAvailable = document.getElementById('tags-available') as HTMLSelectElement;
-const tagsSelected = document.getElementById('tags-selected') as HTMLSelectElement;
-const btnTagAdd = document.getElementById('btn-tag-add') as HTMLButtonElement;
-const btnTagRemove = document.getElementById('btn-tag-remove') as HTMLButtonElement;
+const entityTagButtons: Record<string, HTMLElement> = {
+  falling: document.getElementById('entity-tag-falling') as HTMLButtonElement,
+  grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
+  follow_window: document.getElementById('entity-tag-follow-window') as HTMLButtonElement,
+  gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
+};
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
@@ -58,10 +60,11 @@ const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLI
 const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSelectElement;
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
 const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
-const textTagsAvailable = document.getElementById('text-tags-available') as HTMLSelectElement;
-const textTagsSelected = document.getElementById('text-tags-selected') as HTMLSelectElement;
-const btnTextTagAdd = document.getElementById('btn-text-tag-add') as HTMLButtonElement;
-const btnTextTagRemove = document.getElementById('btn-text-tag-remove') as HTMLButtonElement;
+const textTagButtons: Record<string, HTMLElement> = {
+  falling: document.getElementById('text-tag-falling') as HTMLButtonElement,
+  grabable: document.getElementById('text-tag-grabable') as HTMLButtonElement,
+  follow_window: document.getElementById('text-tag-follow-window') as HTMLButtonElement,
+};
 const btnSpawnText = document.getElementById('btn-spawn-text') as HTMLButtonElement;
 
 // Settings panel elements
@@ -70,11 +73,23 @@ const settingsDragHandle = document.getElementById('settings-drag-handle') as HT
 const settingsCollapseBtn = document.getElementById('settings-collapse') as HTMLButtonElement;
 const settingsContent = document.getElementById('settings-content') as HTMLDivElement;
 
-// Entity panel elements
+// Scene management panel elements
 const entityPanel = document.getElementById('entity-panel') as HTMLDivElement;
 const entityDragHandle = document.getElementById('entity-drag-handle') as HTMLDivElement;
 const entityCollapseBtn = document.getElementById('entity-collapse') as HTMLButtonElement;
 const entityContent = document.getElementById('entity-content') as HTMLDivElement;
+const selectSpawnType = document.getElementById('select-spawn-type') as HTMLSelectElement;
+const spawnEntityFields = document.getElementById('spawn-entity-fields') as HTMLDivElement;
+const spawnTextFields = document.getElementById('spawn-text-fields') as HTMLDivElement;
+const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
+const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
+const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
+const inputEntityGovX = document.getElementById('input-entity-gov-x') as HTMLInputElement;
+const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInputElement;
+
+// Stop clicks on the inline inputs from toggling the gravity_override tag button
+inputEntityGovX.addEventListener('click', e => e.stopPropagation());
+inputEntityGovY.addEventListener('click', e => e.stopPropagation());
 
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
@@ -111,13 +126,27 @@ const availableImages = [
 // Available tags for effect objects
 const effectObjectTags = ['falling', 'window_follow', 'grabable'];
 
-// Available tags for entity spawning
-const spawnableTags = ['falling', 'window_follow', 'grabable'];
-let selectedSpawnTags: string[] = [];
+// Tag button toggle state
+const activeEntityTags = new Set<string>();
+const activeTextTags = new Set<string>();
 
-// Available tags for text obstacle spawning
-const textSpawnableTags = ['falling', 'window_follow', 'grabable', 'text-obstacle'];
-let selectedTextTags: string[] = [];
+function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<string>): void {
+  for (const [tag, btn] of Object.entries(buttons)) {
+    btn.addEventListener('click', () => {
+      if (activeSet.has(tag)) {
+        activeSet.delete(tag);
+        btn.classList.remove('active');
+      } else {
+        activeSet.add(tag);
+        btn.classList.add('active');
+      }
+    });
+  }
+}
+
+setupTagButtons(entityTagButtons, activeEntityTags);
+
+setupTagButtons(textTagButtons, activeTextTags);
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -163,10 +192,13 @@ async function createScene(width: number, height: number): Promise<void> {
   canvas.height = height;
   sceneWrapper.insertBefore(canvas, sceneWrapper.firstChild);
 
+  const gx = parseFloat(inputGravityX.value);
+  const gy = parseFloat(inputGravityY.value);
+
   // Create scene
   scene = new OverlayScene(canvas, {
     bounds: { top: 0, bottom: height, left: 0, right: width },
-    gravity: 1,
+    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy },
     wrapHorizontal: true,
     debug: false,
     background: { color: '#16213e' },
@@ -317,89 +349,6 @@ function applySize(): void {
   createScene(width, height);
 }
 
-// Tag picker functions
-function renderTagPicker(): void {
-  // Render available tags (those not selected)
-  tagsAvailable.innerHTML = '';
-  spawnableTags
-    .filter(tag => !selectedSpawnTags.includes(tag))
-    .forEach(tag => {
-      const option = document.createElement('option');
-      option.value = tag;
-      option.textContent = tag;
-      tagsAvailable.appendChild(option);
-    });
-
-  // Render selected tags
-  tagsSelected.innerHTML = '';
-  selectedSpawnTags.forEach(tag => {
-    const option = document.createElement('option');
-    option.value = tag;
-    option.textContent = tag;
-    tagsSelected.appendChild(option);
-  });
-}
-
-function moveTagsToSelected(): void {
-  const selected = Array.from(tagsAvailable.selectedOptions).map(opt => opt.value);
-  selectedSpawnTags.push(...selected);
-  renderTagPicker();
-}
-
-function moveTagsToAvailable(): void {
-  const selected = Array.from(tagsSelected.selectedOptions).map(opt => opt.value);
-  selectedSpawnTags = selectedSpawnTags.filter(tag => !selected.includes(tag));
-  renderTagPicker();
-}
-
-// Initialize tag picker
-renderTagPicker();
-
-// Tag picker event listeners
-btnTagAdd.addEventListener('click', moveTagsToSelected);
-btnTagRemove.addEventListener('click', moveTagsToAvailable);
-
-// Text tag picker functions
-function renderTextTagPicker(): void {
-  // Render available tags (those not selected)
-  textTagsAvailable.innerHTML = '';
-  textSpawnableTags
-    .filter(tag => !selectedTextTags.includes(tag))
-    .forEach(tag => {
-      const option = document.createElement('option');
-      option.value = tag;
-      option.textContent = tag;
-      textTagsAvailable.appendChild(option);
-    });
-
-  // Render selected tags
-  textTagsSelected.innerHTML = '';
-  selectedTextTags.forEach(tag => {
-    const option = document.createElement('option');
-    option.value = tag;
-    option.textContent = tag;
-    textTagsSelected.appendChild(option);
-  });
-}
-
-function moveTextTagsToSelected(): void {
-  const selected = Array.from(textTagsAvailable.selectedOptions).map(opt => opt.value);
-  selectedTextTags.push(...selected);
-  renderTextTagPicker();
-}
-
-function moveTextTagsToAvailable(): void {
-  const selected = Array.from(textTagsSelected.selectedOptions).map(opt => opt.value);
-  selectedTextTags = selectedTextTags.filter(tag => !selected.includes(tag));
-  renderTextTagPicker();
-}
-
-// Initialize text tag picker
-renderTextTagPicker();
-
-// Text tag picker event listeners
-btnTextTagAdd.addEventListener('click', moveTextTagsToSelected);
-btnTextTagRemove.addEventListener('click', moveTextTagsToAvailable);
 
 async function spawnRandomEntity(): Promise<void> {
   if (!scene || !canvas) return;
@@ -416,8 +365,11 @@ async function spawnRandomEntity(): Promise<void> {
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  // Use selected tags from picker
-  const tags = [...selectedSpawnTags];
+  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override');
+  const gravityOverride = activeEntityTags.has('gravity_override') ? {
+    x: parseFloat(inputEntityGovX.value) || 0,
+    y: parseFloat(inputEntityGovY.value) || 0
+  } : undefined;
   console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
@@ -428,7 +380,8 @@ async function spawnRandomEntity(): Promise<void> {
     imageUrl: selectedImage || undefined,
     tags,
     ttl: ttlValue,
-    weight: weightValue || undefined
+    weight: weightValue || undefined,
+    gravityOverride
   };
 
   // Use async for image objects (extracts shape from alpha), sync otherwise
@@ -444,6 +397,14 @@ btnFullscreen.addEventListener('click', setFullscreenMode);
 btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
+
+selectSpawnType.addEventListener('change', () => {
+  const isText = selectSpawnType.value === 'text';
+  spawnEntityFields.style.display = isText ? 'none' : '';
+  spawnTextFields.style.display = isText ? '' : 'none';
+});
+
+
 
 // Populate tag dropdown with current scene tags
 function populateActionTagDropdown(): void {
@@ -495,6 +456,14 @@ btnRemoveAll.addEventListener('click', () => {
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
 });
+
+btnApplyGravity.addEventListener('click', () => {
+  if (!scene) return;
+  const gx = parseFloat(inputGravityX.value);
+  const gy = parseFloat(inputGravityY.value);
+  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy });
+});
+
 
 selectLogLevel.addEventListener('change', () => {
   setLogLevel(selectLogLevel.value as 'warn' | 'info' | 'debug');
@@ -595,7 +564,7 @@ async function spawnTextObstacle(): Promise<void> {
   const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
 
   // Use selected tags from picker - determine static from 'falling' tag
-  const tags = [...selectedTextTags];
+  const tags = [...activeTextTags];
   const isStatic = !tags.includes('falling');
 
   console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);

@@ -30,7 +30,8 @@ import type {
   LetterDebugInfo,
   DOMObstacleConfig,
   DOMObstacleResult,
-  BackgroundConfig
+  BackgroundConfig,
+  Vector2
 } from './types';
 
 interface TTFGlyphRenderInfo {
@@ -81,6 +82,8 @@ interface ObjectEntry {
   domShadowElement?: HTMLElement;
   /** Original transform state for DOM element */
   domOriginalTransform?: string;
+  /** Per-object gravity override — overrides scene gravity for this body only */
+  gravityOverride?: Vector2;
 }
 
 export class OverlayScene {
@@ -132,6 +135,8 @@ export class OverlayScene {
   private readonly grabHistoryRadius = 20;
   // Number of physics substeps per frame — more substeps = better collision at high speeds, more CPU
   private readonly substeps = 2;
+  // Tracks only the bodies with a gravity override — engine gravity handles everyone else
+  private gravityOverrideEntries: Set<ObjectEntry> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -167,7 +172,7 @@ export class OverlayScene {
   constructor(canvas: HTMLCanvasElement, config: OverlaySceneConfig) {
     this.canvas = canvas;
     this.config = {
-      gravity: 1,
+      gravity: { x: 0, y: 1 },
       wrapHorizontal: true,
       debug: false,
       ...config
@@ -883,6 +888,41 @@ export class OverlayScene {
   }
 
   /**
+   * Set gravity at runtime. Supports any direction including negative values.
+   * @example
+   * scene.setGravity({ x: 0, y: 1 });   // Normal downward gravity
+   * scene.setGravity({ x: 0, y: -1 });  // Upward gravity
+   * scene.setGravity({ x: 1, y: 0 });   // Sideways gravity
+   * scene.setGravity({ x: 0, y: 0 });   // Zero gravity
+   */
+  setGravity(gravity: { x: number; y: number }): void {
+    this.config.gravity = gravity;
+    this.engine.gravity.x = gravity.x;
+    this.engine.gravity.y = gravity.y;
+  }
+
+  /**
+   * Set or clear a per-object gravity override at runtime.
+   * Pass `null` to remove the override and restore scene gravity for that object.
+   */
+  setObjectGravityOverride(id: string, gravity: Vector2 | null): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (gravity === null) {
+      entry.gravityOverride = undefined;
+      this.gravityOverrideEntries.delete(entry);
+      const idx = entry.tags.indexOf('gravity_override');
+      if (idx !== -1) entry.tags.splice(idx, 1);
+    } else {
+      entry.gravityOverride = gravity;
+      this.gravityOverrideEntries.add(entry);
+      if (!entry.tags.includes('gravity_override')) {
+        entry.tags.push('gravity_override');
+      }
+    }
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {
@@ -961,7 +1001,10 @@ export class OverlayScene {
     }
 
     const id = crypto.randomUUID();
-    const tags = config.tags ?? [];
+    const tags = [...(config.tags ?? [])];
+    if (config.gravityOverride && !tags.includes('gravity_override')) {
+      tags.push('gravity_override');
+    }
     const isStatic = !tags.includes('falling');
 
     logger.debug('OverlayScene', `Spawning object`, {
@@ -1014,9 +1057,11 @@ export class OverlayScene {
       pressureThreshold,
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
-      clicksRemaining
+      clicksRemaining,
+      gravityOverride: config.gravityOverride
     };
     this.objects.set(id, entry);
+    if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
@@ -1036,7 +1081,10 @@ export class OverlayScene {
    */
   async spawnObjectAsync(config: ObjectConfig): Promise<string> {
     const id = crypto.randomUUID();
-    const tags = config.tags ?? [];
+    const tags = [...(config.tags ?? [])];
+    if (config.gravityOverride && !tags.includes('gravity_override')) {
+      tags.push('gravity_override');
+    }
     const isStatic = !tags.includes('falling');
 
     logger.debug('OverlayScene', `Spawning object async`, {
@@ -1087,9 +1135,11 @@ export class OverlayScene {
       pressureThreshold,
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
-      clicksRemaining
+      clicksRemaining,
+      gravityOverride: config.gravityOverride
     };
     this.objects.set(id, entry);
+    if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
@@ -1194,6 +1244,7 @@ export class OverlayScene {
     // Emit objectRemoved event before removing
     this.emitLifecycleEvent('objectRemoved', this.toObjectState(entry));
     Matter.Composite.remove(this.engine.world, entry.body);
+    this.gravityOverrideEntries.delete(entry);
     this.objects.delete(id);
   }
 
@@ -1208,6 +1259,7 @@ export class OverlayScene {
       Matter.Composite.remove(this.engine.world, entry.body);
     }
     this.objects.clear();
+    this.gravityOverrideEntries.clear();
   }
 
   removeObjectsByTag(tag: string): void {
@@ -2479,7 +2531,17 @@ export class OverlayScene {
   private loop = (): void => {
     // Step physics multiple times per frame with a smaller timestep (substepping)
     const substepDelta = 1000 / 60 / this.substeps;
+    const scale = this.engine.gravity.scale;
     for (let i = 0; i < this.substeps; i++) {
+      // Only iterate the small set of override bodies — engine gravity handles everyone else
+      for (const entry of this.gravityOverrideEntries) {
+        if (entry.body.isStatic || entry.body.isSleeping) continue;
+        const g = entry.gravityOverride!;
+        Matter.Body.applyForce(entry.body, entry.body.position, {
+          x: entry.body.mass * (g.x - this.engine.gravity.x) * scale,
+          y: entry.body.mass * (g.y - this.engine.gravity.y) * scale,
+        });
+      }
       Matter.Engine.update(this.engine, substepDelta);
     }
 
