@@ -8,7 +8,7 @@ export interface Vector2 {
 
 export interface OverlaySceneConfig {
   bounds: Bounds;
-  /** Gravity vector. Default: { x: 0, y: 1 }. Negative y = upward gravity. */
+  /** Gravity vector. Default: { x: 0, y: -1 }. Negative y = downward gravity, positive y = upward. */
   gravity?: Vector2;
   wrapHorizontal?: boolean;
   debug?: boolean;
@@ -179,7 +179,7 @@ export interface DespawnEffectConfig {
 /**
  * Unified configuration for spawning scene objects.
  * Objects are configured via tags that define their behavior:
- * - 'falling': Object is dynamic and affected by gravity (without this tag, object is static)
+ * - 'static': Object is not affected by gravity (without this tag, object is dynamic by default)
  * - 'follow_window': Object follows mouse position when grounded within the canvas window
  * - 'grabable': Object can be dragged via mouse constraint
  */
@@ -222,11 +222,30 @@ export interface ObjectConfig {
    * Supports negative values (e.g. { x: 0, y: -1 } for upward gravity).
    */
   gravityOverride?: Vector2;
+  /**
+   * Target for the 'follow_window' tag. Can be:
+   * - 'mouse' (default) — follows the mouse cursor
+   * - An entity ID — follows that specific entity
+   * - A tag string — follows the first entity found with that tag
+   * Only used when 'follow_window' is in tags.
+   */
+  followTarget?: string;
+  /**
+   * Speed multiplier for follow_window and future movement behaviors. Automatically adds the
+   * 'speed_override' tag. Default: 1. Negative values cause the object to run away from its target.
+   */
+  speedOverride?: number;
+  /**
+   * Physics mass override. Automatically adds the 'mass_override' tag.
+   * Higher mass resists follow forces and other applied forces more. Removing the tag restores the
+   * density-based mass. Accepts positive numbers (use integers for predictable behavior).
+   */
+  massOverride?: number;
 }
 
 /**
  * Dynamic object data passed to update callbacks.
- * Only objects with the 'falling' tag (dynamic objects) are included.
+ * Only dynamic objects (objects without the 'static' tag) are included.
  */
 export interface DynamicObject {
   id: string;
@@ -265,7 +284,7 @@ export type LifecycleCallback<T extends LifecycleEvent> =
     : (object: ObjectState) => void;
 
 export interface UpdateCallbackData {
-  /** All dynamic objects (objects with 'falling' tag) */
+  /** All dynamic objects (objects without 'static' tag) */
   objects: DynamicObject[];
 }
 
@@ -359,7 +378,7 @@ export type EffectType = EffectConfig['type'];
 /**
  * Configuration for pressure-based collapse of obstacles.
  * When pressure (number of objects resting on an obstacle) reaches the threshold,
- * the obstacle converts to dynamic (falling).
+ * the obstacle converts to dynamic (removes 'static' tag).
  */
 export interface PressureThresholdConfig {
   /**
@@ -381,7 +400,7 @@ export interface PressureThresholdConfig {
 }
 
 /**
- * Configuration for weight of obstacles (used when they collapse and become falling objects).
+ * Configuration for weight of obstacles (used when they collapse and become dynamic objects).
  * Weight determines how much pressure an object contributes when resting on something.
  */
 export interface WeightConfig {
@@ -446,7 +465,9 @@ export interface TextObstacleConfig {
   fontName?: string;
   /** Base URL path for fonts directory (default: '/fonts/') */
   fontsBasePath?: string;
-  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
+  /** Whether letters are static obstacles (default: true). Set to false for falling letters. */
+  isStatic?: boolean;
+  /** Tags to apply to all letters */
   tags?: string[];
   /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
   stringTag?: string;
@@ -541,7 +562,9 @@ export interface TTFTextObstacleConfig {
   fontSize: number;
   /** URL path to the TTF/OTF font file */
   fontUrl: string;
-  /** Tags to apply to all letters (use 'falling' for dynamic objects) */
+  /** Whether letters are static obstacles (default: true). Set to false for falling letters. */
+  isStatic?: boolean;
+  /** Tags to apply to all letters */
   tags?: string[];
   /** Tag for the entire string (for releasing whole string). Auto-generated if not provided */
   stringTag?: string;

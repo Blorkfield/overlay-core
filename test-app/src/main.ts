@@ -27,10 +27,12 @@ const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElemen
 const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
 const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
 const entityTagButtons: Record<string, HTMLElement> = {
-  falling: document.getElementById('entity-tag-falling') as HTMLButtonElement,
+  static: document.getElementById('entity-tag-static') as HTMLButtonElement,
   grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
-  follow_window: document.getElementById('entity-tag-follow-window') as HTMLButtonElement,
+  follow_window: document.getElementById('entity-tag-follow-window') as HTMLDivElement,
   gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
+  speed_override: document.getElementById('entity-tag-speed-override') as HTMLDivElement,
+  mass_override: document.getElementById('entity-tag-mass-override') as HTMLDivElement,
 };
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
@@ -61,7 +63,7 @@ const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSel
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
 const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
 const textTagButtons: Record<string, HTMLElement> = {
-  falling: document.getElementById('text-tag-falling') as HTMLButtonElement,
+  static: document.getElementById('text-tag-static') as HTMLButtonElement,
   grabable: document.getElementById('text-tag-grabable') as HTMLButtonElement,
   follow_window: document.getElementById('text-tag-follow-window') as HTMLButtonElement,
 };
@@ -81,15 +83,40 @@ const entityContent = document.getElementById('entity-content') as HTMLDivElemen
 const selectSpawnType = document.getElementById('select-spawn-type') as HTMLSelectElement;
 const spawnEntityFields = document.getElementById('spawn-entity-fields') as HTMLDivElement;
 const spawnTextFields = document.getElementById('spawn-text-fields') as HTMLDivElement;
+const spawnSectionHeader = document.getElementById('spawn-section-header') as HTMLDivElement;
+const spawnSectionBody = document.getElementById('spawn-section-body') as HTMLDivElement;
 const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
 const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
 const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
 const inputEntityGovX = document.getElementById('input-entity-gov-x') as HTMLInputElement;
 const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInputElement;
+const inputEntitySpeed = document.getElementById('input-entity-speed') as HTMLInputElement;
+const inputEntityMass = document.getElementById('input-entity-mass') as HTMLInputElement;
 
-// Stop clicks on the inline inputs from toggling the gravity_override tag button
+// Entity control elements
+const selectControlTag = document.getElementById('select-control-tag') as HTMLSelectElement;
+const entityCtrlBody = document.getElementById('entity-ctrl-body') as HTMLDivElement;
+const inputCtrlPosX = document.getElementById('input-ctrl-pos-x') as HTMLInputElement;
+const inputCtrlPosY = document.getElementById('input-ctrl-pos-y') as HTMLInputElement;
+const btnCtrlPosition = document.getElementById('btn-ctrl-position') as HTMLButtonElement;
+const inputCtrlVelX = document.getElementById('input-ctrl-vel-x') as HTMLInputElement;
+const inputCtrlVelY = document.getElementById('input-ctrl-vel-y') as HTMLInputElement;
+const btnCtrlVelocity = document.getElementById('btn-ctrl-velocity') as HTMLButtonElement;
+const inputCtrlSpin = document.getElementById('input-ctrl-spin') as HTMLInputElement;
+const btnCtrlSpin = document.getElementById('btn-ctrl-spin') as HTMLButtonElement;
+const inputCtrlScaleX = document.getElementById('input-ctrl-scale-x') as HTMLInputElement;
+const inputCtrlScaleY = document.getElementById('input-ctrl-scale-y') as HTMLInputElement;
+const btnCtrlScale = document.getElementById('btn-ctrl-scale') as HTMLButtonElement;
+
+// Stop clicks on the inline inputs from toggling the tag buttons
 inputEntityGovX.addEventListener('click', e => e.stopPropagation());
 inputEntityGovY.addEventListener('click', e => e.stopPropagation());
+inputEntitySpeed.addEventListener('click', e => e.stopPropagation());
+inputEntityMass.addEventListener('click', e => e.stopPropagation());
+
+const selectFollowTarget = document.getElementById('select-follow-target') as HTMLSelectElement;
+selectFollowTarget.addEventListener('click', e => e.stopPropagation());
+selectFollowTarget.addEventListener('mousedown', e => e.stopPropagation());
 
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
@@ -124,7 +151,7 @@ const availableImages = [
 ];
 
 // Available tags for effect objects
-const effectObjectTags = ['falling', 'window_follow', 'grabable'];
+const effectObjectTags = ['static', 'window_follow', 'grabable'];
 
 // Tag button toggle state
 const activeEntityTags = new Set<string>();
@@ -146,7 +173,27 @@ function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<st
 
 setupTagButtons(entityTagButtons, activeEntityTags);
 
+const BEHAVIOR_TAGS = new Set(['static', 'grabable', 'gravity_override', 'follow_window', 'speed_override', 'mass_override', 'shadow']);
+
+// When follow_window is toggled on, populate the target dropdown from the live scene
+entityTagButtons['follow_window'].addEventListener('click', () => {
+  if (!activeEntityTags.has('follow_window')) return;
+  const allTags = scene
+    ? [...new Set(scene.getAllTags())].filter(t => !BEHAVIOR_TAGS.has(t)).sort()
+    : [];
+  selectFollowTarget.innerHTML = '<option value="mouse">mouse</option>';
+  for (const tag of allTags) {
+    const opt = document.createElement('option');
+    opt.value = tag;
+    opt.textContent = tag;
+    selectFollowTarget.appendChild(opt);
+  }
+});
+
+// Text letters default to static
+activeTextTags.add('static');
 setupTagButtons(textTagButtons, activeTextTags);
+textTagButtons['static']?.classList.add('active');
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -198,7 +245,7 @@ async function createScene(width: number, height: number): Promise<void> {
   // Create scene
   scene = new OverlayScene(canvas, {
     bounds: { top: 0, bottom: height, left: 0, right: width },
-    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy },
+    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy },
     wrapHorizontal: true,
     debug: false,
     background: { color: '#16213e' },
@@ -271,15 +318,15 @@ async function createScene(width: number, height: number): Promise<void> {
   });
   console.log('Title text created:', titleResult.stringTag, titleResult.wordTags);
 
-  // Add a simple circle with window_follow tag
+  // Add a simple circle for testbed use
   scene.spawnObject({
     x: centerX,
     y: titleResult.bounds.bottom + 100,
     radius: 30,
     fillStyle: '#4a90d9',
-    tags: ['falling', 'window_follow', 'grabable']
+    tags: ['grabable'],
   });
-  console.log('window_follow circle spawned');
+  console.log('inert circle spawned');
 
   // Re-initialize effects with new scene
   updateBurstEffect();
@@ -365,11 +412,15 @@ async function spawnRandomEntity(): Promise<void> {
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override');
+  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override' && t !== 'follow_window' && t !== 'speed_override' && t !== 'mass_override');
   const gravityOverride = activeEntityTags.has('gravity_override') ? {
     x: parseFloat(inputEntityGovX.value) || 0,
     y: parseFloat(inputEntityGovY.value) || 0
   } : undefined;
+  if (activeEntityTags.has('follow_window')) tags.push('follow_window');
+  const followTarget = activeEntityTags.has('follow_window') ? selectFollowTarget.value : undefined;
+  const speedOverride = activeEntityTags.has('speed_override') ? (parseFloat(inputEntitySpeed.value) || 1) : undefined;
+  const massOverride = activeEntityTags.has('mass_override') ? (parseInt(inputEntityMass.value) || 10) : undefined;
   console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
@@ -381,7 +432,10 @@ async function spawnRandomEntity(): Promise<void> {
     tags,
     ttl: ttlValue,
     weight: weightValue || undefined,
-    gravityOverride
+    gravityOverride,
+    followTarget,
+    speedOverride,
+    massOverride
   };
 
   // Use async for image objects (extracts shape from alpha), sync otherwise
@@ -397,6 +451,13 @@ btnFullscreen.addEventListener('click', setFullscreenMode);
 btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
+
+spawnSectionHeader.addEventListener('click', () => {
+  const collapsed = spawnSectionBody.style.display === 'none';
+  spawnSectionBody.style.display = collapsed ? '' : 'none';
+  const btn = spawnSectionHeader.querySelector('button');
+  if (btn) btn.textContent = collapsed ? '−' : '+';
+});
 
 selectSpawnType.addEventListener('change', () => {
   const isText = selectSpawnType.value === 'text';
@@ -453,6 +514,71 @@ btnRemoveAll.addEventListener('click', () => {
   scene?.removeAll();
 });
 
+// ==================== ENTITY CONTROLS ====================
+
+function populateControlTagDropdown(): void {
+  if (!scene) return;
+  const currentValue = selectControlTag.value;
+  const tags = scene.getAllTags();
+  selectControlTag.innerHTML = '<option value="">-- Select Tag --</option>';
+  for (const tag of tags) {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    selectControlTag.appendChild(option);
+  }
+  if (tags.includes(currentValue)) selectControlTag.value = currentValue;
+}
+
+selectControlTag.addEventListener('focus', populateControlTagDropdown);
+selectControlTag.addEventListener('click', populateControlTagDropdown);
+selectControlTag.addEventListener('change', () => {
+  entityCtrlBody.style.display = selectControlTag.value ? 'flex' : 'none';
+});
+
+btnCtrlPosition.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const x = parseFloat(inputCtrlPosX.value);
+  const y = parseFloat(inputCtrlPosY.value);
+  if (!tag || isNaN(x) || isNaN(y)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setPosition(id, { x, y });
+  }
+});
+
+btnCtrlVelocity.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const vx = parseFloat(inputCtrlVelX.value);
+  const vy = parseFloat(inputCtrlVelY.value);
+  if (!tag || isNaN(vx) || isNaN(vy)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setVelocity(id, { x: vx, y: vy });
+  }
+});
+
+btnCtrlSpin.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const omega = parseFloat(inputCtrlSpin.value);
+  if (!tag || isNaN(omega)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setObjectAngularVelocity(id, omega);
+  }
+});
+
+btnCtrlScale.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const sx = parseFloat(inputCtrlScaleX.value);
+  const sy = parseFloat(inputCtrlScaleY.value);
+  if (!tag || isNaN(sx) || isNaN(sy) || sx <= 0 || sy <= 0) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setObjectScale(id, sx, sy);
+  }
+});
+
 checkboxDebug.addEventListener('change', () => {
   scene?.setDebug(checkboxDebug.checked);
 });
@@ -461,7 +587,7 @@ btnApplyGravity.addEventListener('click', () => {
   if (!scene) return;
   const gx = parseFloat(inputGravityX.value);
   const gy = parseFloat(inputGravityY.value);
-  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy });
+  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy });
 });
 
 
@@ -563,9 +689,8 @@ async function spawnTextObstacle(): Promise<void> {
   const startX = selectTextXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
   const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
 
-  // Use selected tags from picker - determine static from 'falling' tag
-  const tags = [...activeTextTags];
-  const isStatic = !tags.includes('falling');
+  const isStatic = activeTextTags.has('static');
+  const tags = [...activeTextTags].filter(t => t !== 'static');
 
   console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);
 

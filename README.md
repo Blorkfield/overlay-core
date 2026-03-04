@@ -22,27 +22,82 @@ pnpm add @blorkfield/overlay-core
 
 ### Tag Based Behavior
 
-Objects don't have fixed types. Instead, their behavior is determined by string tags. Import the tag constants to avoid magic strings:
+Tags are the source of truth for object behavior. Adding a tag activates the associated effect; removing it deactivates it. There are no separate type systems — the tag array on each object drives everything.
+
+Import the tag constants to avoid magic strings:
 
 ```typescript
-import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
+import { TAGS, TAG_STATIC, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
 
 // Use individual constants
-scene.spawnObject({ tags: [TAG_FALLING, TAG_GRABABLE], ... });
+scene.spawnObject({ tags: [TAG_GRABABLE], ... });           // dynamic by default
+scene.spawnObject({ tags: [TAG_STATIC, TAG_GRABABLE], ... }); // static obstacle
 
 // Or destructure from TAGS object
-const { FALLING, GRABABLE } = TAGS;
-scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
+const { STATIC, GRABABLE } = TAGS;
+scene.spawnObject({ tags: [STATIC], ... });
 ```
 
 | Constant | Value | Behavior |
 |----------|-------|----------|
-| `TAG_FALLING` / `TAGS.FALLING` | `'falling'` | Object is dynamic and affected by gravity |
-| `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
+| `TAG_STATIC` / `TAGS.STATIC` | `'static'` | Object is a static obstacle, not affected by gravity. Without this tag, objects are dynamic by default. |
+| `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object walks toward a target when grounded (default: mouse) |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
-| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity (set via `gravityOverride` in config) |
+| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
+| `TAG_SPEED_OVERRIDE` / `TAGS.SPEED_OVERRIDE` | `'speed_override'` | Multiplies movement speed for `follow_window` and future movement behaviors. Negative = run away from target. |
+| `TAG_MASS_OVERRIDE` / `TAGS.MASS_OVERRIDE` | `'mass_override'` | Overrides the physics mass. Higher mass resists follow forces more; lower mass allows the follow force to overcome gravity. |
 
-Without the `falling` tag, objects are static and won't move.
+Tags can be added and removed at runtime to change behavior dynamically:
+
+```typescript
+scene.addTag(id, 'static');         // freeze an object in place
+scene.removeTag(id, 'static');      // release it to fall
+scene.addTag(id, 'grabable');       // make it grabbable
+scene.removeTag(id, 'grabable');    // prevent grabbing
+```
+
+The `gravity_override` tag carries a value (a Vector2). Use `setObjectGravityOverride` to set the value and activate the tag, or pass it via `gravityOverride` in spawn config. Removing the tag restores scene gravity.
+
+The `speed_override` tag carries a numeric multiplier. Use `setObjectSpeedOverride` to set the value and activate the tag, or pass it via `speedOverride` in spawn config. Removing the tag restores default speed.
+
+The `mass_override` tag carries a numeric mass value. Use `setObjectMassOverride` to set the value and activate the tag, or pass it via `massOverride` in spawn config. Removing the tag restores the natural density-based mass.
+
+### Entity Tags
+
+Every spawned object is automatically assigned a permanent, human-readable **entity tag** that serves as its stable identity. The format is derived from the object's shape or image:
+
+| Object type | Entity tag format | Example |
+|-------------|-------------------|---------|
+| Circle | `circle-<4hex>` | `circle-a3f2` |
+| Rectangle | `rect-<4hex>` | `rect-b1c4` |
+| Image-based | `<filename>-<4hex>` | `cat-e9d2` |
+| Text letter | `letter-<char>-<4hex>` | `letter-h-7a3f` |
+| DOM element | `dom-<4hex>` | `dom-5c21` |
+
+Entity tags appear in `getAllTags()` alongside all other tags, making them usable as follow targets or for runtime queries. They **cannot be removed** — calling `removeTag(id, entityTag)` will log a warning and return without effect. This ensures every object always has a stable, identifiable tag.
+
+### `follow_window` Tag Target
+
+The `follow_window` tag walks an object toward a target when grounded. The default target is `'mouse'`. You can change it at any time:
+
+```typescript
+// Follow the mouse (default)
+scene.addTag(id, 'follow_window');
+
+// Follow a named target (e.g., another entity's tag)
+scene.setFollowWindowTarget(id, 'circle-a3f2');
+
+// Follow any entity that has a given tag
+scene.setFollowWindowTarget(id, 'letter-h-7a3f');
+
+// Follow a string/word group tag
+scene.setFollowWindowTarget(id, 'title-text');
+
+// Stop following by removing the tag
+scene.removeTag(id, 'follow_window');
+```
+
+Target resolution order: named follow targets (e.g., `'mouse'`) → object ID → first object with a matching tag.
 
 ### Pressure System
 
@@ -83,7 +138,7 @@ const { canvas, bounds } = OverlayScene.createContainer(container, {
 // Create scene
 const scene = new OverlayScene(canvas, {
   bounds,
-  gravity: { x: 0, y: 1 },
+  gravity: { x: 0, y: -1 },
   wrapHorizontal: true,
   background: 'transparent'
 });
@@ -98,22 +153,22 @@ All objects are created through `spawnObject()` (or `spawnObjectAsync()` for ima
 ### Basic Shapes
 
 ```typescript
-// Circle (dynamic, falls with gravity)
+// Circle (dynamic by default — falls with gravity)
 scene.spawnObject({
   x: 100,
   y: 50,
   radius: 20,
   fillStyle: '#ff0000',
-  tags: ['falling']
 });
 
-// Rectangle (static, doesn't move)
+// Rectangle (static obstacle — won't move)
 scene.spawnObject({
   x: 200,
   y: 300,
   width: 100,
   height: 20,
-  fillStyle: '#0000ff'
+  fillStyle: '#0000ff',
+  tags: ['static']
 });
 
 // Polygon shapes
@@ -122,7 +177,6 @@ scene.spawnObject({
   y: 100,
   radius: 25,
   fillStyle: '#00ff00',
-  tags: ['falling'],
   shape: { type: 'hexagon' }
 });
 ```
@@ -137,7 +191,7 @@ const id = await scene.spawnObjectAsync({
   y: 100,
   imageUrl: '/images/coin.png',
   size: 50,
-  tags: ['falling', 'grabable']
+  tags: ['grabable']  // dynamic by default
 });
 ```
 
@@ -242,14 +296,16 @@ const result = await scene.addTTFTextObstacles({
 });
 ```
 
+Text obstacles default to `isStatic: true` — they are static obstacles that things fall onto. Pass `isStatic: false` to spawn falling text instead.
+
 ### Managing Text Obstacles
 
 ```typescript
-// Spawn text that immediately falls (already has 'falling' tag)
+// Spawn text that immediately falls (isStatic: false)
 const result = await scene.spawnFallingTextObstacles(config);
 const result = await scene.spawnFallingTTFTextObstacles(config);
 
-// Release text obstacles (add 'falling' tag)
+// Release static text obstacles (removes 'static' tag so they fall)
 scene.releaseTextObstacles(wordTag);
 
 // Release letters one by one with delay
@@ -280,7 +336,7 @@ scene.setEffect({
     objectConfig: {
       radius: 15,
       fillStyle: '#4a90d9',
-      tags: ['falling']
+      // dynamic by default — no tags needed
     },
     probability: 1,
     minScale: 0.8,
@@ -342,14 +398,24 @@ scene.removeAllObjects();
 scene.removeAll();              // Alias for removeAllObjects
 scene.removeAllByTag('tag');    // Alias for removeObjectsByTag
 
-// Add or remove tags
-scene.addTag(id, 'falling');
-scene.addFallingTag(id);        // Convenience for adding 'falling' tag
-scene.removeTag(id, 'grabable');
+// Add or remove tags — tags drive behavior, changes take effect immediately
+scene.addTag(id, 'grabable');
+scene.removeTag(id, 'static');            // releases a static object to fall
+scene.addTag(id, 'static');              // freezes a dynamic object in place
+scene.addFallingTag(id);                 // convenience: removes 'static', adds 'grabable'
+scene.setFollowWindowTarget(id, 'mouse'); // change what a follow_window object walks toward
+scene.setObjectSpeedOverride(id, 2);     // double movement speed (negative = run away)
+scene.setObjectSpeedOverride(id, null);  // remove speed override
+scene.setObjectMassOverride(id, 50);     // heavy object resists follow force
+scene.setObjectMassOverride(id, null);   // restore natural mass
+scene.setPosition(id, { x: 400, y: 300 });      // teleport object
+scene.setVelocity(id, { x: 10, y: 0 });         // launch object rightward
+scene.setObjectAngularVelocity(id, Math.PI);     // set spin (rad/s)
+scene.setObjectScale(id, 2, 2);                  // scale x and y independently
 
 // Get object info
 const ids = scene.getObjectIds();
-const tagged = scene.getObjectIdsByTag('falling');
+const tagged = scene.getObjectIdsByTag('static');
 const allTags = scene.getAllTags();
 
 // Get full object state
@@ -362,13 +428,25 @@ const objs = scene.getObjectsByTag('tag'); // Returns ObjectState[]
 ```typescript
 // Apply force to objects
 scene.applyForce(id, { x: 0.01, y: -0.02 });
-scene.applyForceToTag('falling', { x: 0.005, y: 0 });
+scene.applyForceToTag('grabable', { x: 0.005, y: 0 });
 
-// Set velocity directly
-scene.setVelocity(id, { x: 5, y: -10 });
+// Set velocity directly (physical convention: positive y = upward, negative y = downward)
+scene.setVelocity(id, { x: 5, y: 10 });   // moving right and upward
+scene.setVelocity(id, { x: 0, y: -10 });  // moving downward
+scene.setVelocity(id, { x: 0, y: 0 });    // stop all movement
 
-// Set position directly
+// Set position directly (screen pixels, y=0 at top)
 scene.setPosition(id, { x: 100, y: 200 });
+
+// Set angular velocity (spin) in radians/second
+// Positive = counter-clockwise, negative = clockwise
+scene.setObjectAngularVelocity(id, Math.PI);  // half-rotation per second CCW
+scene.setObjectAngularVelocity(id, 0);        // stop spinning
+
+// Scale an object (updates both physics shape and sprite rendering)
+scene.setObjectScale(id, 2, 2);    // double size uniformly
+scene.setObjectScale(id, 2, 0.5);  // stretch wide, squash tall
+scene.setObjectScale(id, 1, 1);    // restore original size
 ```
 
 ## Mouse Position and Grab API
@@ -427,7 +505,7 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 ```typescript
 const scene = new OverlayScene(canvas, {
   bounds: { top: 0, bottom: 600, left: 0, right: 800 },
-  gravity: { x: 0, y: 1 },
+  gravity: { x: 0, y: -1 },
   wrapHorizontal: true,
   debug: false,
   background: '#16213e',
@@ -508,7 +586,7 @@ Called every frame with all dynamic object states:
 
 ```typescript
 scene.onUpdate((data) => {
-  // data.objects contains all dynamic (falling) objects
+  // data.objects contains all dynamic objects (those without the 'static' tag)
   for (const obj of data.objects) {
     console.log(obj.id, obj.x, obj.y, obj.angle, obj.tags);
   }
@@ -654,7 +732,7 @@ scene.destroy();                        // Clean up resources
 
 ### Per-Object Gravity Override
 
-Individual dynamic objects can have their own gravity vector, independent of the scene gravity. This is done via the `gravityOverride` field in `ObjectConfig`, which automatically adds the `gravity_override` tag to the object.
+Dynamic objects can have their own gravity vector instead of the scene gravity. Set it via `gravityOverride` in spawn config, or change it at runtime with `setObjectGravityOverride`. This automatically adds or removes the `gravity_override` tag.
 
 ```typescript
 // Spawn a floaty object that drifts upward
@@ -662,7 +740,7 @@ scene.spawnObject({
   x: 200, y: 300,
   radius: 20,
   fillStyle: '#4a90d9',
-  tags: ['falling', 'grabable'],
+  tags: ['grabable'],
   gravityOverride: { x: 0, y: -0.3 }  // floats upward
 });
 
@@ -671,23 +749,76 @@ scene.spawnObject({
   x: 400, y: 200,
   radius: 15,
   fillStyle: '#e94560',
-  tags: ['falling'],
   gravityOverride: { x: 0, y: 0 }
 });
 
 // Change or clear a gravity override at runtime
 scene.setObjectGravityOverride(id, { x: 0.5, y: 0 }); // drift sideways
 scene.setObjectGravityOverride(id, null);               // restore scene gravity
+
+// removeTag works too — setObjectGravityOverride(id, null) calls it internally
+scene.removeTag(id, 'gravity_override');  // restores scene gravity
 ```
 
-Tags are either boolean (presence = true) or carry a value. `gravity_override` is a value tag — its Vector2 value is set via `gravityOverride` in the config. Boolean tags (`falling`, `grabable`, `follow_window`) need no value.
+Tags are the source of truth for all behavior. Boolean tags (presence = active, absence = inactive). `gravity_override` additionally carries a Vector2 value managed via `setObjectGravityOverride` or `gravityOverride` in spawn config.
 
-| Tag | Type | Behavior |
-|-----|------|----------|
-| `falling` | boolean | Dynamic body affected by gravity |
-| `grabable` | boolean | Can be grabbed with mouse |
-| `follow_window` | boolean | Walks toward mouse when grounded |
-| `gravity_override` | Vector2 | Uses own gravity instead of scene gravity |
+| Tag | Behavior |
+|-----|----------|
+| `static` | Static obstacle, not affected by gravity. Absent by default — objects are dynamic unless tagged static. |
+| `grabable` | Can be grabbed and dragged with the mouse |
+| `follow_window` | Always applies a directional force toward its target (in all axes). Gravity determines whether the entity can actually reach targets above/below it. |
+| `gravity_override` | Uses its own gravity vector instead of scene gravity (value set via `setObjectGravityOverride`) |
+| `speed_override` | Multiplies movement speed for `follow_window` and future movement behaviors (value set via `setObjectSpeedOverride`). Negative = runs away from target. Default multiplier: 1 |
+| `mass_override` | Overrides physics mass (value set via `setObjectMassOverride`). Higher mass resists follow forces; lower mass may allow entity to overcome gravity. |
+
+### Speed Override
+
+Objects with `follow_window` move toward their target at default speed. `speed_override` multiplies this force. Negative values reverse the direction, causing the object to run away.
+
+```typescript
+// Spawn a fast follower
+scene.spawnObject({
+  tags: ['follow_window'],
+  speedOverride: 3,   // 3× normal speed — automatically adds 'speed_override' tag
+  // ...
+});
+
+// Spawn a coward that runs away from the mouse
+scene.spawnObject({
+  tags: ['follow_window'],
+  speedOverride: -2,  // flees at 2× speed
+  // ...
+});
+
+// Change speed at runtime
+scene.setObjectSpeedOverride(id, 5);   // very fast follower
+scene.setObjectSpeedOverride(id, -1);  // now runs away at normal speed
+scene.setObjectSpeedOverride(id, null); // remove override, restore default speed
+```
+
+### Mass Override
+
+Entities have a default density of `0.005`, which gives typical sizes a mass of ~6–20 units — enough that normal gravity prevents the follow force from lifting them vertically. `mass_override` lets you change this at spawn or runtime.
+
+```typescript
+// Light object — follow force can overcome normal gravity, moves freely in all directions
+scene.spawnObject({
+  tags: ['follow_window'],
+  massOverride: 1,
+  // ...
+});
+
+// Very heavy object — barely moves toward target under normal gravity
+scene.spawnObject({
+  tags: ['follow_window'],
+  massOverride: 100,
+  // ...
+});
+
+// Change or clear mass at runtime
+scene.setObjectMassOverride(id, 50);   // now heavy
+scene.setObjectMassOverride(id, null); // restore natural mass
+```
 
 ## Examples
 

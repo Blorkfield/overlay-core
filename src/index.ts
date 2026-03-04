@@ -3,7 +3,7 @@ export { logger, setLogLevel, getLogLevel } from './logger';
 export type { LogLevel } from './logger';
 export { loadFont, getGlyphData, getKerning, measureText, clearFontCache } from './fontLoader';
 export { BackgroundManager } from './backgroundManager';
-export { TAG_FALLING, TAG_FOLLOW_WINDOW, TAG_GRABABLE, TAG_GRAVITY_OVERRIDE, TAGS } from './tags';
+export { TAG_STATIC, TAG_FOLLOW_WINDOW, TAG_GRABABLE, TAG_GRAVITY_OVERRIDE, TAG_SPEED_OVERRIDE, TAG_MASS_OVERRIDE, TAGS } from './tags';
 export type { Tag } from './tags';
 export type {
   OverlaySceneConfig,

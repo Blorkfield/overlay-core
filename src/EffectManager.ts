@@ -180,9 +180,7 @@ export class EffectManager {
       if (!objectConfig) continue;
 
       const radius = this.calculateRadius(objectConfig);
-      // Ensure 'falling' tag is present for dynamic behavior
-      const tags = [...(objectConfig.objectConfig.tags ?? [])];
-      if (!tags.includes('falling')) tags.push('falling');
+      const tags = (objectConfig.objectConfig.tags ?? []).filter(t => t !== 'static');
 
       const fullConfig: ObjectConfig = {
         ...objectConfig.objectConfig,
@@ -233,9 +231,7 @@ export class EffectManager {
     const x = this.randomInRange(spawnAreaStart + radius, spawnAreaStart + spawnAreaWidth - radius);
     const y = bounds.top - radius; // Spawn just above visible area
 
-    // Ensure 'falling' tag is present for dynamic behavior
-    const tags = [...(objectConfig.objectConfig.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
+    const tags = (objectConfig.objectConfig.tags ?? []).filter(t => t !== 'static');
 
     const fullConfig: ObjectConfig = {
       ...objectConfig.objectConfig,
@@ -272,9 +268,7 @@ export class EffectManager {
 
     const radius = this.calculateRadius(objectConfig);
 
-    // Ensure 'falling' tag is present for dynamic behavior
-    const tags = [...(objectConfig.objectConfig.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
+    const tags = (objectConfig.objectConfig.tags ?? []).filter(t => t !== 'static');
 
     // Spawn at origin
     const fullConfig: ObjectConfig = {

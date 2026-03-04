@@ -67,10 +67,13 @@
       text-shadow: 0 0 8px rgba(74, 144, 217, 0.9);
     }
     .tag-value-inputs {
-      display: inline-flex;
+      display: none;
       align-items: center;
       gap: 3px;
       font-size: 10px;
+    }
+    .tag-btn.active .tag-value-inputs {
+      display: inline-flex;
     }
     .tag-value-inputs input {
       width: 36px;
@@ -92,6 +95,21 @@
     }
     .tag-btn.active .tag-value-inputs input {
       border-bottom-color: rgba(74, 144, 217, 0.6);
+    }
+    .tag-select {
+      background: #1a1a2e;
+      border: none;
+      border-bottom: 1px solid #555;
+      color: #ccc;
+      font-size: 10px;
+      font-family: monospace;
+      outline: none;
+      cursor: pointer;
+      max-width: 80px;
+    }
+    .tag-btn.active .tag-select {
+      border-bottom-color: rgba(74, 144, 217, 0.6);
+      color: #4a90d9;
     }
     .select-input {
       padding: 8px;
@@ -355,6 +373,60 @@
       color: #555;
       font-style: italic;
     }
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 0;
+    }
+    .ctrl-label {
+      font-size: 11px;
+      color: #888;
+      width: 52px;
+      flex-shrink: 0;
+    }
+    .ctrl-inputs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+    }
+    .ctrl-axis {
+      font-size: 10px;
+      color: #555;
+      font-family: monospace;
+    }
+    .ctrl-apply-btn {
+      padding: 4px 10px;
+      background: #3a4a6a;
+      border: 1px solid #4a5a7a;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 11px;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .ctrl-apply-btn:hover {
+      background: #4a5a8a;
+      color: #fff;
+    }
+    .ctrl-num {
+      width: 52px;
+      padding: 4px 5px;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      background: #2a2a4a;
+      color: #fff;
+      font-size: 11px;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    .ctrl-num::-webkit-outer-spin-button,
+    .ctrl-num::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -478,12 +550,17 @@
             <label style="min-width:auto">X:</label>
             <input type="number" id="input-gravity-x" value="0" step="0.1" style="width:60px">
             <label style="min-width:auto;margin-left:12px">Y:</label>
-            <input type="number" id="input-gravity-y" value="1" step="0.1" style="width:60px">
+            <input type="number" id="input-gravity-y" value="-1" step="0.1" style="width:60px">
           </div>
         </div>
         <button id="btn-apply-gravity" class="panel-btn" style="width:100%;margin-top:8px">Apply Gravity</button>
       </div>
       <div class="effect-section">
+        <div id="spawn-section-header" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+          <span class="effect-title">Spawn</span>
+          <button class="blork-tabs-collapse-btn" style="pointer-events:none">+</button>
+        </div>
+        <div id="spawn-section-body" style="display:none;margin-top:12px">
         <div class="param-row" style="margin-bottom:12px">
           <label>Spawn Type:</label>
           <select id="select-spawn-type" class="select-input" style="flex:1">
@@ -530,14 +607,31 @@
           <div style="margin-top:12px">
             <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
-              <button class="tag-btn" id="entity-tag-falling">falling</button>
+              <button class="tag-btn" id="entity-tag-static">static</button>
               <button class="tag-btn" id="entity-tag-grabable">grabable</button>
-              <button class="tag-btn" id="entity-tag-follow-window">follow_window</button>
+              <div class="tag-btn" id="entity-tag-follow-window" role="button" tabindex="0">
+                follow_window
+                <span class="tag-value-inputs">
+                  <select id="select-follow-target" class="tag-select"></select>
+                </span>
+              </div>
               <div class="tag-btn" id="entity-tag-gravity-override" role="button" tabindex="0">
                 gravity_override
                 <span class="tag-value-inputs">
                   x<input type="number" id="input-entity-gov-x" value="0" step="0.1">
                   y<input type="number" id="input-entity-gov-y" value="-1" step="0.1">
+                </span>
+              </div>
+              <div class="tag-btn" id="entity-tag-speed-override" role="button" tabindex="0">
+                speed_override
+                <span class="tag-value-inputs">
+                  <input type="number" id="input-entity-speed" value="1" step="0.1">
+                </span>
+              </div>
+              <div class="tag-btn" id="entity-tag-mass-override" role="button" tabindex="0">
+                mass_override
+                <span class="tag-value-inputs">
+                  <input type="number" id="input-entity-mass" value="10" step="1" min="1">
                 </span>
               </div>
             </div>
@@ -596,7 +690,7 @@
           <div style="margin-top:12px">
             <div style="font-size:12px;color:#888;margin-bottom:8px">Tags</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
-              <button class="tag-btn" id="text-tag-falling">falling</button>
+              <button class="tag-btn" id="text-tag-static">static</button>
               <button class="tag-btn" id="text-tag-grabable">grabable</button>
               <button class="tag-btn" id="text-tag-follow-window">follow_window</button>
             </div>
@@ -605,6 +699,7 @@
             <button id="btn-spawn-text" class="panel-btn" style="width:100%">Spawn Text</button>
           </div>
         </div>
+        </div><!-- end spawn-section-body -->
       </div>
       <div class="effect-section">
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -618,6 +713,50 @@
           <div style="display:flex;gap:6px">
             <button id="btn-release-all" class="panel-btn" style="flex:1">Release All</button>
             <button id="btn-remove-all" class="panel-btn panel-btn-danger" style="flex:1">Remove All</button>
+          </div>
+        </div>
+      </div>
+      <div class="effect-section">
+        <div class="effect-header" style="margin-bottom:8px">
+          <span class="effect-title">Entity Control</span>
+        </div>
+        <div class="effect-params" style="margin-bottom:10px">
+          <div class="param-row">
+            <label>Target Tag:</label>
+            <select id="select-control-tag" class="select-input" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"></select>
+          </div>
+        </div>
+        <div id="entity-ctrl-body" style="display:none;flex-direction:column;gap:0">
+          <div class="ctrl-row">
+            <span class="ctrl-label">Position</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-pos-x" value="400" step="10" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-pos-y" value="300" step="10" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-position" class="ctrl-apply-btn">Apply</button>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Velocity</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-vel-x" value="0" step="1" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-vel-y" value="0" step="1" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-velocity" class="ctrl-apply-btn">Apply</button>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Spin</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">ω</span><input type="number" id="input-ctrl-spin" value="0" step="0.1" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-spin" class="ctrl-apply-btn">Apply</button>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Scale</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-scale-x" value="1" step="0.1" min="0.01" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-scale-y" value="1" step="0.1" min="0.01" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-scale" class="ctrl-apply-btn">Apply</button>
           </div>
         </div>
       </div>

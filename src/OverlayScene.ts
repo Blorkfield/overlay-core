@@ -47,7 +47,7 @@ interface TTFGlyphRenderInfo {
 /**
  * Internal representation of a scene object.
  * All objects are stored uniformly - behavior is determined entirely by tags:
- * - 'falling': Object is dynamic (affected by gravity). Without this tag, object is static.
+ * - 'static': Object is static (not affected by gravity). Without this tag, object is dynamic by default.
  * - 'follow_window': Object follows mouse position when grounded (walks toward mouse)
  * - 'grabable': Object can be grabbed and moved with mouse
  */
@@ -84,6 +84,24 @@ interface ObjectEntry {
   domOriginalTransform?: string;
   /** Per-object gravity override — overrides scene gravity for this body only */
   gravityOverride?: Vector2;
+  /** Target for follow_window tag — 'mouse', an entity ID, or a tag string. Default: 'mouse' */
+  followTarget?: string;
+  /** Speed multiplier for follow_window and future movement behaviors. Default: 1. Negative = run away. */
+  speedOverride?: number;
+  /** Physics mass override value (set via mass_override tag). */
+  massOverride?: number;
+  /** Original density-based mass, stored when mass_override is first applied so it can be restored. */
+  originalMass?: number;
+  /** Auto-assigned identity tag (entity-<shortId>). Cannot be removed. */
+  entityTag: string;
+  /** Current scale X (default 1). Tracks cumulative scale applied via setObjectScale. */
+  scaleX?: number;
+  /** Current scale Y (default 1). Tracks cumulative scale applied via setObjectScale. */
+  scaleY?: number;
+  /** Original sprite xScale at spawn — used to compute absolute sprite scale. Only set for sprite bodies. */
+  baseSpriteSX?: number;
+  /** Original sprite yScale at spawn — used to compute absolute sprite scale. Only set for sprite bodies. */
+  baseSpriteSY?: number;
 }
 
 export class OverlayScene {
@@ -137,6 +155,10 @@ export class OverlayScene {
   private readonly substeps = 2;
   // Tracks only the bodies with a gravity override — engine gravity handles everyone else
   private gravityOverrideEntries: Set<ObjectEntry> = new Set();
+  // Tracks only the bodies with follow_window tag — avoids scanning all objects each frame
+  private followWindowEntries: Set<ObjectEntry> = new Set();
+  // IDs of static objects that have pressure thresholds — empty = skip updatePressure entirely
+  private pressureObstacleIds: Set<string> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -172,7 +194,7 @@ export class OverlayScene {
   constructor(canvas: HTMLCanvasElement, config: OverlaySceneConfig) {
     this.canvas = canvas;
     this.config = {
-      gravity: { x: 0, y: 1 },
+      gravity: { x: 0, y: -1 },
       wrapHorizontal: true,
       debug: false,
       ...config
@@ -272,8 +294,8 @@ export class OverlayScene {
       const entry = this.findObjectByBody(body);
       if (!entry) continue;
 
-      // Skip if already falling or no click behavior
-      if (entry.tags.includes('falling')) continue;
+      // Skip if already dynamic (no static tag) or no click behavior
+      if (!entry.tags.includes('static')) continue;
       if (entry.clicksRemaining === undefined) continue;
 
       // Decrement clicks remaining
@@ -343,7 +365,7 @@ export class OverlayScene {
     const dynamics: ObjectEntry[] = [];
 
     for (const entry of this.objects.values()) {
-      if (entry.tags.includes('falling')) {
+      if (!entry.tags.includes('static')) {
         // Only count resting objects (low velocity)
         if (Math.abs(entry.body.velocity.y) < 2) {
           dynamics.push(entry);
@@ -670,8 +692,8 @@ export class OverlayScene {
 
   /** Convert a static obstacle to dynamic (make it fall) */
   private collapseObstacle(entry: ObjectEntry): void {
-    // Skip if already falling
-    if (entry.tags.includes('falling')) return;
+    // Skip if already dynamic
+    if (!entry.tags.includes('static')) return;
 
     const name = this.getObstacleDisplayName(entry);
     console.log(`[Pressure] Collapsed: ${name}`);
@@ -681,8 +703,8 @@ export class OverlayScene {
       this.createShadow(entry);
     }
 
-    // Add falling tag
-    entry.tags.push('falling');
+    // Remove static tag
+    entry.tags = entry.tags.filter(t => t !== 'static');
 
     // Make body dynamic
     Matter.Body.setStatic(entry.body, false);
@@ -690,6 +712,7 @@ export class OverlayScene {
     // Clear threshold so it doesn't trigger again
     entry.pressureThreshold = undefined;
     entry.wordCollapseTag = undefined;
+    this.pressureObstacleIds.delete(entry.id);
   }
 
   /** Create a static shadow copy of an obstacle at its original position */
@@ -744,6 +767,7 @@ export class OverlayScene {
         id: shadowId,
         body,
         tags: ['shadow'],
+        entityTag: shadowId,
         spawnTime: performance.now(),
         weight: 0,
         ttfGlyph: {
@@ -780,6 +804,7 @@ export class OverlayScene {
       id: shadowId,
       body: result.body,
       tags: ['shadow'],
+      entityTag: shadowId,
       spawnTime: performance.now(),
       weight: 0 // Shadows don't contribute to pressure
     };
@@ -829,11 +854,6 @@ export class OverlayScene {
     return null;
   }
 
-  /** Check if a body is grounded (low vertical velocity indicates resting on something) */
-  private isGrounded(body: Matter.Body): boolean {
-    return Math.abs(body.velocity.y) < 0.5;
-  }
-
   start(): void {
     Matter.Render.run(this.render);
     this.loop();
@@ -861,6 +881,9 @@ export class OverlayScene {
     Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
+    this.gravityOverrideEntries.clear();
+    this.followWindowEntries.clear();
+    this.pressureObstacleIds.clear();
     this.obstaclePressure.clear();
     this.previousPressure.clear();
     this.pressureLogTimer = 0;
@@ -888,17 +911,17 @@ export class OverlayScene {
   }
 
   /**
-   * Set gravity at runtime. Supports any direction including negative values.
+   * Set gravity at runtime. Y axis uses physical convention: negative = down, positive = up.
    * @example
-   * scene.setGravity({ x: 0, y: 1 });   // Normal downward gravity
-   * scene.setGravity({ x: 0, y: -1 });  // Upward gravity
-   * scene.setGravity({ x: 1, y: 0 });   // Sideways gravity
+   * scene.setGravity({ x: 0, y: -1 });  // Normal downward gravity
+   * scene.setGravity({ x: 0, y: 1 });   // Upward gravity
+   * scene.setGravity({ x: 1, y: 0 });   // Rightward gravity
    * scene.setGravity({ x: 0, y: 0 });   // Zero gravity
    */
   setGravity(gravity: { x: number; y: number }): void {
     this.config.gravity = gravity;
     this.engine.gravity.x = gravity.x;
-    this.engine.gravity.y = gravity.y;
+    this.engine.gravity.y = -gravity.y;
   }
 
   /**
@@ -909,17 +932,91 @@ export class OverlayScene {
     const entry = this.objects.get(id);
     if (!entry) return;
     if (gravity === null) {
-      entry.gravityOverride = undefined;
-      this.gravityOverrideEntries.delete(entry);
-      const idx = entry.tags.indexOf('gravity_override');
-      if (idx !== -1) entry.tags.splice(idx, 1);
+      this.removeTag(id, 'gravity_override');
     } else {
       entry.gravityOverride = gravity;
-      this.gravityOverrideEntries.add(entry);
-      if (!entry.tags.includes('gravity_override')) {
-        entry.tags.push('gravity_override');
-      }
+      this.addTag(id, 'gravity_override');
     }
+  }
+
+  /**
+   * Set or change the follow target for an object's 'follow_window' tag.
+   * Target can be 'mouse', an entity ID, or a tag string (follows first matching entity).
+   * Adds 'follow_window' tag if not already present.
+   */
+  setFollowWindowTarget(id: string, target: string): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    entry.followTarget = target;
+    this.addTag(id, 'follow_window');
+  }
+
+  /**
+   * Set or change the speed multiplier for an object's movement (follow_window and future
+   * movement behaviors). Pass null to remove the override and reset to default speed.
+   * Negative values cause the object to run away from its target.
+   * Adds 'speed_override' tag if not already present.
+   */
+  setObjectSpeedOverride(id: string, speed: number | null): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (speed === null) {
+      this.removeTag(id, 'speed_override');
+    } else {
+      entry.speedOverride = speed;
+      this.addTag(id, 'speed_override');
+    }
+  }
+
+  /**
+   * Set or change the physics mass for an object. Pass null to remove the override and restore
+   * the original density-based mass. Adds 'mass_override' tag if not already present.
+   * Higher mass resists applied forces (including follow forces) more strongly.
+   */
+  setObjectMassOverride(id: string, mass: number | null): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (mass === null) {
+      this.removeTag(id, 'mass_override');
+    } else {
+      if (entry.originalMass === undefined) entry.originalMass = entry.body.mass;
+      entry.massOverride = mass;
+      Matter.Body.setMass(entry.body, mass);
+      this.addTag(id, 'mass_override');
+    }
+  }
+
+  /**
+   * Set the angular velocity (spin) of an object in radians per second.
+   * Positive = counter-clockwise, negative = clockwise.
+   */
+  setObjectAngularVelocity(id: string, omega: number): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    Matter.Body.setAngularVelocity(entry.body, omega);
+  }
+
+  /**
+   * Set the absolute scale of an object on each axis. Both physics collision shape and
+   * sprite rendering are updated together. Scaling changes the body's mass proportionally
+   * (area scales by x*y). Use setObjectMassOverride afterwards if you need a fixed mass.
+   * @param x - Scale factor on the X axis (1 = original size)
+   * @param y - Scale factor on the Y axis (1 = original size)
+   */
+  setObjectScale(id: string, x: number, y: number): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    const currentX = entry.scaleX ?? 1;
+    const currentY = entry.scaleY ?? 1;
+    // Matter.Body.scale applies a relative ratio, so divide by current to get the delta
+    Matter.Body.scale(entry.body, x / currentX, y / currentY);
+    // Update sprite scale absolutely (relative to original spawn scale)
+    if (entry.body.render.sprite && entry.baseSpriteSX !== undefined) {
+      entry.body.render.sprite.xScale = entry.baseSpriteSX * x;
+      entry.body.render.sprite.yScale = entry.baseSpriteSY! * y;
+    }
+    entry.scaleX = x;
+    entry.scaleY = y;
   }
 
   /**
@@ -977,10 +1074,9 @@ export class OverlayScene {
   /**
    * Spawn an object synchronously.
    * Object behavior is determined by tags:
-   * - 'falling': Object is dynamic (affected by gravity)
+   * - 'static': Object is not affected by gravity (obstacle). Without this tag, object is dynamic by default.
    * - 'follow_window': Object follows mouse when grounded (walks toward mouse)
    * - 'grabable': Object can be grabbed and moved with mouse
-   * Without 'falling' tag, object is static.
    */
   spawnObject(config: ObjectConfig): string {
     // If element is provided, delegate to DOM obstacle logic
@@ -1001,11 +1097,23 @@ export class OverlayScene {
     }
 
     const id = crypto.randomUUID();
+    const entityDescriptor = config.imageUrl
+      ? (config.imageUrl.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'image')
+      : config.radius ? 'circle'
+      : config.shape?.type ?? 'rect';
+    const entityTag = `${entityDescriptor.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 16)}-${id.slice(0, 4)}`;
     const tags = [...(config.tags ?? [])];
+    tags.push(entityTag);
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
-    const isStatic = !tags.includes('falling');
+    if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
+      tags.push('speed_override');
+    }
+    if (config.massOverride !== undefined && !tags.includes('mass_override')) {
+      tags.push('mass_override');
+    }
+    const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object`, {
       id,
@@ -1027,6 +1135,14 @@ export class OverlayScene {
       body = createObstacle(id, config, isStatic);
     }
 
+    // Capture natural (density-based) mass before any override is applied
+    const naturalMass = body.mass;
+
+    // Apply mass override immediately after body creation
+    if (config.massOverride !== undefined) {
+      Matter.Body.setMass(body, config.massOverride);
+    }
+
     // Parse pressure threshold
     let pressureThreshold: number | undefined;
     if (config.pressureThreshold) {
@@ -1058,15 +1174,26 @@ export class OverlayScene {
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
       clicksRemaining,
-      gravityOverride: config.gravityOverride
+      gravityOverride: config.gravityOverride,
+      followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
+      massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
+      originalMass: tags.includes('mass_override') ? naturalMass : undefined,
+      entityTag,
+      scaleX: 1,
+      scaleY: 1,
+      baseSpriteSX: body.render.sprite?.xScale,
+      baseSpriteSY: body.render.sprite?.yScale,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
+    if (tags.includes('follow_window')) this.followWindowEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Emit objectSpawned event
@@ -1081,11 +1208,23 @@ export class OverlayScene {
    */
   async spawnObjectAsync(config: ObjectConfig): Promise<string> {
     const id = crypto.randomUUID();
+    const entityDescriptor = config.imageUrl
+      ? (config.imageUrl.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'image')
+      : config.radius ? 'circle'
+      : config.shape?.type ?? 'rect';
+    const entityTag = `${entityDescriptor.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 16)}-${id.slice(0, 4)}`;
     const tags = [...(config.tags ?? [])];
+    tags.push(entityTag);
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
-    const isStatic = !tags.includes('falling');
+    if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
+      tags.push('speed_override');
+    }
+    if (config.massOverride !== undefined && !tags.includes('mass_override')) {
+      tags.push('mass_override');
+    }
+    const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object async`, {
       id,
@@ -1105,6 +1244,14 @@ export class OverlayScene {
       body = await createObstacleAsync(id, config, isStatic);
     }
 
+    // Capture natural (density-based) mass before any override is applied
+    const naturalMass = body.mass;
+
+    // Apply mass override immediately after body creation
+    if (config.massOverride !== undefined) {
+      Matter.Body.setMass(body, config.massOverride);
+    }
+
     // Parse pressure threshold
     let pressureThreshold: number | undefined;
     if (config.pressureThreshold) {
@@ -1136,15 +1283,26 @@ export class OverlayScene {
       shadow,
       originalPosition: shadow || clicksRemaining !== undefined ? { x: config.x, y: config.y } : undefined,
       clicksRemaining,
-      gravityOverride: config.gravityOverride
+      gravityOverride: config.gravityOverride,
+      followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
+      speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
+      massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
+      originalMass: tags.includes('mass_override') ? naturalMass : undefined,
+      entityTag,
+      scaleX: 1,
+      scaleY: 1,
+      baseSpriteSX: body.render.sprite?.xScale,
+      baseSpriteSY: body.render.sprite?.yScale,
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
+    if (tags.includes('follow_window')) this.followWindowEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Emit objectSpawned event
@@ -1154,15 +1312,15 @@ export class OverlayScene {
   }
 
   /**
-   * Add 'falling' tag to an object, making it dynamic (affected by gravity).
+   * Make an object dynamic (remove 'static' tag, affected by gravity).
    * Also adds 'grabable' tag so released objects can be dragged.
    * This is the tag-based replacement for releaseObstacle().
    */
   addFallingTag(id: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
-    if (!entry.tags.includes('falling')) {
-      entry.tags.push('falling');
+    if (entry.tags.includes('static')) {
+      entry.tags = entry.tags.filter(t => t !== 'static');
       Matter.Body.setStatic(entry.body, false);
     }
     if (!entry.tags.includes('grabable')) {
@@ -1171,38 +1329,68 @@ export class OverlayScene {
   }
 
   /**
-   * Add a tag to an object.
+   * Add a tag to an object. Tags drive behavior — adding a tag activates the associated effect.
+   * For 'gravity_override', also pass a gravityOverride value via setObjectGravityOverride first,
+   * or the tag will default to {x:0, y:0} (hovering).
    */
   addTag(id: string, tag: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
     if (!entry.tags.includes(tag)) {
       entry.tags.push(tag);
-      // Handle special tag behaviors
-      if (tag === 'falling') {
-        Matter.Body.setStatic(entry.body, false);
+      if (tag === 'static') {
+        Matter.Body.setStatic(entry.body, true);
+      } else if (tag === 'gravity_override') {
+        if (!entry.gravityOverride) entry.gravityOverride = { x: 0, y: 0 };
+        this.gravityOverrideEntries.add(entry);
+      } else if (tag === 'follow_window') {
+        if (!entry.followTarget) entry.followTarget = 'mouse';
+        this.followWindowEntries.add(entry);
+      } else if (tag === 'speed_override') {
+        if (entry.speedOverride === undefined) entry.speedOverride = 1;
+      } else if (tag === 'mass_override') {
+        if (entry.originalMass === undefined) entry.originalMass = entry.body.mass;
+        if (entry.massOverride === undefined) entry.massOverride = Math.round(entry.body.mass);
+        Matter.Body.setMass(entry.body, entry.massOverride);
       }
     }
   }
 
   /**
-   * Remove a tag from an object.
+   * Remove a tag from an object. Tags drive behavior — removing a tag deactivates the associated effect.
    */
   removeTag(id: string, tag: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
+    if (tag === entry.entityTag) {
+      logger.warn('OverlayScene', `Cannot remove entity tag '${tag}' from '${id}' — entity tags are permanent identifiers and cannot be removed`);
+      return;
+    }
     const index = entry.tags.indexOf(tag);
     if (index !== -1) {
       entry.tags.splice(index, 1);
-      // Handle special tag behaviors
-      if (tag === 'falling') {
-        Matter.Body.setStatic(entry.body, true);
+      if (tag === 'static') {
+        Matter.Body.setStatic(entry.body, false);
+      } else if (tag === 'gravity_override') {
+        this.gravityOverrideEntries.delete(entry);
+        entry.gravityOverride = undefined;
+      } else if (tag === 'follow_window') {
+        entry.followTarget = undefined;
+        this.followWindowEntries.delete(entry);
+      } else if (tag === 'speed_override') {
+        entry.speedOverride = undefined;
+      } else if (tag === 'mass_override') {
+        if (entry.originalMass !== undefined) {
+          Matter.Body.setMass(entry.body, entry.originalMass);
+        }
+        entry.massOverride = undefined;
+        entry.originalMass = undefined;
       }
     }
   }
 
   /**
-   * Release an object (add 'falling' tag to make it dynamic).
+   * Release an object (remove 'static' tag to make it dynamic).
    * Convenience method - equivalent to addFallingTag().
    */
   releaseObject(id: string): void {
@@ -1219,7 +1407,7 @@ export class OverlayScene {
   }
 
   /**
-   * Release all static objects (add 'falling' and 'grabable' tags).
+   * Release all static objects (remove 'static' tag, add 'grabable' tag).
    */
   releaseAllObjects(): void {
     for (const [id] of this.objects) {
@@ -1228,7 +1416,7 @@ export class OverlayScene {
   }
 
   /**
-   * Release objects by tag (add 'falling' and 'grabable' tags to matching objects).
+   * Release objects by tag (remove 'static' tag, add 'grabable' tag to matching objects).
    */
   releaseObjectsByTag(tag: string): void {
     for (const [id, entry] of this.objects) {
@@ -1245,6 +1433,8 @@ export class OverlayScene {
     this.emitLifecycleEvent('objectRemoved', this.toObjectState(entry));
     Matter.Composite.remove(this.engine.world, entry.body);
     this.gravityOverrideEntries.delete(entry);
+    this.followWindowEntries.delete(entry);
+    this.pressureObstacleIds.delete(id);
     this.objects.delete(id);
   }
 
@@ -1260,6 +1450,8 @@ export class OverlayScene {
     }
     this.objects.clear();
     this.gravityOverrideEntries.clear();
+    this.followWindowEntries.clear();
+    this.pressureObstacleIds.clear();
   }
 
   removeObjectsByTag(tag: string): void {
@@ -1443,14 +1635,14 @@ export class OverlayScene {
   }
 
   /**
-   * Set the velocity of an object.
+   * Set the velocity of an object. Y axis uses physical convention: negative = down, positive = up.
    * @param objectId - The ID of the object
    * @param velocity - The velocity vector to set
    */
   setVelocity(objectId: string, velocity: { x: number; y: number }): void {
     const entry = this.objects.get(objectId);
     if (!entry) return;
-    Matter.Body.setVelocity(entry.body, velocity);
+    Matter.Body.setVelocity(entry.body, { x: velocity.x, y: -velocity.y });
   }
 
   /**
@@ -1708,7 +1900,7 @@ export class OverlayScene {
     const width = config.width ?? element.offsetWidth;
     const height = config.height ?? element.offsetHeight;
     const tags = config.tags ?? [];
-    const isStatic = !tags.includes('falling');
+    const isStatic = tags.includes('static');
 
     // Create a rectangular physics body
     const body = Matter.Bodies.rectangle(x, y, width, height, {
@@ -1718,6 +1910,8 @@ export class OverlayScene {
     });
 
     const id = body.label;
+    const entityTag = `dom-${id.slice(4, 8)}`;
+    tags.push(entityTag);
 
     // Determine pressure threshold
     let pressureThreshold: number | undefined;
@@ -1744,6 +1938,7 @@ export class OverlayScene {
       id,
       body,
       tags,
+      entityTag,
       spawnTime: performance.now(),
       pressureThreshold,
       weight: config.weight ?? 1,
@@ -1763,6 +1958,7 @@ export class OverlayScene {
     // Initialize pressure tracking for static obstacles
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Add click listener to DOM element for clickToFall behavior
@@ -1771,7 +1967,7 @@ export class OverlayScene {
       const clickHandler = () => {
         const currentEntry = this.objects.get(id);
         if (!currentEntry) return;
-        if (currentEntry.tags.includes('falling')) return;
+        if (!currentEntry.tags.includes('static')) return;
         if (currentEntry.clicksRemaining === undefined) return;
 
         currentEntry.clicksRemaining--;
@@ -1822,9 +2018,11 @@ export class OverlayScene {
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
     const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
-    // Determine if static based on tags (no 'falling' tag = static)
-    const baseTags = config.tags ?? [];
-    const isStatic = !baseTags.includes('falling');
+    // isStatic defaults to true — text is an obstacle unless explicitly set to false
+    const isStatic = config.isStatic !== false;
+    const baseTags = [...(config.tags ?? [])];
+    if (isStatic && !baseTags.includes('static')) baseTags.push('static');
+    else if (!isStatic) { const i = baseTags.indexOf('static'); if (i !== -1) baseTags.splice(i, 1); }
     const letterColor = config.letterColor;
 
     const letterIds: string[] = [];
@@ -2012,11 +2210,10 @@ export class OverlayScene {
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
-        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
-
         const id = crypto.randomUUID();
-
-        // Create clipped letter body at the center position
+        const safeChar = char.match(/[a-zA-Z0-9]/) ? char.toLowerCase() : 'sym';
+        const entityTag = `letter-${safeChar}-${id.slice(0, 4)}`;
+        const tags = [...baseTags, entityTag, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
         const objectConfig: ObjectConfig = {
           x: centerX,
           y: centerY,
@@ -2073,10 +2270,12 @@ export class OverlayScene {
           originalPosition: shadow || clicksRemaining !== undefined ? { x: centerX, y: centerY } : undefined,
           imageUrl: shadow || clicksRemaining !== undefined ? imageUrl : undefined,
           imageSize: shadow || clicksRemaining !== undefined ? letterSize : undefined,
-          clicksRemaining
+          clicksRemaining,
+          entityTag,
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
+        if (pressureThreshold !== undefined) this.pressureObstacleIds.add(id);
 
         letterIds.push(id);
         letterMap.set(`${char}-${globalCharIndex}`, id);
@@ -2141,16 +2340,14 @@ export class OverlayScene {
 
   /**
    * Spawn falling text objects from a string.
-   * Same as addTextObstacles but with 'falling' tag (objects fall with gravity).
+   * Same as addTextObstacles but ensures objects are dynamic (removes 'static' tag if present).
    */
   async spawnFallingTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    const tags = [...(config.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.addTextObstacles({ ...config, tags });
+    return this.addTextObstacles({ ...config, isStatic: false });
   }
 
   /**
-   * Release all letters in a word (add 'falling' tag so they fall).
+   * Release all letters in a word (remove 'static' tag so they fall).
    * @param wordTag - The word tag returned from addTextObstacles
    */
   releaseTextObstacles(wordTag: string): void {
@@ -2204,9 +2401,11 @@ export class OverlayScene {
     // Convert literal \n strings to actual newlines
     const text = config.text.replace(/\\n/g, '\n');
     const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
-    // Determine if static based on tags (no 'falling' tag = static)
-    const baseTags = config.tags ?? [];
-    const isStatic = !baseTags.includes('falling');
+    // isStatic defaults to true — text is an obstacle unless explicitly set to false
+    const isStatic = config.isStatic !== false;
+    const baseTags = [...(config.tags ?? [])];
+    if (isStatic && !baseTags.includes('static')) baseTags.push('static');
+    else if (!isStatic) { const i = baseTags.indexOf('static'); if (i !== -1) baseTags.splice(i, 1); }
     const fillColor = config.fillColor ?? '#ffffff';
     const fillColors = config.fillColors;
     const lineHeight = config.lineHeight ?? fontSize * 1.2;
@@ -2316,7 +2515,9 @@ export class OverlayScene {
         wordTagsSet.add(wordTag);
 
         const id = crypto.randomUUID();
-        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const safeChar = char.match(/[a-zA-Z0-9]/) ? char.toLowerCase() : 'sym';
+        const entityTag = `letter-${safeChar}-${id.slice(0, 4)}`;
+        const tags = [...baseTags, entityTag, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
@@ -2401,10 +2602,12 @@ export class OverlayScene {
           weight,
           shadow,
           originalPosition: shadow || clicksRemaining !== undefined ? { x: body.position.x, y: body.position.y } : undefined,
-          clicksRemaining
+          clicksRemaining,
+          entityTag,
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
+        if (pressureThreshold !== undefined) this.pressureObstacleIds.add(id);
 
         letterIds.push(id);
         letterMap.set(`${char}-${globalCharIndex}`, id);
@@ -2457,12 +2660,10 @@ export class OverlayScene {
 
   /**
    * Spawn falling TTF text objects.
-   * Same as addTTFTextObstacles but with 'falling' tag (objects fall with gravity).
+   * Same as addTTFTextObstacles but ensures objects are dynamic (removes 'static' tag if present).
    */
   async spawnFallingTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
-    const tags = [...(config.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.addTTFTextObstacles({ ...config, tags });
+    return this.addTTFTextObstacles({ ...config, isStatic: false });
   }
 
   // ==================== COMBINED TAG METHODS ====================
@@ -2548,14 +2749,13 @@ export class OverlayScene {
     // Update effects (spawn objects)
     this.effectManager.update();
 
-    // Check for TTL expiration
-    this.checkTTLExpiration();
+    // TTL expiration + below-floor despawn in a single pass
+    this.checkExpiration();
 
-    // Check for objects fallen below floor (despawn them)
-    this.checkDespawnBelowFloor();
-
-    // Update pressure tracking
-    this.updatePressure();
+    // Update pressure tracking — skip entirely if no pressure obstacles or floor segments exist
+    if (this.pressureObstacleIds.size > 0 || this.floorSegments.length > 0) {
+      this.updatePressure();
+    }
 
     // Apply delta-based grab movement
     if (this.grabbedObjectId && this.lastGrabMousePosition) {
@@ -2573,35 +2773,53 @@ export class OverlayScene {
       }
     }
 
-    // Apply tag-based behaviors to all objects
-    for (const entry of this.objects.values()) {
-      const isDragging = this.grabbedObjectId === entry.id;
+    // Apply follow_window behavior — only iterate the (small) set of followers
+    for (const entry of this.followWindowEntries) {
+      if (this.grabbedObjectId === entry.id) continue;
 
-      // Apply follow target forces (including 'follow_window' tag which uses 'mouse' target)
-      if (!isDragging) {
-        for (const tag of entry.tags) {
-          // 'follow_window' tag is an alias for 'follow-mouse'
-          const key = tag === 'follow_window' ? 'mouse' : (tag.startsWith('follow-') ? tag.slice(7) : null);
-          if (key) {
-            const target = this.followTargets.get(key);
-            if (target) {
-              const grounded = this.isGrounded(entry.body);
-              if (grounded) {
-                const direction = Math.sign(target.x - entry.body.position.x);
-                Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * direction, y: 0 });
-              }
-            }
+      const targetKey = entry.followTarget ?? 'mouse';
+      let targetPos: { x: number; y: number } | undefined;
+
+      // 1. Named follow target (e.g. 'mouse')
+      targetPos = this.followTargets.get(targetKey);
+
+      // 2. Entity ID
+      if (!targetPos) {
+        const targetEntry = this.objects.get(targetKey);
+        if (targetEntry) targetPos = targetEntry.body.position;
+      }
+
+      // 3. Tag — follow first entity with matching tag (excluding self)
+      if (!targetPos) {
+        for (const e of this.objects.values()) {
+          if (e !== entry && e.tags.includes(targetKey)) {
+            targetPos = e.body.position;
+            break;
           }
         }
       }
 
-      // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)
-      if (this.config.wrapHorizontal && entry.tags.includes('falling')) {
+      if (targetPos) {
+        const dx = targetPos.x - entry.body.position.x;
+        const dy = targetPos.y - entry.body.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0) {
+          const speedMult = entry.speedOverride ?? 1;
+          const mag = 0.001 * speedMult / dist;
+          Matter.Body.applyForce(entry.body, entry.body.position, { x: mag * dx, y: mag * dy });
+        }
+      }
+    }
+
+    // Per-object behaviors: wrapping, DOM sync, grab history
+    for (const entry of this.objects.values()) {
+      // Apply horizontal wrapping to dynamic objects (objects without 'static' tag)
+      if (this.config.wrapHorizontal && !entry.tags.includes('static')) {
         wrapHorizontal(entry.body, this.config.bounds);
       }
 
       // Update DOM element transforms to follow physics body
-      if (entry.domElement && entry.tags.includes('falling')) {
+      if (entry.domElement && !entry.tags.includes('static')) {
         this.updateDOMElementTransform(entry);
       }
 
@@ -2614,7 +2832,6 @@ export class OverlayScene {
         }
         this.bodyPositionHistory.set(entry.body.id, history);
       }
-
     }
 
     // Draw TTF glyphs using canvas fillText (clean text rendering)
@@ -2724,47 +2941,33 @@ export class OverlayScene {
     entry.domElement.style.setProperty('transform', `rotate(${angleDeg}deg)`, 'important');
   }
 
-  private checkTTLExpiration(): void {
+  /** TTL expiration + below-floor despawn in a single O(N) pass */
+  private checkExpiration(): void {
     const now = performance.now();
-
-    // Check all objects for expiration
-    const expiredObjects: string[] = [];
-    for (const [id, entry] of this.objects) {
-      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
-        // TODO: Trigger despawn effect when implemented
-        // if (entry.despawnEffect) { ... }
-        expiredObjects.push(id);
-      }
-    }
-    for (const id of expiredObjects) {
-      this.removeObject(id);
-    }
-  }
-
-  /** Despawn objects that have fallen below the floor by the configured distance */
-  private checkDespawnBelowFloor(): void {
-    // Default to 100% of container height below floor
     const despawnDistance = this.config.despawnBelowFloor ?? 1.0;
     const containerHeight = this.config.bounds.bottom - this.config.bounds.top;
     const despawnY = this.config.bounds.bottom + (containerHeight * despawnDistance);
 
-    const toDespawn: string[] = [];
+    const toRemove: string[] = [];
     for (const [id, entry] of this.objects) {
-      if (entry.body.position.y > despawnY) {
-        toDespawn.push(id);
+      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
+        toRemove.push(id);
+      } else if (entry.body.position.y > despawnY) {
+        toRemove.push(id);
       }
     }
-
-    for (const id of toDespawn) {
+    for (const id of toRemove) {
       this.removeObject(id);
     }
   }
 
   private fireUpdateCallbacks(): void {
-    // Collect all dynamic objects (objects with 'falling' tag)
+    if (this.updateCallbacks.length === 0) return;
+
+    // Collect all dynamic objects (objects without 'static' tag)
     const objects: DynamicObject[] = [];
-    this.objects.forEach((entry) => {
-      if (entry.tags.includes('falling')) {
+    for (const entry of this.objects.values()) {
+      if (!entry.tags.includes('static')) {
         objects.push({
           id: entry.id,
           x: entry.body.position.x,
@@ -2773,10 +2976,10 @@ export class OverlayScene {
           tags: entry.tags
         });
       }
-    });
+    }
 
     const data: UpdateCallbackData = { objects };
-    this.updateCallbacks.forEach((cb) => cb(data));
+    for (const cb of this.updateCallbacks) cb(data);
   }
 
 }
