@@ -228,7 +228,7 @@ async function createScene(width: number, height: number): Promise<void> {
   // Create scene
   scene = new OverlayScene(canvas, {
     bounds: { top: 0, bottom: height, left: 0, right: width },
-    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy },
+    gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy },
     wrapHorizontal: true,
     debug: false,
     background: { color: '#16213e' },
@@ -498,7 +498,7 @@ btnApplyGravity.addEventListener('click', () => {
   if (!scene) return;
   const gx = parseFloat(inputGravityX.value);
   const gy = parseFloat(inputGravityY.value);
-  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? 1 : gy });
+  scene.setGravity({ x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy });
 });
 
 

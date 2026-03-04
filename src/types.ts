@@ -8,7 +8,7 @@ export interface Vector2 {
 
 export interface OverlaySceneConfig {
   bounds: Bounds;
-  /** Gravity vector. Default: { x: 0, y: 1 }. Negative y = upward gravity. */
+  /** Gravity vector. Default: { x: 0, y: -1 }. Negative y = downward gravity, positive y = upward. */
   gravity?: Vector2;
   wrapHorizontal?: boolean;
   debug?: boolean;

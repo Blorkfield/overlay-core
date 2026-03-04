@@ -147,8 +147,10 @@ export class OverlayScene {
   private readonly substeps = 2;
   // Tracks only the bodies with a gravity override — engine gravity handles everyone else
   private gravityOverrideEntries: Set<ObjectEntry> = new Set();
-  // Tracks only the bodies with a speed override — others use the default force magnitude
-  private speedOverrideEntries: Set<ObjectEntry> = new Set();
+  // Tracks only the bodies with follow_window tag — avoids scanning all objects each frame
+  private followWindowEntries: Set<ObjectEntry> = new Set();
+  // IDs of static objects that have pressure thresholds — empty = skip updatePressure entirely
+  private pressureObstacleIds: Set<string> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -184,7 +186,7 @@ export class OverlayScene {
   constructor(canvas: HTMLCanvasElement, config: OverlaySceneConfig) {
     this.canvas = canvas;
     this.config = {
-      gravity: { x: 0, y: 1 },
+      gravity: { x: 0, y: -1 },
       wrapHorizontal: true,
       debug: false,
       ...config
@@ -702,6 +704,7 @@ export class OverlayScene {
     // Clear threshold so it doesn't trigger again
     entry.pressureThreshold = undefined;
     entry.wordCollapseTag = undefined;
+    this.pressureObstacleIds.delete(entry.id);
   }
 
   /** Create a static shadow copy of an obstacle at its original position */
@@ -870,6 +873,9 @@ export class OverlayScene {
     Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
+    this.gravityOverrideEntries.clear();
+    this.followWindowEntries.clear();
+    this.pressureObstacleIds.clear();
     this.obstaclePressure.clear();
     this.previousPressure.clear();
     this.pressureLogTimer = 0;
@@ -897,17 +903,17 @@ export class OverlayScene {
   }
 
   /**
-   * Set gravity at runtime. Supports any direction including negative values.
+   * Set gravity at runtime. Y axis uses physical convention: negative = down, positive = up.
    * @example
-   * scene.setGravity({ x: 0, y: 1 });   // Normal downward gravity
-   * scene.setGravity({ x: 0, y: -1 });  // Upward gravity
-   * scene.setGravity({ x: 1, y: 0 });   // Sideways gravity
+   * scene.setGravity({ x: 0, y: -1 });  // Normal downward gravity
+   * scene.setGravity({ x: 0, y: 1 });   // Upward gravity
+   * scene.setGravity({ x: 1, y: 0 });   // Rightward gravity
    * scene.setGravity({ x: 0, y: 0 });   // Zero gravity
    */
   setGravity(gravity: { x: number; y: number }): void {
     this.config.gravity = gravity;
     this.engine.gravity.x = gravity.x;
-    this.engine.gravity.y = gravity.y;
+    this.engine.gravity.y = -gravity.y;
   }
 
   /**
@@ -1136,12 +1142,13 @@ export class OverlayScene {
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
-    if (config.speedOverride !== undefined) this.speedOverrideEntries.add(entry);
+    if (tags.includes('follow_window')) this.followWindowEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Emit objectSpawned event
@@ -1240,12 +1247,13 @@ export class OverlayScene {
     };
     this.objects.set(id, entry);
     if (config.gravityOverride) this.gravityOverrideEntries.add(entry);
-    if (config.speedOverride !== undefined) this.speedOverrideEntries.add(entry);
+    if (tags.includes('follow_window')) this.followWindowEntries.add(entry);
     Matter.Composite.add(this.engine.world, body);
 
     // Initialize pressure tracking for static obstacles with threshold
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Emit objectSpawned event
@@ -1288,9 +1296,9 @@ export class OverlayScene {
         this.gravityOverrideEntries.add(entry);
       } else if (tag === 'follow_window') {
         if (!entry.followTarget) entry.followTarget = 'mouse';
+        this.followWindowEntries.add(entry);
       } else if (tag === 'speed_override') {
         if (entry.speedOverride === undefined) entry.speedOverride = 1;
-        this.speedOverrideEntries.add(entry);
       } else if (tag === 'mass_override') {
         if (entry.originalMass === undefined) entry.originalMass = entry.body.mass;
         if (entry.massOverride === undefined) entry.massOverride = Math.round(entry.body.mass);
@@ -1319,8 +1327,8 @@ export class OverlayScene {
         entry.gravityOverride = undefined;
       } else if (tag === 'follow_window') {
         entry.followTarget = undefined;
+        this.followWindowEntries.delete(entry);
       } else if (tag === 'speed_override') {
-        this.speedOverrideEntries.delete(entry);
         entry.speedOverride = undefined;
       } else if (tag === 'mass_override') {
         if (entry.originalMass !== undefined) {
@@ -1376,7 +1384,8 @@ export class OverlayScene {
     this.emitLifecycleEvent('objectRemoved', this.toObjectState(entry));
     Matter.Composite.remove(this.engine.world, entry.body);
     this.gravityOverrideEntries.delete(entry);
-    this.speedOverrideEntries.delete(entry);
+    this.followWindowEntries.delete(entry);
+    this.pressureObstacleIds.delete(id);
     this.objects.delete(id);
   }
 
@@ -1392,7 +1401,8 @@ export class OverlayScene {
     }
     this.objects.clear();
     this.gravityOverrideEntries.clear();
-    this.speedOverrideEntries.clear();
+    this.followWindowEntries.clear();
+    this.pressureObstacleIds.clear();
   }
 
   removeObjectsByTag(tag: string): void {
@@ -1899,6 +1909,7 @@ export class OverlayScene {
     // Initialize pressure tracking for static obstacles
     if (isStatic && pressureThreshold !== undefined) {
       this.obstaclePressure.set(id, new Set());
+      this.pressureObstacleIds.add(id);
     }
 
     // Add click listener to DOM element for clickToFall behavior
@@ -2215,6 +2226,7 @@ export class OverlayScene {
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, result.body);
+        if (pressureThreshold !== undefined) this.pressureObstacleIds.add(id);
 
         letterIds.push(id);
         letterMap.set(`${char}-${globalCharIndex}`, id);
@@ -2546,6 +2558,7 @@ export class OverlayScene {
         };
         this.objects.set(id, entry);
         Matter.Composite.add(this.engine.world, body);
+        if (pressureThreshold !== undefined) this.pressureObstacleIds.add(id);
 
         letterIds.push(id);
         letterMap.set(`${char}-${globalCharIndex}`, id);
@@ -2687,14 +2700,13 @@ export class OverlayScene {
     // Update effects (spawn objects)
     this.effectManager.update();
 
-    // Check for TTL expiration
-    this.checkTTLExpiration();
+    // TTL expiration + below-floor despawn in a single pass
+    this.checkExpiration();
 
-    // Check for objects fallen below floor (despawn them)
-    this.checkDespawnBelowFloor();
-
-    // Update pressure tracking
-    this.updatePressure();
+    // Update pressure tracking — skip entirely if no pressure obstacles or floor segments exist
+    if (this.pressureObstacleIds.size > 0 || this.floorSegments.length > 0) {
+      this.updatePressure();
+    }
 
     // Apply delta-based grab movement
     if (this.grabbedObjectId && this.lastGrabMousePosition) {
@@ -2712,46 +2724,46 @@ export class OverlayScene {
       }
     }
 
-    // Apply tag-based behaviors to all objects
-    for (const entry of this.objects.values()) {
-      const isDragging = this.grabbedObjectId === entry.id;
+    // Apply follow_window behavior — only iterate the (small) set of followers
+    for (const entry of this.followWindowEntries) {
+      if (this.grabbedObjectId === entry.id) continue;
 
-      // Apply follow_window tag behavior — target drives what to follow
-      if (!isDragging && entry.tags.includes('follow_window')) {
-        const targetKey = entry.followTarget ?? 'mouse';
-        let targetPos: { x: number; y: number } | undefined;
+      const targetKey = entry.followTarget ?? 'mouse';
+      let targetPos: { x: number; y: number } | undefined;
 
-        // 1. Named follow target (e.g. 'mouse')
-        targetPos = this.followTargets.get(targetKey);
+      // 1. Named follow target (e.g. 'mouse')
+      targetPos = this.followTargets.get(targetKey);
 
-        // 2. Entity ID
-        if (!targetPos) {
-          const targetEntry = this.objects.get(targetKey);
-          if (targetEntry) targetPos = targetEntry.body.position;
-        }
+      // 2. Entity ID
+      if (!targetPos) {
+        const targetEntry = this.objects.get(targetKey);
+        if (targetEntry) targetPos = targetEntry.body.position;
+      }
 
-        // 3. Tag — follow first entity with matching tag (excluding self)
-        if (!targetPos) {
-          for (const e of this.objects.values()) {
-            if (e !== entry && e.tags.includes(targetKey)) {
-              targetPos = e.body.position;
-              break;
-            }
-          }
-        }
-
-        if (targetPos) {
-          const dx = targetPos.x - entry.body.position.x;
-          const dy = targetPos.y - entry.body.position.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist > 0) {
-            const speedMult = entry.speedOverride ?? 1;
-            const mag = 0.001 * speedMult / dist;
-            Matter.Body.applyForce(entry.body, entry.body.position, { x: mag * dx, y: mag * dy });
+      // 3. Tag — follow first entity with matching tag (excluding self)
+      if (!targetPos) {
+        for (const e of this.objects.values()) {
+          if (e !== entry && e.tags.includes(targetKey)) {
+            targetPos = e.body.position;
+            break;
           }
         }
       }
 
+      if (targetPos) {
+        const dx = targetPos.x - entry.body.position.x;
+        const dy = targetPos.y - entry.body.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0) {
+          const speedMult = entry.speedOverride ?? 1;
+          const mag = 0.001 * speedMult / dist;
+          Matter.Body.applyForce(entry.body, entry.body.position, { x: mag * dx, y: mag * dy });
+        }
+      }
+    }
+
+    // Per-object behaviors: wrapping, DOM sync, grab history
+    for (const entry of this.objects.values()) {
       // Apply horizontal wrapping to dynamic objects (objects without 'static' tag)
       if (this.config.wrapHorizontal && !entry.tags.includes('static')) {
         wrapHorizontal(entry.body, this.config.bounds);
@@ -2771,7 +2783,6 @@ export class OverlayScene {
         }
         this.bodyPositionHistory.set(entry.body.id, history);
       }
-
     }
 
     // Draw TTF glyphs using canvas fillText (clean text rendering)
@@ -2881,46 +2892,32 @@ export class OverlayScene {
     entry.domElement.style.setProperty('transform', `rotate(${angleDeg}deg)`, 'important');
   }
 
-  private checkTTLExpiration(): void {
+  /** TTL expiration + below-floor despawn in a single O(N) pass */
+  private checkExpiration(): void {
     const now = performance.now();
-
-    // Check all objects for expiration
-    const expiredObjects: string[] = [];
-    for (const [id, entry] of this.objects) {
-      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
-        // TODO: Trigger despawn effect when implemented
-        // if (entry.despawnEffect) { ... }
-        expiredObjects.push(id);
-      }
-    }
-    for (const id of expiredObjects) {
-      this.removeObject(id);
-    }
-  }
-
-  /** Despawn objects that have fallen below the floor by the configured distance */
-  private checkDespawnBelowFloor(): void {
-    // Default to 100% of container height below floor
     const despawnDistance = this.config.despawnBelowFloor ?? 1.0;
     const containerHeight = this.config.bounds.bottom - this.config.bounds.top;
     const despawnY = this.config.bounds.bottom + (containerHeight * despawnDistance);
 
-    const toDespawn: string[] = [];
+    const toRemove: string[] = [];
     for (const [id, entry] of this.objects) {
-      if (entry.body.position.y > despawnY) {
-        toDespawn.push(id);
+      if (entry.ttl !== undefined && now - entry.spawnTime >= entry.ttl) {
+        toRemove.push(id);
+      } else if (entry.body.position.y > despawnY) {
+        toRemove.push(id);
       }
     }
-
-    for (const id of toDespawn) {
+    for (const id of toRemove) {
       this.removeObject(id);
     }
   }
 
   private fireUpdateCallbacks(): void {
+    if (this.updateCallbacks.length === 0) return;
+
     // Collect all dynamic objects (objects without 'static' tag)
     const objects: DynamicObject[] = [];
-    this.objects.forEach((entry) => {
+    for (const entry of this.objects.values()) {
       if (!entry.tags.includes('static')) {
         objects.push({
           id: entry.id,
@@ -2930,10 +2927,10 @@ export class OverlayScene {
           tags: entry.tags
         });
       }
-    });
+    }
 
     const data: UpdateCallbackData = { objects };
-    this.updateCallbacks.forEach((cb) => cb(data));
+    for (const cb of this.updateCallbacks) cb(data);
   }
 
 }

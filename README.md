@@ -138,7 +138,7 @@ const { canvas, bounds } = OverlayScene.createContainer(container, {
 // Create scene
 const scene = new OverlayScene(canvas, {
   bounds,
-  gravity: { x: 0, y: 1 },
+  gravity: { x: 0, y: -1 },
   wrapHorizontal: true,
   background: 'transparent'
 });
@@ -489,7 +489,7 @@ const currentGrab = scene.getGrabbedObject(); // Returns ID or null
 ```typescript
 const scene = new OverlayScene(canvas, {
   bounds: { top: 0, bottom: 600, left: 0, right: 800 },
-  gravity: { x: 0, y: 1 },
+  gravity: { x: 0, y: -1 },
   wrapHorizontal: true,
   debug: false,
   background: '#16213e',
