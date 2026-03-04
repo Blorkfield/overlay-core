@@ -91,6 +91,18 @@ const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInp
 const inputEntitySpeed = document.getElementById('input-entity-speed') as HTMLInputElement;
 const inputEntityMass = document.getElementById('input-entity-mass') as HTMLInputElement;
 
+// Entity control elements
+const selectControlTag = document.getElementById('select-control-tag') as HTMLSelectElement;
+const entityCtrlBody = document.getElementById('entity-ctrl-body') as HTMLDivElement;
+const inputCtrlPosX = document.getElementById('input-ctrl-pos-x') as HTMLInputElement;
+const inputCtrlPosY = document.getElementById('input-ctrl-pos-y') as HTMLInputElement;
+const btnCtrlPosition = document.getElementById('btn-ctrl-position') as HTMLButtonElement;
+const inputCtrlVelX = document.getElementById('input-ctrl-vel-x') as HTMLInputElement;
+const inputCtrlVelY = document.getElementById('input-ctrl-vel-y') as HTMLInputElement;
+const btnCtrlVelocity = document.getElementById('btn-ctrl-velocity') as HTMLButtonElement;
+const inputCtrlSpin = document.getElementById('input-ctrl-spin') as HTMLInputElement;
+const btnCtrlSpin = document.getElementById('btn-ctrl-spin') as HTMLButtonElement;
+
 // Stop clicks on the inline inputs from toggling the tag buttons
 inputEntityGovX.addEventListener('click', e => e.stopPropagation());
 inputEntityGovY.addEventListener('click', e => e.stopPropagation());
@@ -488,6 +500,60 @@ btnReleaseAll.addEventListener('click', () => {
 
 btnRemoveAll.addEventListener('click', () => {
   scene?.removeAll();
+});
+
+// ==================== ENTITY CONTROLS ====================
+
+function populateControlTagDropdown(): void {
+  if (!scene) return;
+  const currentValue = selectControlTag.value;
+  const tags = scene.getAllTags();
+  selectControlTag.innerHTML = '<option value="">-- Select Tag --</option>';
+  for (const tag of tags) {
+    const option = document.createElement('option');
+    option.value = tag;
+    option.textContent = tag;
+    selectControlTag.appendChild(option);
+  }
+  if (tags.includes(currentValue)) selectControlTag.value = currentValue;
+}
+
+selectControlTag.addEventListener('focus', populateControlTagDropdown);
+selectControlTag.addEventListener('click', populateControlTagDropdown);
+selectControlTag.addEventListener('change', () => {
+  entityCtrlBody.style.display = selectControlTag.value ? 'flex' : 'none';
+});
+
+btnCtrlPosition.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const x = parseFloat(inputCtrlPosX.value);
+  const y = parseFloat(inputCtrlPosY.value);
+  if (!tag || isNaN(x) || isNaN(y)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setPosition(id, { x, y });
+  }
+});
+
+btnCtrlVelocity.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const vx = parseFloat(inputCtrlVelX.value);
+  const vy = parseFloat(inputCtrlVelY.value);
+  if (!tag || isNaN(vx) || isNaN(vy)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setVelocity(id, { x: vx, y: vy });
+  }
+});
+
+btnCtrlSpin.addEventListener('click', () => {
+  if (!scene) return;
+  const tag = selectControlTag.value;
+  const omega = parseFloat(inputCtrlSpin.value);
+  if (!tag || isNaN(omega)) return;
+  for (const id of scene.getObjectIdsByTag(tag)) {
+    scene.setObjectAngularVelocity(id, omega);
+  }
 });
 
 checkboxDebug.addEventListener('change', () => {

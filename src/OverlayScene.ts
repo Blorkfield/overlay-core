@@ -979,6 +979,16 @@ export class OverlayScene {
   }
 
   /**
+   * Set the angular velocity (spin) of an object in radians per second.
+   * Positive = counter-clockwise, negative = clockwise.
+   */
+  setObjectAngularVelocity(id: string, omega: number): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    Matter.Body.setAngularVelocity(entry.body, omega);
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {

@@ -408,6 +408,9 @@ scene.setObjectSpeedOverride(id, 2);     // double movement speed (negative = ru
 scene.setObjectSpeedOverride(id, null);  // remove speed override
 scene.setObjectMassOverride(id, 50);     // heavy object resists follow force
 scene.setObjectMassOverride(id, null);   // restore natural mass
+scene.setPosition(id, { x: 400, y: 300 });      // teleport object
+scene.setVelocity(id, { x: 10, y: 0 });         // launch object rightward
+scene.setObjectAngularVelocity(id, Math.PI);     // set spin (rad/s)
 
 // Get object info
 const ids = scene.getObjectIds();
@@ -426,11 +429,17 @@ const objs = scene.getObjectsByTag('tag'); // Returns ObjectState[]
 scene.applyForce(id, { x: 0.01, y: -0.02 });
 scene.applyForceToTag('grabable', { x: 0.005, y: 0 });
 
-// Set velocity directly
-scene.setVelocity(id, { x: 5, y: -10 });
+// Set velocity directly (screen coordinates: positive y = downward)
+scene.setVelocity(id, { x: 5, y: 10 });   // moving right and down
+scene.setVelocity(id, { x: 0, y: 0 });    // stop all movement
 
-// Set position directly
+// Set position directly (screen pixels, y=0 at top)
 scene.setPosition(id, { x: 100, y: 200 });
+
+// Set angular velocity (spin) in radians/second
+// Positive = counter-clockwise, negative = clockwise
+scene.setObjectAngularVelocity(id, Math.PI);  // half-rotation per second CCW
+scene.setObjectAngularVelocity(id, 0);        // stop spinning
 ```
 
 ## Mouse Position and Grab API
