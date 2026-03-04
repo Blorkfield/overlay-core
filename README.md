@@ -381,6 +381,26 @@ scene.setEffect({
 });
 ```
 
+### Managing Effects
+
+```typescript
+// Pause/resume an effect without removing it
+scene.setEffectEnabled('my-rain', false);  // pause
+scene.setEffectEnabled('my-rain', true);   // resume
+
+// Check if an effect is enabled
+scene.isEffectEnabled('my-rain');  // → true/false
+
+// Get effect config
+const effect = scene.getEffect('my-rain');  // → EffectConfig | undefined
+
+// List all effect IDs
+const ids = scene.getEffectIds();  // → string[]
+
+// Remove an effect entirely
+scene.removeEffect('my-rain');
+```
+
 ## Managing Objects
 
 ```typescript
@@ -820,6 +840,23 @@ scene.setObjectMassOverride(id, 50);   // now heavy
 scene.setObjectMassOverride(id, null); // restore natural mass
 ```
 
+### Scale
+
+`setObjectScale(id, x, y)` resizes an object at runtime. Both the physics collision shape and sprite rendering are updated together. Scale is absolute — calling `setObjectScale(id, 2, 2)` always doubles the original size regardless of current scale. Scaling also changes body mass proportionally (area scales by x×y); use `setObjectMassOverride` after if you need a fixed mass.
+
+```typescript
+// Uniform scale
+scene.setObjectScale(id, 2, 2);    // double size
+scene.setObjectScale(id, 0.5, 0.5); // half size
+
+// Non-uniform scale (independent x and y)
+scene.setObjectScale(id, 3, 1);    // stretch wide, keep height
+scene.setObjectScale(id, 1, 0.5);  // squash vertically
+
+// Restore original size
+scene.setObjectScale(id, 1, 1);
+```
+
 ## Examples
 
 Working examples are provided in the `/examples` directory:
@@ -863,6 +900,11 @@ import type {
   TTFTextObstacleConfig,
   TextAlign,
   TextBounds,
+  LetterDebugInfo,
+
+  // DOM obstacle types
+  DOMObstacleConfig,
+  DOMObstacleResult,
 
   // Effect types
   EffectConfig,
@@ -905,5 +947,5 @@ import type {
 } from '@blorkfield/overlay-core';
 
 // Tag constants (values, not types)
-import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW, TAG_GRAVITY_OVERRIDE } from '@blorkfield/overlay-core';
+import { TAGS, TAG_STATIC, TAG_GRABABLE, TAG_FOLLOW_WINDOW, TAG_GRAVITY_OVERRIDE, TAG_SPEED_OVERRIDE, TAG_MASS_OVERRIDE } from '@blorkfield/overlay-core';
 ```
