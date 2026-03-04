@@ -27,7 +27,7 @@ const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElemen
 const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
 const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
 const entityTagButtons: Record<string, HTMLElement> = {
-  falling: document.getElementById('entity-tag-falling') as HTMLButtonElement,
+  static: document.getElementById('entity-tag-static') as HTMLButtonElement,
   grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
   follow_window: document.getElementById('entity-tag-follow-window') as HTMLButtonElement,
   gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
@@ -61,7 +61,7 @@ const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSel
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
 const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
 const textTagButtons: Record<string, HTMLElement> = {
-  falling: document.getElementById('text-tag-falling') as HTMLButtonElement,
+  static: document.getElementById('text-tag-static') as HTMLButtonElement,
   grabable: document.getElementById('text-tag-grabable') as HTMLButtonElement,
   follow_window: document.getElementById('text-tag-follow-window') as HTMLButtonElement,
 };
@@ -124,7 +124,7 @@ const availableImages = [
 ];
 
 // Available tags for effect objects
-const effectObjectTags = ['falling', 'window_follow', 'grabable'];
+const effectObjectTags = ['static', 'window_follow', 'grabable'];
 
 // Tag button toggle state
 const activeEntityTags = new Set<string>();
@@ -146,7 +146,10 @@ function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<st
 
 setupTagButtons(entityTagButtons, activeEntityTags);
 
+// Text letters default to static
+activeTextTags.add('static');
 setupTagButtons(textTagButtons, activeTextTags);
+textTagButtons['static']?.classList.add('active');
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -277,7 +280,7 @@ async function createScene(width: number, height: number): Promise<void> {
     y: titleResult.bounds.bottom + 100,
     radius: 30,
     fillStyle: '#4a90d9',
-    tags: ['falling', 'window_follow', 'grabable']
+    tags: ['window_follow', 'grabable']
   });
   console.log('window_follow circle spawned');
 
@@ -563,9 +566,8 @@ async function spawnTextObstacle(): Promise<void> {
   const startX = selectTextXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
   const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
 
-  // Use selected tags from picker - determine static from 'falling' tag
-  const tags = [...activeTextTags];
-  const isStatic = !tags.includes('falling');
+  const isStatic = activeTextTags.has('static');
+  const tags = [...activeTextTags].filter(t => t !== 'static');
 
   console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);
 

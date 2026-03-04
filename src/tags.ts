@@ -3,8 +3,8 @@
  * Use these instead of magic strings.
  */
 
-/** Object is dynamic and affected by gravity */
-export const TAG_FALLING = 'falling' as const;
+/** Object is static (not affected by gravity). Without this tag, objects are dynamic by default. */
+export const TAG_STATIC = 'static' as const;
 
 /** Object follows mouse position when grounded (walks toward mouse) */
 export const TAG_FOLLOW_WINDOW = 'follow_window' as const;
@@ -18,11 +18,12 @@ export const TAG_GRAVITY_OVERRIDE = 'gravity_override' as const;
 /**
  * All available tags as a const object for destructuring.
  * @example
- * const { FALLING, GRABABLE } = TAGS;
- * scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
+ * const { STATIC, GRABABLE } = TAGS;
+ * scene.spawnObject({ tags: [GRABABLE], ... }); // dynamic by default
+ * scene.spawnObject({ tags: [STATIC], ... }); // static obstacle
  */
 export const TAGS = {
-  FALLING: TAG_FALLING,
+  STATIC: TAG_STATIC,
   FOLLOW_WINDOW: TAG_FOLLOW_WINDOW,
   GRABABLE: TAG_GRABABLE,
   GRAVITY_OVERRIDE: TAG_GRAVITY_OVERRIDE,

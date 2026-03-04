@@ -47,7 +47,7 @@ interface TTFGlyphRenderInfo {
 /**
  * Internal representation of a scene object.
  * All objects are stored uniformly - behavior is determined entirely by tags:
- * - 'falling': Object is dynamic (affected by gravity). Without this tag, object is static.
+ * - 'static': Object is static (not affected by gravity). Without this tag, object is dynamic by default.
  * - 'follow_window': Object follows mouse position when grounded (walks toward mouse)
  * - 'grabable': Object can be grabbed and moved with mouse
  */
@@ -272,8 +272,8 @@ export class OverlayScene {
       const entry = this.findObjectByBody(body);
       if (!entry) continue;
 
-      // Skip if already falling or no click behavior
-      if (entry.tags.includes('falling')) continue;
+      // Skip if already dynamic (no static tag) or no click behavior
+      if (!entry.tags.includes('static')) continue;
       if (entry.clicksRemaining === undefined) continue;
 
       // Decrement clicks remaining
@@ -343,7 +343,7 @@ export class OverlayScene {
     const dynamics: ObjectEntry[] = [];
 
     for (const entry of this.objects.values()) {
-      if (entry.tags.includes('falling')) {
+      if (!entry.tags.includes('static')) {
         // Only count resting objects (low velocity)
         if (Math.abs(entry.body.velocity.y) < 2) {
           dynamics.push(entry);
@@ -670,8 +670,8 @@ export class OverlayScene {
 
   /** Convert a static obstacle to dynamic (make it fall) */
   private collapseObstacle(entry: ObjectEntry): void {
-    // Skip if already falling
-    if (entry.tags.includes('falling')) return;
+    // Skip if already dynamic
+    if (!entry.tags.includes('static')) return;
 
     const name = this.getObstacleDisplayName(entry);
     console.log(`[Pressure] Collapsed: ${name}`);
@@ -681,8 +681,8 @@ export class OverlayScene {
       this.createShadow(entry);
     }
 
-    // Add falling tag
-    entry.tags.push('falling');
+    // Remove static tag
+    entry.tags = entry.tags.filter(t => t !== 'static');
 
     // Make body dynamic
     Matter.Body.setStatic(entry.body, false);
@@ -909,16 +909,10 @@ export class OverlayScene {
     const entry = this.objects.get(id);
     if (!entry) return;
     if (gravity === null) {
-      entry.gravityOverride = undefined;
-      this.gravityOverrideEntries.delete(entry);
-      const idx = entry.tags.indexOf('gravity_override');
-      if (idx !== -1) entry.tags.splice(idx, 1);
+      this.removeTag(id, 'gravity_override');
     } else {
       entry.gravityOverride = gravity;
-      this.gravityOverrideEntries.add(entry);
-      if (!entry.tags.includes('gravity_override')) {
-        entry.tags.push('gravity_override');
-      }
+      this.addTag(id, 'gravity_override');
     }
   }
 
@@ -977,10 +971,9 @@ export class OverlayScene {
   /**
    * Spawn an object synchronously.
    * Object behavior is determined by tags:
-   * - 'falling': Object is dynamic (affected by gravity)
+   * - 'static': Object is not affected by gravity (obstacle). Without this tag, object is dynamic by default.
    * - 'follow_window': Object follows mouse when grounded (walks toward mouse)
    * - 'grabable': Object can be grabbed and moved with mouse
-   * Without 'falling' tag, object is static.
    */
   spawnObject(config: ObjectConfig): string {
     // If element is provided, delegate to DOM obstacle logic
@@ -1005,7 +998,7 @@ export class OverlayScene {
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
-    const isStatic = !tags.includes('falling');
+    const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object`, {
       id,
@@ -1085,7 +1078,7 @@ export class OverlayScene {
     if (config.gravityOverride && !tags.includes('gravity_override')) {
       tags.push('gravity_override');
     }
-    const isStatic = !tags.includes('falling');
+    const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object async`, {
       id,
@@ -1154,15 +1147,15 @@ export class OverlayScene {
   }
 
   /**
-   * Add 'falling' tag to an object, making it dynamic (affected by gravity).
+   * Make an object dynamic (remove 'static' tag, affected by gravity).
    * Also adds 'grabable' tag so released objects can be dragged.
    * This is the tag-based replacement for releaseObstacle().
    */
   addFallingTag(id: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
-    if (!entry.tags.includes('falling')) {
-      entry.tags.push('falling');
+    if (entry.tags.includes('static')) {
+      entry.tags = entry.tags.filter(t => t !== 'static');
       Matter.Body.setStatic(entry.body, false);
     }
     if (!entry.tags.includes('grabable')) {
@@ -1171,22 +1164,26 @@ export class OverlayScene {
   }
 
   /**
-   * Add a tag to an object.
+   * Add a tag to an object. Tags drive behavior — adding a tag activates the associated effect.
+   * For 'gravity_override', also pass a gravityOverride value via setObjectGravityOverride first,
+   * or the tag will default to {x:0, y:0} (hovering).
    */
   addTag(id: string, tag: string): void {
     const entry = this.objects.get(id);
     if (!entry) return;
     if (!entry.tags.includes(tag)) {
       entry.tags.push(tag);
-      // Handle special tag behaviors
-      if (tag === 'falling') {
-        Matter.Body.setStatic(entry.body, false);
+      if (tag === 'static') {
+        Matter.Body.setStatic(entry.body, true);
+      } else if (tag === 'gravity_override') {
+        if (!entry.gravityOverride) entry.gravityOverride = { x: 0, y: 0 };
+        this.gravityOverrideEntries.add(entry);
       }
     }
   }
 
   /**
-   * Remove a tag from an object.
+   * Remove a tag from an object. Tags drive behavior — removing a tag deactivates the associated effect.
    */
   removeTag(id: string, tag: string): void {
     const entry = this.objects.get(id);
@@ -1194,15 +1191,17 @@ export class OverlayScene {
     const index = entry.tags.indexOf(tag);
     if (index !== -1) {
       entry.tags.splice(index, 1);
-      // Handle special tag behaviors
-      if (tag === 'falling') {
-        Matter.Body.setStatic(entry.body, true);
+      if (tag === 'static') {
+        Matter.Body.setStatic(entry.body, false);
+      } else if (tag === 'gravity_override') {
+        this.gravityOverrideEntries.delete(entry);
+        entry.gravityOverride = undefined;
       }
     }
   }
 
   /**
-   * Release an object (add 'falling' tag to make it dynamic).
+   * Release an object (remove 'static' tag to make it dynamic).
    * Convenience method - equivalent to addFallingTag().
    */
   releaseObject(id: string): void {
@@ -1219,7 +1218,7 @@ export class OverlayScene {
   }
 
   /**
-   * Release all static objects (add 'falling' and 'grabable' tags).
+   * Release all static objects (remove 'static' tag, add 'grabable' tag).
    */
   releaseAllObjects(): void {
     for (const [id] of this.objects) {
@@ -1228,7 +1227,7 @@ export class OverlayScene {
   }
 
   /**
-   * Release objects by tag (add 'falling' and 'grabable' tags to matching objects).
+   * Release objects by tag (remove 'static' tag, add 'grabable' tag to matching objects).
    */
   releaseObjectsByTag(tag: string): void {
     for (const [id, entry] of this.objects) {
@@ -1708,7 +1707,7 @@ export class OverlayScene {
     const width = config.width ?? element.offsetWidth;
     const height = config.height ?? element.offsetHeight;
     const tags = config.tags ?? [];
-    const isStatic = !tags.includes('falling');
+    const isStatic = tags.includes('static');
 
     // Create a rectangular physics body
     const body = Matter.Bodies.rectangle(x, y, width, height, {
@@ -1771,7 +1770,7 @@ export class OverlayScene {
       const clickHandler = () => {
         const currentEntry = this.objects.get(id);
         if (!currentEntry) return;
-        if (currentEntry.tags.includes('falling')) return;
+        if (!currentEntry.tags.includes('static')) return;
         if (currentEntry.clicksRemaining === undefined) return;
 
         currentEntry.clicksRemaining--;
@@ -1822,9 +1821,11 @@ export class OverlayScene {
     const fontName = config.fontName ?? this.getDefaultFont()?.name ?? 'handwritten';
     const basePath = `${fontsBasePath}${fontName}/`;
     const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
-    // Determine if static based on tags (no 'falling' tag = static)
-    const baseTags = config.tags ?? [];
-    const isStatic = !baseTags.includes('falling');
+    // isStatic defaults to true — text is an obstacle unless explicitly set to false
+    const isStatic = config.isStatic !== false;
+    const baseTags = [...(config.tags ?? [])];
+    if (isStatic && !baseTags.includes('static')) baseTags.push('static');
+    else if (!isStatic) { const i = baseTags.indexOf('static'); if (i !== -1) baseTags.splice(i, 1); }
     const letterColor = config.letterColor;
 
     const letterIds: string[] = [];
@@ -2012,7 +2013,7 @@ export class OverlayScene {
         const imageUrl = letterColor
           ? await tintImage(originalImageUrl, letterColor)
           : originalImageUrl;
-        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...baseTags, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         const id = crypto.randomUUID();
 
@@ -2141,16 +2142,14 @@ export class OverlayScene {
 
   /**
    * Spawn falling text objects from a string.
-   * Same as addTextObstacles but with 'falling' tag (objects fall with gravity).
+   * Same as addTextObstacles but ensures objects are dynamic (removes 'static' tag if present).
    */
   async spawnFallingTextObstacles(config: TextObstacleConfig): Promise<TextObstacleResult> {
-    const tags = [...(config.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.addTextObstacles({ ...config, tags });
+    return this.addTextObstacles({ ...config, isStatic: false });
   }
 
   /**
-   * Release all letters in a word (add 'falling' tag so they fall).
+   * Release all letters in a word (remove 'static' tag so they fall).
    * @param wordTag - The word tag returned from addTextObstacles
    */
   releaseTextObstacles(wordTag: string): void {
@@ -2204,9 +2203,11 @@ export class OverlayScene {
     // Convert literal \n strings to actual newlines
     const text = config.text.replace(/\\n/g, '\n');
     const stringTag = config.stringTag ?? `str-${crypto.randomUUID().slice(0, 8)}`;
-    // Determine if static based on tags (no 'falling' tag = static)
-    const baseTags = config.tags ?? [];
-    const isStatic = !baseTags.includes('falling');
+    // isStatic defaults to true — text is an obstacle unless explicitly set to false
+    const isStatic = config.isStatic !== false;
+    const baseTags = [...(config.tags ?? [])];
+    if (isStatic && !baseTags.includes('static')) baseTags.push('static');
+    else if (!isStatic) { const i = baseTags.indexOf('static'); if (i !== -1) baseTags.splice(i, 1); }
     const fillColor = config.fillColor ?? '#ffffff';
     const fillColors = config.fillColors;
     const lineHeight = config.lineHeight ?? fontSize * 1.2;
@@ -2316,7 +2317,7 @@ export class OverlayScene {
         wordTagsSet.add(wordTag);
 
         const id = crypto.randomUUID();
-        const tags = [...(config.tags ?? []), stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
+        const tags = [...baseTags, stringTag, wordTag, `letter-${char}`, `letter-index-${globalCharIndex}`];
 
         // Calculate glyph center from bounding box
         const bbox = glyphData.boundingBox;
@@ -2457,12 +2458,10 @@ export class OverlayScene {
 
   /**
    * Spawn falling TTF text objects.
-   * Same as addTTFTextObstacles but with 'falling' tag (objects fall with gravity).
+   * Same as addTTFTextObstacles but ensures objects are dynamic (removes 'static' tag if present).
    */
   async spawnFallingTTFTextObstacles(config: TTFTextObstacleConfig): Promise<TextObstacleResult> {
-    const tags = [...(config.tags ?? [])];
-    if (!tags.includes('falling')) tags.push('falling');
-    return this.addTTFTextObstacles({ ...config, tags });
+    return this.addTTFTextObstacles({ ...config, isStatic: false });
   }
 
   // ==================== COMBINED TAG METHODS ====================
@@ -2595,13 +2594,13 @@ export class OverlayScene {
         }
       }
 
-      // Apply horizontal wrapping to dynamic objects (objects with 'falling' tag)
-      if (this.config.wrapHorizontal && entry.tags.includes('falling')) {
+      // Apply horizontal wrapping to dynamic objects (objects without 'static' tag)
+      if (this.config.wrapHorizontal && !entry.tags.includes('static')) {
         wrapHorizontal(entry.body, this.config.bounds);
       }
 
       // Update DOM element transforms to follow physics body
-      if (entry.domElement && entry.tags.includes('falling')) {
+      if (entry.domElement && !entry.tags.includes('static')) {
         this.updateDOMElementTransform(entry);
       }
 
@@ -2761,10 +2760,10 @@ export class OverlayScene {
   }
 
   private fireUpdateCallbacks(): void {
-    // Collect all dynamic objects (objects with 'falling' tag)
+    // Collect all dynamic objects (objects without 'static' tag)
     const objects: DynamicObject[] = [];
     this.objects.forEach((entry) => {
-      if (entry.tags.includes('falling')) {
+      if (!entry.tags.includes('static')) {
         objects.push({
           id: entry.id,
           x: entry.body.position.x,

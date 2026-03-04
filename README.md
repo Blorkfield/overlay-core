@@ -22,27 +22,39 @@ pnpm add @blorkfield/overlay-core
 
 ### Tag Based Behavior
 
-Objects don't have fixed types. Instead, their behavior is determined by string tags. Import the tag constants to avoid magic strings:
+Tags are the source of truth for object behavior. Adding a tag activates the associated effect; removing it deactivates it. There are no separate type systems — the tag array on each object drives everything.
+
+Import the tag constants to avoid magic strings:
 
 ```typescript
-import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
+import { TAGS, TAG_STATIC, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
 
 // Use individual constants
-scene.spawnObject({ tags: [TAG_FALLING, TAG_GRABABLE], ... });
+scene.spawnObject({ tags: [TAG_GRABABLE], ... });           // dynamic by default
+scene.spawnObject({ tags: [TAG_STATIC, TAG_GRABABLE], ... }); // static obstacle
 
 // Or destructure from TAGS object
-const { FALLING, GRABABLE } = TAGS;
-scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
+const { STATIC, GRABABLE } = TAGS;
+scene.spawnObject({ tags: [STATIC], ... });
 ```
 
 | Constant | Value | Behavior |
 |----------|-------|----------|
-| `TAG_FALLING` / `TAGS.FALLING` | `'falling'` | Object is dynamic and affected by gravity |
+| `TAG_STATIC` / `TAGS.STATIC` | `'static'` | Object is a static obstacle, not affected by gravity. Without this tag, objects are dynamic by default. |
 | `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
-| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity (set via `gravityOverride` in config) |
+| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
 
-Without the `falling` tag, objects are static and won't move.
+Tags can be added and removed at runtime to change behavior dynamically:
+
+```typescript
+scene.addTag(id, 'static');         // freeze an object in place
+scene.removeTag(id, 'static');      // release it to fall
+scene.addTag(id, 'grabable');       // make it grabbable
+scene.removeTag(id, 'grabable');    // prevent grabbing
+```
+
+The `gravity_override` tag carries a value (a Vector2). Use `setObjectGravityOverride` to set the value and activate the tag, or pass it via `gravityOverride` in spawn config. Removing the tag restores scene gravity.
 
 ### Pressure System
 
@@ -98,22 +110,22 @@ All objects are created through `spawnObject()` (or `spawnObjectAsync()` for ima
 ### Basic Shapes
 
 ```typescript
-// Circle (dynamic, falls with gravity)
+// Circle (dynamic by default — falls with gravity)
 scene.spawnObject({
   x: 100,
   y: 50,
   radius: 20,
   fillStyle: '#ff0000',
-  tags: ['falling']
 });
 
-// Rectangle (static, doesn't move)
+// Rectangle (static obstacle — won't move)
 scene.spawnObject({
   x: 200,
   y: 300,
   width: 100,
   height: 20,
-  fillStyle: '#0000ff'
+  fillStyle: '#0000ff',
+  tags: ['static']
 });
 
 // Polygon shapes
@@ -122,7 +134,6 @@ scene.spawnObject({
   y: 100,
   radius: 25,
   fillStyle: '#00ff00',
-  tags: ['falling'],
   shape: { type: 'hexagon' }
 });
 ```
@@ -137,7 +148,7 @@ const id = await scene.spawnObjectAsync({
   y: 100,
   imageUrl: '/images/coin.png',
   size: 50,
-  tags: ['falling', 'grabable']
+  tags: ['grabable']  // dynamic by default
 });
 ```
 
@@ -242,14 +253,16 @@ const result = await scene.addTTFTextObstacles({
 });
 ```
 
+Text obstacles default to `isStatic: true` — they are static obstacles that things fall onto. Pass `isStatic: false` to spawn falling text instead.
+
 ### Managing Text Obstacles
 
 ```typescript
-// Spawn text that immediately falls (already has 'falling' tag)
+// Spawn text that immediately falls (isStatic: false)
 const result = await scene.spawnFallingTextObstacles(config);
 const result = await scene.spawnFallingTTFTextObstacles(config);
 
-// Release text obstacles (add 'falling' tag)
+// Release static text obstacles (removes 'static' tag so they fall)
 scene.releaseTextObstacles(wordTag);
 
 // Release letters one by one with delay
@@ -280,7 +293,7 @@ scene.setEffect({
     objectConfig: {
       radius: 15,
       fillStyle: '#4a90d9',
-      tags: ['falling']
+      // dynamic by default — no tags needed
     },
     probability: 1,
     minScale: 0.8,
@@ -342,14 +355,15 @@ scene.removeAllObjects();
 scene.removeAll();              // Alias for removeAllObjects
 scene.removeAllByTag('tag');    // Alias for removeObjectsByTag
 
-// Add or remove tags
-scene.addTag(id, 'falling');
-scene.addFallingTag(id);        // Convenience for adding 'falling' tag
-scene.removeTag(id, 'grabable');
+// Add or remove tags — tags drive behavior, changes take effect immediately
+scene.addTag(id, 'grabable');
+scene.removeTag(id, 'static');    // releases a static object to fall
+scene.addTag(id, 'static');       // freezes a dynamic object in place
+scene.addFallingTag(id);          // convenience: removes 'static', adds 'grabable'
 
 // Get object info
 const ids = scene.getObjectIds();
-const tagged = scene.getObjectIdsByTag('falling');
+const tagged = scene.getObjectIdsByTag('static');
 const allTags = scene.getAllTags();
 
 // Get full object state
@@ -362,7 +376,7 @@ const objs = scene.getObjectsByTag('tag'); // Returns ObjectState[]
 ```typescript
 // Apply force to objects
 scene.applyForce(id, { x: 0.01, y: -0.02 });
-scene.applyForceToTag('falling', { x: 0.005, y: 0 });
+scene.applyForceToTag('grabable', { x: 0.005, y: 0 });
 
 // Set velocity directly
 scene.setVelocity(id, { x: 5, y: -10 });
@@ -508,7 +522,7 @@ Called every frame with all dynamic object states:
 
 ```typescript
 scene.onUpdate((data) => {
-  // data.objects contains all dynamic (falling) objects
+  // data.objects contains all dynamic objects (those without the 'static' tag)
   for (const obj of data.objects) {
     console.log(obj.id, obj.x, obj.y, obj.angle, obj.tags);
   }
@@ -654,7 +668,7 @@ scene.destroy();                        // Clean up resources
 
 ### Per-Object Gravity Override
 
-Individual dynamic objects can have their own gravity vector, independent of the scene gravity. This is done via the `gravityOverride` field in `ObjectConfig`, which automatically adds the `gravity_override` tag to the object.
+Dynamic objects can have their own gravity vector instead of the scene gravity. Set it via `gravityOverride` in spawn config, or change it at runtime with `setObjectGravityOverride`. This automatically adds or removes the `gravity_override` tag.
 
 ```typescript
 // Spawn a floaty object that drifts upward
@@ -662,7 +676,7 @@ scene.spawnObject({
   x: 200, y: 300,
   radius: 20,
   fillStyle: '#4a90d9',
-  tags: ['falling', 'grabable'],
+  tags: ['grabable'],
   gravityOverride: { x: 0, y: -0.3 }  // floats upward
 });
 
@@ -671,23 +685,25 @@ scene.spawnObject({
   x: 400, y: 200,
   radius: 15,
   fillStyle: '#e94560',
-  tags: ['falling'],
   gravityOverride: { x: 0, y: 0 }
 });
 
 // Change or clear a gravity override at runtime
 scene.setObjectGravityOverride(id, { x: 0.5, y: 0 }); // drift sideways
 scene.setObjectGravityOverride(id, null);               // restore scene gravity
+
+// removeTag works too — setObjectGravityOverride(id, null) calls it internally
+scene.removeTag(id, 'gravity_override');  // restores scene gravity
 ```
 
-Tags are either boolean (presence = true) or carry a value. `gravity_override` is a value tag — its Vector2 value is set via `gravityOverride` in the config. Boolean tags (`falling`, `grabable`, `follow_window`) need no value.
+Tags are the source of truth for all behavior. Boolean tags (presence = active, absence = inactive). `gravity_override` additionally carries a Vector2 value managed via `setObjectGravityOverride` or `gravityOverride` in spawn config.
 
-| Tag | Type | Behavior |
-|-----|------|----------|
-| `falling` | boolean | Dynamic body affected by gravity |
-| `grabable` | boolean | Can be grabbed with mouse |
-| `follow_window` | boolean | Walks toward mouse when grounded |
-| `gravity_override` | Vector2 | Uses own gravity instead of scene gravity |
+| Tag | Behavior |
+|-----|----------|
+| `static` | Static obstacle, not affected by gravity. Absent by default — objects are dynamic unless tagged static. |
+| `grabable` | Can be grabbed and dragged with the mouse |
+| `follow_window` | Walks toward mouse position when grounded |
+| `gravity_override` | Uses its own gravity vector instead of scene gravity (value set via `setObjectGravityOverride`) |
 
 ## Examples
 
