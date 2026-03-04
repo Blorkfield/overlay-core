@@ -1635,14 +1635,14 @@ export class OverlayScene {
   }
 
   /**
-   * Set the velocity of an object.
+   * Set the velocity of an object. Y axis uses physical convention: negative = down, positive = up.
    * @param objectId - The ID of the object
    * @param velocity - The velocity vector to set
    */
   setVelocity(objectId: string, velocity: { x: number; y: number }): void {
     const entry = this.objects.get(objectId);
     if (!entry) return;
-    Matter.Body.setVelocity(entry.body, velocity);
+    Matter.Body.setVelocity(entry.body, { x: velocity.x, y: -velocity.y });
   }
 
   /**

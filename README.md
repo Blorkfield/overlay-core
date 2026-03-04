@@ -430,8 +430,9 @@ const objs = scene.getObjectsByTag('tag'); // Returns ObjectState[]
 scene.applyForce(id, { x: 0.01, y: -0.02 });
 scene.applyForceToTag('grabable', { x: 0.005, y: 0 });
 
-// Set velocity directly (screen coordinates: positive y = downward)
-scene.setVelocity(id, { x: 5, y: 10 });   // moving right and down
+// Set velocity directly (physical convention: positive y = upward, negative y = downward)
+scene.setVelocity(id, { x: 5, y: 10 });   // moving right and upward
+scene.setVelocity(id, { x: 0, y: -10 });  // moving downward
 scene.setVelocity(id, { x: 0, y: 0 });    // stop all movement
 
 // Set position directly (screen pixels, y=0 at top)
