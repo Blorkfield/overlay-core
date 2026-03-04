@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.9.0
+
+### Minor Changes
+
+- 278c551: feat: adjustable gravity
+
 ## 0.8.11
 
 ### Patch Changes
