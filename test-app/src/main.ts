@@ -83,6 +83,8 @@ const entityContent = document.getElementById('entity-content') as HTMLDivElemen
 const selectSpawnType = document.getElementById('select-spawn-type') as HTMLSelectElement;
 const spawnEntityFields = document.getElementById('spawn-entity-fields') as HTMLDivElement;
 const spawnTextFields = document.getElementById('spawn-text-fields') as HTMLDivElement;
+const spawnSectionHeader = document.getElementById('spawn-section-header') as HTMLDivElement;
+const spawnSectionBody = document.getElementById('spawn-section-body') as HTMLDivElement;
 const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
 const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
 const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
@@ -449,6 +451,13 @@ btnFullscreen.addEventListener('click', setFullscreenMode);
 btnFixed.addEventListener('click', setFixedMode);
 btnApply.addEventListener('click', applySize);
 btnSpawnEntity.addEventListener('click', spawnRandomEntity);
+
+spawnSectionHeader.addEventListener('click', () => {
+  const collapsed = spawnSectionBody.style.display === 'none';
+  spawnSectionBody.style.display = collapsed ? '' : 'none';
+  const btn = spawnSectionHeader.querySelector('button');
+  if (btn) btn.textContent = collapsed ? '−' : '+';
+});
 
 selectSpawnType.addEventListener('change', () => {
   const isText = selectSpawnType.value === 'text';

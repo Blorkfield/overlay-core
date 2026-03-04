@@ -373,6 +373,44 @@
       color: #555;
       font-style: italic;
     }
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 0;
+    }
+    .ctrl-label {
+      font-size: 11px;
+      color: #888;
+      width: 52px;
+      flex-shrink: 0;
+    }
+    .ctrl-inputs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+    }
+    .ctrl-axis {
+      font-size: 10px;
+      color: #555;
+      font-family: monospace;
+    }
+    .ctrl-apply-btn {
+      padding: 4px 10px;
+      background: #3a4a6a;
+      border: 1px solid #4a5a7a;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 11px;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .ctrl-apply-btn:hover {
+      background: #4a5a8a;
+      color: #fff;
+    }
     .ctrl-num {
       width: 52px;
       padding: 4px 5px;
@@ -518,6 +556,11 @@
         <button id="btn-apply-gravity" class="panel-btn" style="width:100%;margin-top:8px">Apply Gravity</button>
       </div>
       <div class="effect-section">
+        <div id="spawn-section-header" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+          <span class="effect-title">Spawn</span>
+          <button class="blork-tabs-collapse-btn" style="pointer-events:none">+</button>
+        </div>
+        <div id="spawn-section-body" style="display:none;margin-top:12px">
         <div class="param-row" style="margin-bottom:12px">
           <label>Spawn Type:</label>
           <select id="select-spawn-type" class="select-input" style="flex:1">
@@ -656,6 +699,7 @@
             <button id="btn-spawn-text" class="panel-btn" style="width:100%">Spawn Text</button>
           </div>
         </div>
+        </div><!-- end spawn-section-body -->
       </div>
       <div class="effect-section">
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -682,32 +726,37 @@
             <select id="select-control-tag" class="select-input" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"></select>
           </div>
         </div>
-        <div id="entity-ctrl-body" style="display:none;flex-direction:column;gap:5px">
-          <div style="display:flex;align-items:center;gap:4px">
-            <label style="font-size:11px;color:#888;min-width:auto">X</label>
-            <input type="number" id="input-ctrl-pos-x" value="400" step="10" class="ctrl-num">
-            <label style="font-size:11px;color:#888;min-width:auto">Y</label>
-            <input type="number" id="input-ctrl-pos-y" value="300" step="10" class="ctrl-num">
-            <button id="btn-ctrl-position" class="panel-btn" style="flex:1;font-size:11px;padding:5px 6px">Pos</button>
+        <div id="entity-ctrl-body" style="display:none;flex-direction:column;gap:0">
+          <div class="ctrl-row">
+            <span class="ctrl-label">Position</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-pos-x" value="400" step="10" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-pos-y" value="300" step="10" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-position" class="ctrl-apply-btn">Apply</button>
           </div>
-          <div style="display:flex;align-items:center;gap:4px">
-            <label style="font-size:11px;color:#888;min-width:auto">X</label>
-            <input type="number" id="input-ctrl-vel-x" value="0" step="1" class="ctrl-num">
-            <label style="font-size:11px;color:#888;min-width:auto">Y</label>
-            <input type="number" id="input-ctrl-vel-y" value="0" step="1" class="ctrl-num">
-            <button id="btn-ctrl-velocity" class="panel-btn" style="flex:1;font-size:11px;padding:5px 6px">Vel</button>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Velocity</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-vel-x" value="0" step="1" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-vel-y" value="0" step="1" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-velocity" class="ctrl-apply-btn">Apply</button>
           </div>
-          <div style="display:flex;align-items:center;gap:4px">
-            <label style="font-size:11px;color:#888;min-width:auto">ω</label>
-            <input type="number" id="input-ctrl-spin" value="0" step="0.1" class="ctrl-num">
-            <button id="btn-ctrl-spin" class="panel-btn" style="flex:1;font-size:11px;padding:5px 6px">Spin</button>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Spin</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">ω</span><input type="number" id="input-ctrl-spin" value="0" step="0.1" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-spin" class="ctrl-apply-btn">Apply</button>
           </div>
-          <div style="display:flex;align-items:center;gap:4px">
-            <label style="font-size:11px;color:#888;min-width:auto">X</label>
-            <input type="number" id="input-ctrl-scale-x" value="1" step="0.1" min="0.01" class="ctrl-num">
-            <label style="font-size:11px;color:#888;min-width:auto">Y</label>
-            <input type="number" id="input-ctrl-scale-y" value="1" step="0.1" min="0.01" class="ctrl-num">
-            <button id="btn-ctrl-scale" class="panel-btn" style="flex:1;font-size:11px;padding:5px 6px">Scale</button>
+          <div class="ctrl-row">
+            <span class="ctrl-label">Scale</span>
+            <div class="ctrl-inputs">
+              <span class="ctrl-axis">x</span><input type="number" id="input-ctrl-scale-x" value="1" step="0.1" min="0.01" class="ctrl-num">
+              <span class="ctrl-axis">y</span><input type="number" id="input-ctrl-scale-y" value="1" step="0.1" min="0.01" class="ctrl-num">
+            </div>
+            <button id="btn-ctrl-scale" class="ctrl-apply-btn">Apply</button>
           </div>
         </div>
       </div>
