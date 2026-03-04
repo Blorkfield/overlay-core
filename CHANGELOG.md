@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.10.0
+
+### Minor Changes
+
+- 6b3d7a0: feat: entity behavior
+
 ## 0.9.0
 
 ### Minor Changes
