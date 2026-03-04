@@ -92,6 +92,7 @@ function createBodyFromVertices(
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
+    density: 0.005,
     label: `entity:${id}`,
     render: renderOptions
   });
@@ -271,6 +272,7 @@ function createCircleEntity(id: string, config: ObjectConfig): Matter.Body {
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
+    density: 0.005,
     label: `entity:${id}`,
     render: createFillRenderOptions(config)
   });
@@ -286,6 +288,7 @@ function createCircleEntityWithSprite(id: string, config: ObjectConfig, imageWid
     restitution: 0.3,
     friction: 0.1,
     frictionAir: 0.01,
+    density: 0.005,
     label: `entity:${id}`,
     render: createSpriteRenderOptions(config, imageWidth, imageHeight)
   });

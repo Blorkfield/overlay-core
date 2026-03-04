@@ -88,6 +88,10 @@ interface ObjectEntry {
   followTarget?: string;
   /** Speed multiplier for follow_window and future movement behaviors. Default: 1. Negative = run away. */
   speedOverride?: number;
+  /** Physics mass override value (set via mass_override tag). */
+  massOverride?: number;
+  /** Original density-based mass, stored when mass_override is first applied so it can be restored. */
+  originalMass?: number;
   /** Auto-assigned identity tag (entity-<shortId>). Cannot be removed. */
   entityTag: string;
 }
@@ -839,11 +843,6 @@ export class OverlayScene {
     return null;
   }
 
-  /** Check if a body is grounded (low vertical velocity indicates resting on something) */
-  private isGrounded(body: Matter.Body): boolean {
-    return Math.abs(body.velocity.y) < 0.5;
-  }
-
   start(): void {
     Matter.Render.run(this.render);
     this.loop();
@@ -956,6 +955,24 @@ export class OverlayScene {
   }
 
   /**
+   * Set or change the physics mass for an object. Pass null to remove the override and restore
+   * the original density-based mass. Adds 'mass_override' tag if not already present.
+   * Higher mass resists applied forces (including follow forces) more strongly.
+   */
+  setObjectMassOverride(id: string, mass: number | null): void {
+    const entry = this.objects.get(id);
+    if (!entry) return;
+    if (mass === null) {
+      this.removeTag(id, 'mass_override');
+    } else {
+      if (entry.originalMass === undefined) entry.originalMass = entry.body.mass;
+      entry.massOverride = mass;
+      Matter.Body.setMass(entry.body, mass);
+      this.addTag(id, 'mass_override');
+    }
+  }
+
+  /**
    * Update the background configuration at runtime.
    */
   async setBackground(config: BackgroundConfig | undefined): Promise<void> {
@@ -1046,6 +1063,9 @@ export class OverlayScene {
     if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
       tags.push('speed_override');
     }
+    if (config.massOverride !== undefined && !tags.includes('mass_override')) {
+      tags.push('mass_override');
+    }
     const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object`, {
@@ -1066,6 +1086,14 @@ export class OverlayScene {
       }
     } else {
       body = createObstacle(id, config, isStatic);
+    }
+
+    // Capture natural (density-based) mass before any override is applied
+    const naturalMass = body.mass;
+
+    // Apply mass override immediately after body creation
+    if (config.massOverride !== undefined) {
+      Matter.Body.setMass(body, config.massOverride);
     }
 
     // Parse pressure threshold
@@ -1102,6 +1130,8 @@ export class OverlayScene {
       gravityOverride: config.gravityOverride,
       followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
       speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
+      massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
+      originalMass: tags.includes('mass_override') ? naturalMass : undefined,
       entityTag,
     };
     this.objects.set(id, entry);
@@ -1139,6 +1169,9 @@ export class OverlayScene {
     if (config.speedOverride !== undefined && !tags.includes('speed_override')) {
       tags.push('speed_override');
     }
+    if (config.massOverride !== undefined && !tags.includes('mass_override')) {
+      tags.push('mass_override');
+    }
     const isStatic = tags.includes('static');
 
     logger.debug('OverlayScene', `Spawning object async`, {
@@ -1157,6 +1190,14 @@ export class OverlayScene {
       }
     } else {
       body = await createObstacleAsync(id, config, isStatic);
+    }
+
+    // Capture natural (density-based) mass before any override is applied
+    const naturalMass = body.mass;
+
+    // Apply mass override immediately after body creation
+    if (config.massOverride !== undefined) {
+      Matter.Body.setMass(body, config.massOverride);
     }
 
     // Parse pressure threshold
@@ -1193,6 +1234,8 @@ export class OverlayScene {
       gravityOverride: config.gravityOverride,
       followTarget: tags.includes('follow_window') ? (config.followTarget ?? 'mouse') : undefined,
       speedOverride: tags.includes('speed_override') ? (config.speedOverride ?? 1) : undefined,
+      massOverride: tags.includes('mass_override') ? config.massOverride : undefined,
+      originalMass: tags.includes('mass_override') ? naturalMass : undefined,
       entityTag,
     };
     this.objects.set(id, entry);
@@ -1248,6 +1291,10 @@ export class OverlayScene {
       } else if (tag === 'speed_override') {
         if (entry.speedOverride === undefined) entry.speedOverride = 1;
         this.speedOverrideEntries.add(entry);
+      } else if (tag === 'mass_override') {
+        if (entry.originalMass === undefined) entry.originalMass = entry.body.mass;
+        if (entry.massOverride === undefined) entry.massOverride = Math.round(entry.body.mass);
+        Matter.Body.setMass(entry.body, entry.massOverride);
       }
     }
   }
@@ -1275,6 +1322,12 @@ export class OverlayScene {
       } else if (tag === 'speed_override') {
         this.speedOverrideEntries.delete(entry);
         entry.speedOverride = undefined;
+      } else if (tag === 'mass_override') {
+        if (entry.originalMass !== undefined) {
+          Matter.Body.setMass(entry.body, entry.originalMass);
+        }
+        entry.massOverride = undefined;
+        entry.originalMass = undefined;
       }
     }
   }
@@ -2687,10 +2740,15 @@ export class OverlayScene {
           }
         }
 
-        if (targetPos && this.isGrounded(entry.body)) {
-          const direction = Math.sign(targetPos.x - entry.body.position.x);
-          const speedMult = entry.speedOverride ?? 1;
-          Matter.Body.applyForce(entry.body, entry.body.position, { x: 0.001 * speedMult * direction, y: 0 });
+        if (targetPos) {
+          const dx = targetPos.x - entry.body.position.x;
+          const dy = targetPos.y - entry.body.position.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 0) {
+            const speedMult = entry.speedOverride ?? 1;
+            const mag = 0.001 * speedMult / dist;
+            Matter.Body.applyForce(entry.body, entry.body.position, { x: mag * dx, y: mag * dy });
+          }
         }
       }
 

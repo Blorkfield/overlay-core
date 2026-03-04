@@ -18,6 +18,9 @@ export const TAG_GRAVITY_OVERRIDE = 'gravity_override' as const;
 /** Multiplies movement speed for follow_window and future movement behaviors. Negative values cause the object to run away from its target. */
 export const TAG_SPEED_OVERRIDE = 'speed_override' as const;
 
+/** Overrides the physics mass of this object. Higher mass resists follow forces more; lower mass allows the follow force to overcome gravity. */
+export const TAG_MASS_OVERRIDE = 'mass_override' as const;
+
 /**
  * All available tags as a const object for destructuring.
  * @example
@@ -31,6 +34,7 @@ export const TAGS = {
   GRABABLE: TAG_GRABABLE,
   GRAVITY_OVERRIDE: TAG_GRAVITY_OVERRIDE,
   SPEED_OVERRIDE: TAG_SPEED_OVERRIDE,
+  MASS_OVERRIDE: TAG_MASS_OVERRIDE,
 } as const;
 
 /** Type for valid tag values */

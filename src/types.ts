@@ -235,6 +235,12 @@ export interface ObjectConfig {
    * 'speed_override' tag. Default: 1. Negative values cause the object to run away from its target.
    */
   speedOverride?: number;
+  /**
+   * Physics mass override. Automatically adds the 'mass_override' tag.
+   * Higher mass resists follow forces and other applied forces more. Removing the tag restores the
+   * density-based mass. Accepts positive numbers (use integers for predictable behavior).
+   */
+  massOverride?: number;
 }
 
 /**

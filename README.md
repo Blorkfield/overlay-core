@@ -45,6 +45,7 @@ scene.spawnObject({ tags: [STATIC], ... });
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
 | `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
 | `TAG_SPEED_OVERRIDE` / `TAGS.SPEED_OVERRIDE` | `'speed_override'` | Multiplies movement speed for `follow_window` and future movement behaviors. Negative = run away from target. |
+| `TAG_MASS_OVERRIDE` / `TAGS.MASS_OVERRIDE` | `'mass_override'` | Overrides the physics mass. Higher mass resists follow forces more; lower mass allows the follow force to overcome gravity. |
 
 Tags can be added and removed at runtime to change behavior dynamically:
 
@@ -58,6 +59,8 @@ scene.removeTag(id, 'grabable');    // prevent grabbing
 The `gravity_override` tag carries a value (a Vector2). Use `setObjectGravityOverride` to set the value and activate the tag, or pass it via `gravityOverride` in spawn config. Removing the tag restores scene gravity.
 
 The `speed_override` tag carries a numeric multiplier. Use `setObjectSpeedOverride` to set the value and activate the tag, or pass it via `speedOverride` in spawn config. Removing the tag restores default speed.
+
+The `mass_override` tag carries a numeric mass value. Use `setObjectMassOverride` to set the value and activate the tag, or pass it via `massOverride` in spawn config. Removing the tag restores the natural density-based mass.
 
 ### Entity Tags
 
@@ -403,6 +406,8 @@ scene.addFallingTag(id);                 // convenience: removes 'static', adds 
 scene.setFollowWindowTarget(id, 'mouse'); // change what a follow_window object walks toward
 scene.setObjectSpeedOverride(id, 2);     // double movement speed (negative = run away)
 scene.setObjectSpeedOverride(id, null);  // remove speed override
+scene.setObjectMassOverride(id, 50);     // heavy object resists follow force
+scene.setObjectMassOverride(id, null);   // restore natural mass
 
 // Get object info
 const ids = scene.getObjectIds();
@@ -745,9 +750,10 @@ Tags are the source of truth for all behavior. Boolean tags (presence = active, 
 |-----|----------|
 | `static` | Static obstacle, not affected by gravity. Absent by default — objects are dynamic unless tagged static. |
 | `grabable` | Can be grabbed and dragged with the mouse |
-| `follow_window` | Walks toward mouse position when grounded |
+| `follow_window` | Always applies a directional force toward its target (in all axes). Gravity determines whether the entity can actually reach targets above/below it. |
 | `gravity_override` | Uses its own gravity vector instead of scene gravity (value set via `setObjectGravityOverride`) |
 | `speed_override` | Multiplies movement speed for `follow_window` and future movement behaviors (value set via `setObjectSpeedOverride`). Negative = runs away from target. Default multiplier: 1 |
+| `mass_override` | Overrides physics mass (value set via `setObjectMassOverride`). Higher mass resists follow forces; lower mass may allow entity to overcome gravity. |
 
 ### Speed Override
 
@@ -772,6 +778,30 @@ scene.spawnObject({
 scene.setObjectSpeedOverride(id, 5);   // very fast follower
 scene.setObjectSpeedOverride(id, -1);  // now runs away at normal speed
 scene.setObjectSpeedOverride(id, null); // remove override, restore default speed
+```
+
+### Mass Override
+
+Entities have a default density of `0.005`, which gives typical sizes a mass of ~6–20 units — enough that normal gravity prevents the follow force from lifting them vertically. `mass_override` lets you change this at spawn or runtime.
+
+```typescript
+// Light object — follow force can overcome normal gravity, moves freely in all directions
+scene.spawnObject({
+  tags: ['follow_window'],
+  massOverride: 1,
+  // ...
+});
+
+// Very heavy object — barely moves toward target under normal gravity
+scene.spawnObject({
+  tags: ['follow_window'],
+  massOverride: 100,
+  // ...
+});
+
+// Change or clear mass at runtime
+scene.setObjectMassOverride(id, 50);   // now heavy
+scene.setObjectMassOverride(id, null); // restore natural mass
 ```
 
 ## Examples
