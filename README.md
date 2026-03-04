@@ -40,6 +40,7 @@ scene.spawnObject({ tags: [FALLING, GRABABLE], ... });
 | `TAG_FALLING` / `TAGS.FALLING` | `'falling'` | Object is dynamic and affected by gravity |
 | `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object follows mouse position when grounded |
 | `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
+| `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity (set via `gravityOverride` in config) |
 
 Without the `falling` tag, objects are static and won't move.
 
@@ -651,29 +652,42 @@ scene.setGravity({ x: 1, y: 0 });      // Sideways gravity
 scene.destroy();                        // Clean up resources
 ```
 
-### Per-Tag Gravity Overrides
+### Per-Object Gravity Override
 
-Dynamic objects with a specific tag can have their own gravity, independent of the scene gravity.
+Individual dynamic objects can have their own gravity vector, independent of the scene gravity. This is done via the `gravityOverride` field in `ObjectConfig`, which automatically adds the `gravity_override` tag to the object.
 
 ```typescript
-// Objects tagged 'floaty' float upward instead of falling
-scene.setTagGravity('floaty', { x: 0, y: -0.3 });
+// Spawn a floaty object that drifts upward
+scene.spawnObject({
+  x: 200, y: 300,
+  radius: 20,
+  fillStyle: '#4a90d9',
+  tags: ['falling', 'grabable'],
+  gravityOverride: { x: 0, y: -0.3 }  // floats upward
+});
 
-// Objects tagged 'sideways' drift to the right
-scene.setTagGravity('sideways', { x: 0.5, y: 0 });
+// Zero gravity — hovers in place
+scene.spawnObject({
+  x: 400, y: 200,
+  radius: 15,
+  fillStyle: '#e94560',
+  tags: ['falling'],
+  gravityOverride: { x: 0, y: 0 }
+});
 
-// Zero gravity for 'floaty' tag (hover in place)
-scene.setTagGravity('floaty', { x: 0, y: 0 });
-
-// Remove override — objects revert to scene gravity
-scene.setTagGravity('floaty', null);
-
-// Query overrides
-const g = scene.getTagGravity('floaty');       // Vector2 | undefined
-const all = scene.getAllTagGravities();         // ReadonlyMap<string, Vector2>
+// Change or clear a gravity override at runtime
+scene.setObjectGravityOverride(id, { x: 0.5, y: 0 }); // drift sideways
+scene.setObjectGravityOverride(id, null);               // restore scene gravity
 ```
 
-When a body has multiple tags with gravity overrides, the first matching tag wins. The `falling` tag is still required for the override to apply (only dynamic objects are affected).
+Tags are either boolean (presence = true) or carry a value. `gravity_override` is a value tag — its Vector2 value is set via `gravityOverride` in the config. Boolean tags (`falling`, `grabable`, `follow_window`) need no value.
+
+| Tag | Type | Behavior |
+|-----|------|----------|
+| `falling` | boolean | Dynamic body affected by gravity |
+| `grabable` | boolean | Can be grabbed with mouse |
+| `follow_window` | boolean | Walks toward mouse when grounded |
+| `gravity_override` | Vector2 | Uses own gravity instead of scene gravity |
 
 ## Examples
 
@@ -760,5 +774,5 @@ import type {
 } from '@blorkfield/overlay-core';
 
 // Tag constants (values, not types)
-import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW } from '@blorkfield/overlay-core';
+import { TAGS, TAG_FALLING, TAG_GRABABLE, TAG_FOLLOW_WINDOW, TAG_GRAVITY_OVERRIDE } from '@blorkfield/overlay-core';
 ```

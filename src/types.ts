@@ -216,6 +216,12 @@ export interface ObjectConfig {
   shadow?: ShadowConfig | boolean;
   /** Click to fall config - when set, object collapses after being clicked N times */
   clickToFall?: ClickToFallConfig;
+  /**
+   * Per-object gravity override. When set, this object ignores scene gravity and uses
+   * this vector instead. Automatically adds the 'gravity_override' tag.
+   * Supports negative values (e.g. { x: 0, y: -1 } for upward gravity).
+   */
+  gravityOverride?: Vector2;
 }
 
 /**
