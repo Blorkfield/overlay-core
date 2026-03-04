@@ -67,10 +67,13 @@
       text-shadow: 0 0 8px rgba(74, 144, 217, 0.9);
     }
     .tag-value-inputs {
-      display: inline-flex;
+      display: none;
       align-items: center;
       gap: 3px;
       font-size: 10px;
+    }
+    .tag-btn.active .tag-value-inputs {
+      display: inline-flex;
     }
     .tag-value-inputs input {
       width: 36px;
