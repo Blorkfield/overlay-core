@@ -2,7 +2,7 @@ import { OverlayScene, EffectObjectConfig, BurstEffectConfig, RainEffectConfig, 
 
 // Set default log level to 'debug' for development (change to 'warn' for quieter output)
 setLogLevel('debug');
-import { TabManager } from '@blorkfield/blork-tabs';
+import { TabManager, createTagButton } from '@blorkfield/blork-tabs';
 import '@blorkfield/blork-tabs/styles.css';
 
 // Elements
@@ -26,14 +26,8 @@ const inputSpawnX = document.getElementById('input-spawn-x') as HTMLInputElement
 const selectXUnit = document.getElementById('select-x-unit') as HTMLSelectElement;
 const inputSpawnY = document.getElementById('input-spawn-y') as HTMLInputElement;
 const selectYUnit = document.getElementById('select-y-unit') as HTMLSelectElement;
-const entityTagButtons: Record<string, HTMLElement> = {
-  static: document.getElementById('entity-tag-static') as HTMLButtonElement,
-  grabable: document.getElementById('entity-tag-grabable') as HTMLButtonElement,
-  follow_window: document.getElementById('entity-tag-follow-window') as HTMLDivElement,
-  gravity_override: document.getElementById('entity-tag-gravity-override') as HTMLDivElement,
-  speed_override: document.getElementById('entity-tag-speed-override') as HTMLDivElement,
-  mass_override: document.getElementById('entity-tag-mass-override') as HTMLDivElement,
-};
+const entityTagsContainer = document.getElementById('entity-tags-container') as HTMLDivElement;
+const textTagsContainer = document.getElementById('text-tags-container') as HTMLDivElement;
 const statsEl = document.getElementById('stats') as HTMLDivElement;
 const checkboxDebug = document.getElementById('checkbox-debug') as HTMLInputElement;
 const selectLogLevel = document.getElementById('select-log-level') as HTMLSelectElement;
@@ -62,11 +56,6 @@ const inputTextOriginX = document.getElementById('input-text-origin-x') as HTMLI
 const selectTextXUnit = document.getElementById('select-text-x-unit') as HTMLSelectElement;
 const inputTextOriginY = document.getElementById('input-text-origin-y') as HTMLInputElement;
 const selectTextYUnit = document.getElementById('select-text-y-unit') as HTMLSelectElement;
-const textTagButtons: Record<string, HTMLElement> = {
-  static: document.getElementById('text-tag-static') as HTMLButtonElement,
-  grabable: document.getElementById('text-tag-grabable') as HTMLButtonElement,
-  follow_window: document.getElementById('text-tag-follow-window') as HTMLButtonElement,
-};
 const btnSpawnText = document.getElementById('btn-spawn-text') as HTMLButtonElement;
 
 // Settings panel elements
@@ -88,10 +77,6 @@ const spawnSectionBody = document.getElementById('spawn-section-body') as HTMLDi
 const inputGravityX = document.getElementById('input-gravity-x') as HTMLInputElement;
 const inputGravityY = document.getElementById('input-gravity-y') as HTMLInputElement;
 const btnApplyGravity = document.getElementById('btn-apply-gravity') as HTMLButtonElement;
-const inputEntityGovX = document.getElementById('input-entity-gov-x') as HTMLInputElement;
-const inputEntityGovY = document.getElementById('input-entity-gov-y') as HTMLInputElement;
-const inputEntitySpeed = document.getElementById('input-entity-speed') as HTMLInputElement;
-const inputEntityMass = document.getElementById('input-entity-mass') as HTMLInputElement;
 
 // Entity control elements
 const selectControlTag = document.getElementById('select-control-tag') as HTMLSelectElement;
@@ -108,15 +93,6 @@ const inputCtrlScaleX = document.getElementById('input-ctrl-scale-x') as HTMLInp
 const inputCtrlScaleY = document.getElementById('input-ctrl-scale-y') as HTMLInputElement;
 const btnCtrlScale = document.getElementById('btn-ctrl-scale') as HTMLButtonElement;
 
-// Stop clicks on the inline inputs from toggling the tag buttons
-inputEntityGovX.addEventListener('click', e => e.stopPropagation());
-inputEntityGovY.addEventListener('click', e => e.stopPropagation());
-inputEntitySpeed.addEventListener('click', e => e.stopPropagation());
-inputEntityMass.addEventListener('click', e => e.stopPropagation());
-
-const selectFollowTarget = document.getElementById('select-follow-target') as HTMLSelectElement;
-selectFollowTarget.addEventListener('click', e => e.stopPropagation());
-selectFollowTarget.addEventListener('mousedown', e => e.stopPropagation());
 
 // Effects panel elements
 const effectsPanel = document.getElementById('effects-panel') as HTMLDivElement;
@@ -153,47 +129,53 @@ const availableImages = [
 // Available tags for effect objects
 const effectObjectTags = ['static', 'window_follow', 'grabable'];
 
-// Tag button toggle state
-const activeEntityTags = new Set<string>();
-const activeTextTags = new Set<string>();
-
-function setupTagButtons(buttons: Record<string, HTMLElement>, activeSet: Set<string>): void {
-  for (const [tag, btn] of Object.entries(buttons)) {
-    btn.addEventListener('click', () => {
-      if (activeSet.has(tag)) {
-        activeSet.delete(tag);
-        btn.classList.remove('active');
-      } else {
-        activeSet.add(tag);
-        btn.classList.add('active');
-      }
-    });
-  }
-}
-
-setupTagButtons(entityTagButtons, activeEntityTags);
-
 const BEHAVIOR_TAGS = new Set(['static', 'grabable', 'gravity_override', 'follow_window', 'speed_override', 'mass_override', 'shadow']);
 
-// When follow_window is toggled on, populate the target dropdown from the live scene
-entityTagButtons['follow_window'].addEventListener('click', () => {
-  if (!activeEntityTags.has('follow_window')) return;
-  const allTags = scene
-    ? [...new Set(scene.getAllTags())].filter(t => !BEHAVIOR_TAGS.has(t)).sort()
-    : [];
-  selectFollowTarget.innerHTML = '<option value="mouse">mouse</option>';
-  for (const tag of allTags) {
-    const opt = document.createElement('option');
-    opt.value = tag;
-    opt.textContent = tag;
-    selectFollowTarget.appendChild(opt);
+// Entity tag buttons (created programmatically via blork-tabs)
+const entityStaticBtn = createTagButton('static');
+const entityGrabableBtn = createTagButton('grabable');
+const followWindowBtn = createTagButton('follow_window', {
+  inputs: [{ type: 'select', options: [{ value: 'mouse', label: 'mouse' }] }],
+  onChange: (active) => {
+    if (!active) return;
+    const select = followWindowBtn.getInput(0) as HTMLSelectElement;
+    const allTags = scene
+      ? [...new Set(scene.getAllTags())].filter(t => !BEHAVIOR_TAGS.has(t)).sort()
+      : [];
+    select.innerHTML = '<option value="mouse">mouse</option>';
+    for (const tag of allTags) {
+      const opt = document.createElement('option');
+      opt.value = tag;
+      opt.textContent = tag;
+      select.appendChild(opt);
+    }
   }
 });
+const gravityOverrideBtn = createTagButton('gravity_override', {
+  inputs: [
+    { label: 'x', defaultValue: 0, step: 0.1 },
+    { label: 'y', defaultValue: -1, step: 0.1 },
+  ]
+});
+const speedOverrideBtn = createTagButton('speed_override', {
+  inputs: [{ defaultValue: 1, step: 0.1 }]
+});
+const massOverrideBtn = createTagButton('mass_override', {
+  inputs: [{ defaultValue: 10, step: 1, min: 1 }]
+});
 
-// Text letters default to static
-activeTextTags.add('static');
-setupTagButtons(textTagButtons, activeTextTags);
-textTagButtons['static']?.classList.add('active');
+for (const btn of [entityStaticBtn, entityGrabableBtn, followWindowBtn, gravityOverrideBtn, speedOverrideBtn, massOverrideBtn]) {
+  entityTagsContainer.appendChild(btn.element);
+}
+
+// Text tag buttons
+const textStaticBtn = createTagButton('static', { defaultActive: true });
+const textGrabableBtn = createTagButton('grabable');
+const textFollowWindowBtn = createTagButton('follow_window');
+
+for (const btn of [textStaticBtn, textGrabableBtn, textFollowWindowBtn]) {
+  textTagsContainer.appendChild(btn.element);
+}
 
 // Effect object configs storage
 interface EffectObjectUI {
@@ -412,15 +394,17 @@ async function spawnRandomEntity(): Promise<void> {
   const ttlValue = inputEntityTtl.value ? parseInt(inputEntityTtl.value) : undefined;
   const weightValue = parseInt(inputEntityWeight.value) || 0;
 
-  const tags = [...activeEntityTags].filter(t => t !== 'gravity_override' && t !== 'follow_window' && t !== 'speed_override' && t !== 'mass_override');
-  const gravityOverride = activeEntityTags.has('gravity_override') ? {
-    x: parseFloat(inputEntityGovX.value) || 0,
-    y: parseFloat(inputEntityGovY.value) || 0
+  const tags: string[] = [];
+  if (entityStaticBtn.isActive()) tags.push('static');
+  if (entityGrabableBtn.isActive()) tags.push('grabable');
+  if (followWindowBtn.isActive()) tags.push('follow_window');
+  const gravityOverride = gravityOverrideBtn.isActive() ? {
+    x: parseFloat(gravityOverrideBtn.getValue(0)) || 0,
+    y: parseFloat(gravityOverrideBtn.getValue(1)) || 0
   } : undefined;
-  if (activeEntityTags.has('follow_window')) tags.push('follow_window');
-  const followTarget = activeEntityTags.has('follow_window') ? selectFollowTarget.value : undefined;
-  const speedOverride = activeEntityTags.has('speed_override') ? (parseFloat(inputEntitySpeed.value) || 1) : undefined;
-  const massOverride = activeEntityTags.has('mass_override') ? (parseInt(inputEntityMass.value) || 10) : undefined;
+  const followTarget = followWindowBtn.isActive() ? followWindowBtn.getValue(0) : undefined;
+  const speedOverride = speedOverrideBtn.isActive() ? (parseFloat(speedOverrideBtn.getValue(0)) || 1) : undefined;
+  const massOverride = massOverrideBtn.isActive() ? (parseInt(massOverrideBtn.getValue(0)) || 10) : undefined;
   console.log('Spawning object at:', { x, y }, 'image:', selectedImage || 'none', 'tags:', tags, 'ttl:', ttlValue ?? '∞', 'weight:', weightValue);
 
   const config = {
@@ -689,8 +673,10 @@ async function spawnTextObstacle(): Promise<void> {
   const startX = selectTextXUnit.value === 'percent' ? (inputX / 100) * canvas.width : inputX;
   const y = selectTextYUnit.value === 'percent' ? (inputY / 100) * canvas.height : inputY;
 
-  const isStatic = activeTextTags.has('static');
-  const tags = [...activeTextTags].filter(t => t !== 'static');
+  const isStatic = textStaticBtn.isActive();
+  const tags: string[] = [];
+  if (textGrabableBtn.isActive()) tags.push('grabable');
+  if (textFollowWindowBtn.isActive()) tags.push('follow_window');
 
   console.log('Spawning text at:', { x: startX, y }, 'tags:', tags, 'isStatic:', isStatic);
 
