@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.10.1
+
+### Patch Changes
+
+- 0b561d6: refactor: tag button
+
 ## 0.10.0
 
 ### Minor Changes
