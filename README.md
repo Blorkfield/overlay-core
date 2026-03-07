@@ -628,7 +628,7 @@ scene.on('objectRemoved', (obj) => {
   console.log(`Removed: ${obj.id}`);
 });
 
-// Objects collided
+// Objects collided (fires on collision start)
 scene.on('objectCollision', (a, b) => {
   console.log(`Collision: ${a.id} hit ${b.id}`);
 });
@@ -636,6 +636,23 @@ scene.on('objectCollision', (a, b) => {
 // Unsubscribe
 scene.off('objectSpawned', myCallback);
 ```
+
+### Querying Active Collisions
+
+The scene tracks which objects are currently in contact, so you can query collision state at any time without maintaining your own bookkeeping:
+
+```typescript
+// Get all object IDs currently touching a specific object
+const touching = scene.getCollidingWith('my-object-id'); // string[]
+
+// Get all active collision pairs
+const pairs = scene.getActiveCollisions(); // Array<{ a: string, b: string }>
+for (const { a, b } of pairs) {
+  console.log(`${a} is touching ${b}`);
+}
+```
+
+These reflect live physics state — pairs are added on `collisionStart` and removed on `collisionEnd`. Only tracked objects are included (floor, boundaries, and DOM obstacles are excluded).
 
 ## Font Setup
 

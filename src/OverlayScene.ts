@@ -159,6 +159,8 @@ export class OverlayScene {
   private followWindowEntries: Set<ObjectEntry> = new Set();
   // IDs of static objects that have pressure thresholds — empty = skip updatePressure entirely
   private pressureObstacleIds: Set<string> = new Set();
+  // Active collision pairs: id -> Set of ids currently colliding with it
+  private activeCollisions: Map<string, Set<string>> = new Map();
 
   static createContainer(
     parent: HTMLElement,
@@ -253,6 +255,7 @@ export class OverlayScene {
 
     // Hook into collision events for lifecycle callbacks
     Matter.Events.on(this.engine, 'collisionStart', this.handleCollisionStart);
+    Matter.Events.on(this.engine, 'collisionEnd', this.handleCollisionEnd);
   }
 
   /** Handle mouse down - start grab via programmatic API */
@@ -338,15 +341,29 @@ export class OverlayScene {
       const entryA = this.findObjectByBody(pair.bodyA);
       const entryB = this.findObjectByBody(pair.bodyB);
 
-      // Only emit if both bodies are tracked objects (not boundaries)
+      // Only track/emit if both bodies are tracked objects (not boundaries)
       if (entryA && entryB) {
+        if (!this.activeCollisions.has(entryA.id)) this.activeCollisions.set(entryA.id, new Set());
+        if (!this.activeCollisions.has(entryB.id)) this.activeCollisions.set(entryB.id, new Set());
+        this.activeCollisions.get(entryA.id)!.add(entryB.id);
+        this.activeCollisions.get(entryB.id)!.add(entryA.id);
         this.emitLifecycleEvent(
           'objectCollision',
           this.toObjectState(entryA),
           this.toObjectState(entryB)
         );
       }
+    }
+  };
 
+  private handleCollisionEnd = (event: Matter.IEventCollision<Matter.Engine>): void => {
+    for (const pair of event.pairs) {
+      const entryA = this.findObjectByBody(pair.bodyA);
+      const entryB = this.findObjectByBody(pair.bodyB);
+      if (entryA && entryB) {
+        this.activeCollisions.get(entryA.id)?.delete(entryB.id);
+        this.activeCollisions.get(entryB.id)?.delete(entryA.id);
+      }
     }
   };
 
@@ -877,8 +894,9 @@ export class OverlayScene {
     // Clean up background render event listeners
     Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
     Matter.Events.off(this.render, 'afterRender', this.handleAfterRender);
-    // Clean up collision event listener
+    // Clean up collision event listeners
     Matter.Events.off(this.engine, 'collisionStart', this.handleCollisionStart);
+    Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
     this.gravityOverrideEntries.clear();
@@ -889,6 +907,7 @@ export class OverlayScene {
     this.pressureLogTimer = 0;
     this.floorSegmentPressure.clear();
     this.collapsedSegments.clear();
+    this.activeCollisions.clear();
     this.updateCallbacks = [];
     // Clear lifecycle callbacks
     this.lifecycleCallbacks.objectSpawned = [];
@@ -1435,6 +1454,14 @@ export class OverlayScene {
     this.gravityOverrideEntries.delete(entry);
     this.followWindowEntries.delete(entry);
     this.pressureObstacleIds.delete(id);
+    // Clean up active collision tracking for this object
+    const colliding = this.activeCollisions.get(id);
+    if (colliding) {
+      for (const otherId of colliding) {
+        this.activeCollisions.get(otherId)?.delete(id);
+      }
+      this.activeCollisions.delete(id);
+    }
     this.objects.delete(id);
   }
 
@@ -1719,6 +1746,34 @@ export class OverlayScene {
     const arr = this.lifecycleCallbacks[event] as Function[];
     const idx = arr.indexOf(callback as Function);
     if (idx !== -1) arr.splice(idx, 1);
+  }
+
+  /**
+   * Get the IDs of all objects currently colliding with a given object.
+   * @param id - The ID of the object to query
+   * @returns Array of IDs of objects currently in contact with it
+   */
+  getCollidingWith(id: string): string[] {
+    return Array.from(this.activeCollisions.get(id) ?? []);
+  }
+
+  /**
+   * Get all currently active collision pairs.
+   * @returns Array of `{ a, b }` pairs where `a` and `b` are colliding object IDs
+   */
+  getActiveCollisions(): Array<{ a: string; b: string }> {
+    const pairs: Array<{ a: string; b: string }> = [];
+    const seen = new Set<string>();
+    for (const [id, others] of this.activeCollisions) {
+      for (const otherId of others) {
+        const key = id < otherId ? `${id}:${otherId}` : `${otherId}:${id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          pairs.push({ a: id, b: otherId });
+        }
+      }
+    }
+    return pairs;
   }
 
   /** Create ObjectState from an ObjectEntry */
