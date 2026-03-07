@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.0
+
+### Minor Changes
+
+- 7f6a8f5: feat: collision query
+
 ## 0.10.1
 
 ### Patch Changes
