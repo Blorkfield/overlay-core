@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.5
+
+### Patch Changes
+
+- 32363ec: refactor: rescale name
+
 ## 0.11.4
 
 ### Patch Changes
