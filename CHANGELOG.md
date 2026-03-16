@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.6
+
+### Patch Changes
+
+- db8ce8f: fix: dom recenter
+
 ## 0.11.5
 
 ### Patch Changes
