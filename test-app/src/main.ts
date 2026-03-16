@@ -717,19 +717,7 @@ async function spawnTextObstacle(): Promise<void> {
 
 btnSpawnText.addEventListener('click', spawnTextObstacle);
 
-// Handle window resize for fullscreen mode
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-window.addEventListener('resize', () => {
-  if (!isFullscreen || !scene) return;
-  if (resizeTimer !== null) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    resizeTimer = null;
-    if (isFullscreen && scene) {
-      const size = getContainerSize();
-      scene.resize(size.width, size.height);
-    }
-  }, 100);
-});
 
 // ==================== PANEL LOGIC (using blork-tabs) ====================
 
@@ -776,6 +764,21 @@ requestAnimationFrame(() => {
 
   // Create snap chain: settings -> entity -> effects (left to right)
   tabManager.createSnapChain(['settings', 'entity', 'effects']);
+});
+
+// Handle window resize for fullscreen mode (after tabManager is initialised)
+window.addEventListener('resize', () => {
+  if (!isFullscreen || !scene) return;
+  if (resizeTimer !== null) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null;
+    if (isFullscreen && scene) {
+      const size = getContainerSize();
+      scene.resize(size.width, size.height);
+    }
+    tabManager.positionPanelsFromRight(['effects', 'entity', 'settings']);
+    tabManager.updatePositions();
+  }, 100);
 });
 
 // ==================== EFFECTS LOGIC ====================
