@@ -555,7 +555,7 @@ const scene = new OverlayScene(canvas, {
 | `floorConfig.minIntegrity` | none | Minimum segments required, otherwise all collapse |
 | `floorConfig.segmentWidths` | none | Proportional widths for each segment (array that sums to 1.0) |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
-| `rescaleOnResize` | false | Translate all objects to stay centred when canvas dimensions change — useful for phone rotation and responsive layouts |
+| `recenterOnResize` | false | Translate all objects to stay centred when canvas dimensions change — useful for phone rotation and responsive layouts |
 
 ### Background Configuration
 
