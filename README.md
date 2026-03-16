@@ -42,7 +42,7 @@ scene.spawnObject({ tags: [STATIC], ... });
 |----------|-------|----------|
 | `TAG_STATIC` / `TAGS.STATIC` | `'static'` | Object is a static obstacle, not affected by gravity. Without this tag, objects are dynamic by default. |
 | `TAG_FOLLOW_WINDOW` / `TAGS.FOLLOW_WINDOW` | `'follow_window'` | Object walks toward a target when grounded (default: mouse) |
-| `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse |
+| `TAG_GRABABLE` / `TAGS.GRABABLE` | `'grabable'` | Object can be grabbed and moved with mouse or touch |
 | `TAG_GRAVITY_OVERRIDE` / `TAGS.GRAVITY_OVERRIDE` | `'gravity_override'` | Object uses its own gravity vector instead of scene gravity |
 | `TAG_SPEED_OVERRIDE` / `TAGS.SPEED_OVERRIDE` | `'speed_override'` | Multiplies movement speed for `follow_window` and future movement behaviors. Negative = run away from target. |
 | `TAG_MASS_OVERRIDE` / `TAGS.MASS_OVERRIDE` | `'mass_override'` | Overrides the physics mass. Higher mass resists follow forces more; lower mass allows the follow force to overcome gravity. |
@@ -469,7 +469,9 @@ scene.setObjectScale(id, 2, 0.5);  // stretch wide, squash tall
 scene.setObjectScale(id, 1, 1);    // restore original size
 ```
 
-## Mouse Position and Grab API
+## Mouse / Touch and Grab API
+
+Mouse and touch input are handled automatically. On touch devices, a single finger grabs and drags `grabable` objects; a tap on a static object with `clicksToFall` set triggers the click-to-fall behavior. Two-finger gestures are ignored by the canvas so the browser can handle scroll and pinch-zoom normally. Touching over empty canvas (no `grabable` object) also passes through to the browser.
 
 For scenarios where mouse input comes from an external source (e.g., system-wide mouse capture via WebSocket), you can programmatically control mouse position and grab/release behavior. This is useful when the canvas is positioned with an offset from the screen origin.
 
@@ -802,7 +804,7 @@ Tags are the source of truth for all behavior. Boolean tags (presence = active, 
 | Tag | Behavior |
 |-----|----------|
 | `static` | Static obstacle, not affected by gravity. Absent by default — objects are dynamic unless tagged static. |
-| `grabable` | Can be grabbed and dragged with the mouse |
+| `grabable` | Can be grabbed and dragged with the mouse or touch |
 | `follow_window` | Always applies a directional force toward its target (in all axes). Gravity determines whether the entity can actually reach targets above/below it. |
 | `gravity_override` | Uses its own gravity vector instead of scene gravity (value set via `setObjectGravityOverride`) |
 | `speed_override` | Multiplies movement speed for `follow_window` and future movement behaviors (value set via `setObjectSpeedOverride`). Negative = runs away from target. Default multiplier: 1 |

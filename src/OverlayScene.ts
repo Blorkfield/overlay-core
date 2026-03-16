@@ -221,6 +221,12 @@ export class OverlayScene {
     // Handle clicks for click-to-fall behavior
     canvas.addEventListener('click', this.handleCanvasClick);
 
+    // Touch support — passive: false so we can conditionally preventDefault
+    canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this.handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this.handleTouchEnd, { passive: false });
+
     // Setup effect manager - uses async spawning for image clipping support
     this.effectManager = new EffectManager(
       this.config.bounds,
@@ -285,14 +291,18 @@ export class OverlayScene {
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+    this.handleTap(x, y);
+  };
 
-    // Find all bodies at the click position
+  /** Shared tap logic for mouse click and touch tap */
+  private handleTap = (x: number, y: number): void => {
+    // Find all bodies at the tap position
     const bodies = Matter.Query.point(
       Matter.Composite.allBodies(this.engine.world),
       { x, y }
     );
 
-    // Process each clicked body
+    // Process each tapped body
     for (const body of bodies) {
       const entry = this.findObjectByBody(body);
       if (!entry) continue;
@@ -311,6 +321,46 @@ export class OverlayScene {
       if (entry.clicksRemaining <= 0) {
         this.collapseObstacle(entry);
       }
+    }
+  };
+
+  /** Handle touch start — single finger grabs, multi-finger passes through for scroll/zoom */
+  private handleTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length >= 2) return; // multi-touch → let browser scroll/zoom
+    const touch = event.touches[0];
+    const rect = this.canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    this.followTargets.set('mouse', { x, y });
+    const grabbed = this.startGrab();
+    if (grabbed) event.preventDefault(); // only block scroll if we actually grabbed something
+  };
+
+  /** Handle touch move — only tracks if something is grabbed */
+  private handleTouchMove = (event: TouchEvent): void => {
+    if (event.touches.length >= 2) return; // multi-touch → let browser handle
+    if (!this.grabbedObjectId) return; // nothing grabbed, don't block scroll
+    event.preventDefault();
+    const touch = event.touches[0];
+    const rect = this.canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    this.followTargets.set('mouse', { x, y });
+  };
+
+  /** Handle touch end/cancel — release grab; if it was a tap (no grab), trigger click-to-fall */
+  private handleTouchEnd = (event: TouchEvent): void => {
+    const wasGrabbed = this.grabbedObjectId !== null;
+    this.endGrab();
+    if (wasGrabbed) {
+      event.preventDefault();
+      return;
+    }
+    // Tap with no grab — fire click-to-fall logic
+    if (event.changedTouches.length > 0) {
+      const touch = event.changedTouches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      this.handleTap(touch.clientX - rect.left, touch.clientY - rect.top);
     }
   };
 
@@ -891,6 +941,10 @@ export class OverlayScene {
     this.canvas.removeEventListener('mousemove', this.handleMouseMove);
     this.canvas.removeEventListener('mouseup', this.handleMouseUp);
     this.canvas.removeEventListener('click', this.handleCanvasClick);
+    this.canvas.removeEventListener('touchstart', this.handleTouchStart);
+    this.canvas.removeEventListener('touchmove', this.handleTouchMove);
+    this.canvas.removeEventListener('touchend', this.handleTouchEnd);
+    this.canvas.removeEventListener('touchcancel', this.handleTouchEnd);
     // Clean up background render event listeners
     Matter.Events.off(this.render, 'beforeRender', this.handleBeforeRender);
     Matter.Events.off(this.render, 'afterRender', this.handleAfterRender);
