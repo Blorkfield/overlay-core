@@ -1124,6 +1124,10 @@ export class OverlayScene {
           };
         }
 
+        if (entry.domElement && entry.tags.includes('static')) {
+          this.updateDOMElementTransform(entry);
+        }
+
         if (entry.domShadowElement) {
           const currentLeft = parseFloat(entry.domShadowElement.style.left) || 0;
           const currentTop = parseFloat(entry.domShadowElement.style.top) || 0;

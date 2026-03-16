@@ -19,6 +19,7 @@ const btnReleaseTag = document.getElementById('btn-release-tag') as HTMLButtonEl
 const btnRemoveTag = document.getElementById('btn-remove-tag') as HTMLButtonElement;
 const btnReleaseAll = document.getElementById('btn-release-all') as HTMLButtonElement;
 const btnRemoveAll = document.getElementById('btn-remove-all') as HTMLButtonElement;
+const btnSpawnDomLorem = document.getElementById('btn-spawn-dom-lorem') as HTMLButtonElement;
 const selectEntityImage = document.getElementById('select-entity-image') as HTMLSelectElement;
 const inputEntityTtl = document.getElementById('input-entity-ttl') as HTMLInputElement;
 const inputEntityWeight = document.getElementById('input-entity-weight') as HTMLInputElement;
@@ -716,6 +717,31 @@ async function spawnTextObstacle(): Promise<void> {
 }
 
 btnSpawnText.addEventListener('click', spawnTextObstacle);
+
+btnSpawnDomLorem.addEventListener('click', () => {
+  if (!scene) return;
+  const el = document.createElement('div');
+  el.style.cssText = [
+    'max-width:260px',
+    'padding:12px 16px',
+    'background:rgba(20,20,40,0.85)',
+    'border:1px solid #4a5a7a',
+    'border-radius:6px',
+    'color:#ccc',
+    'font-size:13px',
+    'line-height:1.5',
+    'font-family:system-ui,sans-serif',
+    'pointer-events:none',
+  ].join(';');
+  el.textContent = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
+  sceneWrapper.appendChild(el);
+  // Wait one frame so the element has layout dimensions before registering with physics
+  requestAnimationFrame(() => {
+    const x = (canvas?.width ?? 800) / 2;
+    const y = (canvas?.height ?? 600) / 3;
+    scene!.spawnObject({ element: el, x, y, tags: ['static'] });
+  });
+});
 
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
