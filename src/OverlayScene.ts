@@ -2146,12 +2146,15 @@ export class OverlayScene {
     // If no letters found, default to 100
     if (maxDimension === 0) maxDimension = 100;
 
+    // Space width is a fixed ratio of letterSize (matches 20px at 60px letter size)
+    const spaceWidth = letterSize / 3;
+
     // Helper to calculate the width of a line
     const calculateLineWidth = (line: string): number => {
       let width = 0;
       for (const char of line) {
         if (char === ' ') {
-          width += 20; // Space width
+          width += spaceWidth;
         } else if (/^[A-Za-z0-9]$/.test(char)) {
           const dims = charDimensions.get(char);
           if (dims) {
@@ -2221,9 +2224,8 @@ export class OverlayScene {
       for (let i = 0; i < chars.length; i++) {
         const char = chars[i];
 
-        // Handle spaces - use letterSpacing if provided, otherwise use letterSize as space width
+        // Handle spaces
         if (char === ' ') {
-          const spaceWidth = config.letterSpacing ?? letterSize;
           currentX += spaceWidth;
           globalCharIndex++;
           // Space ends the current word
