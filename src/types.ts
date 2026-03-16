@@ -18,6 +18,14 @@ export interface OverlaySceneConfig {
   despawnBelowFloor?: number;
   /** Configuration for floor segments and thresholds */
   floorConfig?: FloorConfig;
+  /**
+   * When true, every call to resize(newW, newH) translates all objects by half the dimension
+   * change so the scene centre stays visually centred. Objects keep their size and position
+   * relative to each other — only their absolute pixel coordinates shift.
+   * Useful for responsive canvases and phone rotation (portrait ↔ landscape).
+   * Default: false
+   */
+  rescaleOnResize?: boolean;
 }
 
 /**
