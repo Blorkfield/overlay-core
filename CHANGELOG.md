@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.4
+
+### Patch Changes
+
+- 216ab19: fix: resizing
+
 ## 0.11.3
 
 ### Patch Changes
