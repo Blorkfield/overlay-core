@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.2
+
+### Patch Changes
+
+- fdc12b5: fix: effect load
+
 ## 0.11.1
 
 ### Patch Changes
