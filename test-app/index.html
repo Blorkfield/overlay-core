@@ -17,7 +17,7 @@
       background: transparent;
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
+      height: 100vh;
       font-family: system-ui, sans-serif;
       color: #fff;
       overflow: hidden;
@@ -612,6 +612,7 @@
             <button id="btn-release-all" class="panel-btn" style="flex:1">Release All</button>
             <button id="btn-remove-all" class="panel-btn panel-btn-danger" style="flex:1">Remove All</button>
           </div>
+          <button id="btn-spawn-dom-lorem" class="panel-btn" style="width:100%;margin-top:6px">Spawn DOM Lorem Ipsum</button>
         </div>
       </div>
       <div class="effect-section">
@@ -621,7 +622,7 @@
         <div class="effect-params" style="margin-bottom:10px">
           <div class="param-row">
             <label>Target Tag:</label>
-            <select id="select-control-tag" class="select-input" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"></select>
+            <select id="select-control-tag" class="select-input" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis"><option value="">-- Select Tag --</option></select>
           </div>
         </div>
         <div id="entity-ctrl-body" style="display:none;flex-direction:column;gap:0">
