@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.1
+
+### Patch Changes
+
+- e53f861: fix: space scale
+
 ## 0.11.0
 
 ### Minor Changes
