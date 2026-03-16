@@ -2591,13 +2591,22 @@ export class OverlayScene {
 
         // Create body from vertices at the target position
         // fromVertices will calculate centroid and position body there
-        const body = Matter.Bodies.fromVertices(glyphCenterX, glyphCenterY, [worldVertices], {
+        let body = Matter.Bodies.fromVertices(glyphCenterX, glyphCenterY, [worldVertices], {
           isStatic,
           label: `obstacle:${id}`,
           render: {
             visible: false
           }
         });
+
+        // poly-decomp can produce degenerate parts (< 3 vertices) that crash Collision._findSupports
+        if (!body.parts.every(part => part.vertices && part.vertices.length >= 3)) {
+          body = Matter.Bodies.rectangle(glyphCenterX, glyphCenterY, Math.max(glyphWidth, 1), Math.max(Math.abs(glyphHeight), 1), {
+            isStatic,
+            label: `obstacle:${id}`,
+            render: { visible: false }
+          });
+        }
 
         // Store and add to world
         // Calculate offset from ACTUAL body position to baseline for fillText rendering
