@@ -101,6 +101,19 @@ function createBodyFromVertices(
   // Matter.js will decompose them. We need to ensure the body is positioned correctly
   Matter.Body.setPosition(body, { x, y });
 
+  // poly-decomp can produce degenerate parts (< 3 vertices) that crash Collision._findSupports
+  if (!body.parts.every(part => part.vertices && part.vertices.length >= 3)) {
+    logger.warn(LOG_PREFIX, `fromVertices produced degenerate parts, falling back to circle`, { id });
+    return Matter.Bodies.circle(x, y, DEFAULT_RADIUS, {
+      restitution: 0.3,
+      friction: 0.1,
+      frictionAir: 0.01,
+      density: 0.005,
+      label: `entity:${id}`,
+      render: renderOptions
+    });
+  }
+
   return body;
 }
 
@@ -452,14 +465,30 @@ export async function createBoxObstacleWithInfo(id: string, config: ObjectConfig
       }
     });
 
-    // Calculate sprite offset AFTER body creation (we now know where centroid landed)
-    // Offset sprite to compensate for body being at centroid instead of image center
-    const spriteOffsetX = (config.x - body.position.x) / scaledWidth;
-    const spriteOffsetY = (config.y - body.position.y) / scaledHeight;
+    // poly-decomp can produce degenerate parts that crash Collision._findSupports
+    if (!body.parts.every(part => part.vertices && part.vertices.length >= 3)) {
+      logger.warn(LOG_PREFIX, `fromVertices produced degenerate obstacle, falling back to rectangle`, { id });
+      body = Matter.Bodies.rectangle(config.x, config.y, scaledWidth, scaledHeight, {
+        isStatic,
+        label: `obstacle:${id}`,
+        render: {
+          sprite: {
+            texture: config.imageUrl!,
+            xScale: spriteScale,
+            yScale: spriteScale
+          }
+        }
+      });
+    } else {
+      // Calculate sprite offset AFTER body creation (we now know where centroid landed)
+      // Offset sprite to compensate for body being at centroid instead of image center
+      const spriteOffsetX = (config.x - body.position.x) / scaledWidth;
+      const spriteOffsetY = (config.y - body.position.y) / scaledHeight;
 
-    if (body.render.sprite) {
-      (body.render.sprite as unknown as Record<string, unknown>).xOffset = 0.5 + spriteOffsetX;
-      (body.render.sprite as unknown as Record<string, unknown>).yOffset = 0.5 + spriteOffsetY;
+      if (body.render.sprite) {
+        (body.render.sprite as unknown as Record<string, unknown>).xOffset = 0.5 + spriteOffsetX;
+        (body.render.sprite as unknown as Record<string, unknown>).yOffset = 0.5 + spriteOffsetY;
+      }
     }
   } else {
     // Fallback to rectangle
@@ -523,6 +552,13 @@ export async function createObstacleAsync(id: string, config: ObjectConfig, isSt
 
     // Vertices are now centered on image dimensions, so setPosition aligns correctly
     Matter.Body.setPosition(body, { x: config.x, y: config.y });
+
+    // poly-decomp can produce degenerate parts that crash Collision._findSupports
+    if (!body.parts.every(part => part.vertices && part.vertices.length >= 3)) {
+      logger.warn(LOG_PREFIX, `Image obstacle fromVertices degenerate, falling back to rectangle`, { id });
+      return createObstacle(id, config, isStatic);
+    }
+
     return body;
   }
 
