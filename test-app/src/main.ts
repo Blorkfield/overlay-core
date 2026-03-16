@@ -229,6 +229,7 @@ async function createScene(width: number, height: number): Promise<void> {
     bounds: { top: 0, bottom: height, left: 0, right: width },
     gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy },
     wrapHorizontal: true,
+    rescaleOnResize: true,
     debug: false,
     background: { color: '#16213e' },
     floorConfig: {
@@ -717,11 +718,17 @@ async function spawnTextObstacle(): Promise<void> {
 btnSpawnText.addEventListener('click', spawnTextObstacle);
 
 // Handle window resize for fullscreen mode
+let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 window.addEventListener('resize', () => {
-  if (isFullscreen && scene) {
-    const size = getContainerSize();
-    scene.resize(size.width, size.height);
-  }
+  if (!isFullscreen || !scene) return;
+  if (resizeTimer !== null) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null;
+    if (isFullscreen && scene) {
+      const size = getContainerSize();
+      scene.resize(size.width, size.height);
+    }
+  }, 100);
 });
 
 // ==================== PANEL LOGIC (using blork-tabs) ====================

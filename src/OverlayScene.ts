@@ -1108,6 +1108,31 @@ export class OverlayScene {
   }
 
   resize(width: number, height: number): void {
+    // Translate all objects to keep them centred in the new canvas
+    if (this.config.rescaleOnResize) {
+      const dx = (width - this.config.bounds.right) / 2;
+      const dy = (height - this.config.bounds.bottom) / 2;
+
+      for (const entry of this.objects.values()) {
+        const { x, y } = entry.body.position;
+        Matter.Body.setPosition(entry.body, { x: x + dx, y: y + dy });
+
+        if (entry.originalPosition) {
+          entry.originalPosition = {
+            x: entry.originalPosition.x + dx,
+            y: entry.originalPosition.y + dy
+          };
+        }
+
+        if (entry.domShadowElement) {
+          const currentLeft = parseFloat(entry.domShadowElement.style.left) || 0;
+          const currentTop = parseFloat(entry.domShadowElement.style.top) || 0;
+          entry.domShadowElement.style.setProperty('left', `${currentLeft + dx}px`, 'important');
+          entry.domShadowElement.style.setProperty('top', `${currentTop + dy}px`, 'important');
+        }
+      }
+    }
+
     // Update canvas dimensions
     this.canvas.width = width;
     this.canvas.height = height;
