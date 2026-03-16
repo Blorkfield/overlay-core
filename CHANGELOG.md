@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.3
+
+### Patch Changes
+
+- d29669d: fix: mobile support
+
 ## 0.11.2
 
 ### Patch Changes
