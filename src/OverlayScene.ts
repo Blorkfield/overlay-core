@@ -1109,7 +1109,7 @@ export class OverlayScene {
 
   resize(width: number, height: number): void {
     // Translate all objects to keep them centred in the new canvas
-    if (this.config.rescaleOnResize) {
+    if (this.config.recenterOnResize) {
       const dx = (width - this.config.bounds.right) / 2;
       const dy = (height - this.config.bounds.bottom) / 2;
 

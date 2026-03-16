@@ -229,7 +229,7 @@ async function createScene(width: number, height: number): Promise<void> {
     bounds: { top: 0, bottom: height, left: 0, right: width },
     gravity: { x: isNaN(gx) ? 0 : gx, y: isNaN(gy) ? -1 : gy },
     wrapHorizontal: true,
-    rescaleOnResize: true,
+    recenterOnResize: true,
     debug: false,
     background: { color: '#16213e' },
     floorConfig: {

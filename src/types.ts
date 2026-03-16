@@ -25,7 +25,7 @@ export interface OverlaySceneConfig {
    * Useful for responsive canvases and phone rotation (portrait ↔ landscape).
    * Default: false
    */
-  rescaleOnResize?: boolean;
+  recenterOnResize?: boolean;
 }
 
 /**
