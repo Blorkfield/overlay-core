@@ -161,6 +161,8 @@ export class OverlayScene {
   private pressureObstacleIds: Set<string> = new Set();
   // Active collision pairs: id -> Set of ids currently colliding with it
   private activeCollisions: Map<string, Set<string>> = new Map();
+  // DOM shadow elements whose parent entry has been removed (live body despawned after collapse)
+  private orphanedDOMShadows: Set<HTMLElement> = new Set();
 
   static createContainer(
     parent: HTMLElement,
@@ -811,9 +813,9 @@ export class OverlayScene {
           transform: entry.domElement.style.transform
         }
       });
-      shadowElement.style.setProperty('left', `${computedLeft}px`, 'important');
-      shadowElement.style.setProperty('top', `${computedTop}px`, 'important');
-      shadowElement.style.setProperty('transform', 'rotate(0deg)', 'important');
+      shadowElement.style.left = `${computedLeft}px`;
+      shadowElement.style.top = `${computedTop}px`;
+      shadowElement.style.transform = 'rotate(0deg)';
       // Insert shadow before the original element
       entry.domElement.parentNode?.insertBefore(shadowElement, entry.domElement);
       entry.domShadowElement = shadowElement;
@@ -953,6 +955,7 @@ export class OverlayScene {
     Matter.Events.off(this.engine, 'collisionEnd', this.handleCollisionEnd);
     Matter.Engine.clear(this.engine);
     this.objects.clear();
+    this.orphanedDOMShadows.clear();
     this.gravityOverrideEntries.clear();
     this.followWindowEntries.clear();
     this.pressureObstacleIds.clear();
@@ -1125,15 +1128,26 @@ export class OverlayScene {
         }
 
         if (entry.domElement && entry.tags.includes('static')) {
-          this.updateDOMElementTransform(entry);
+          const currentLeft = parseFloat(entry.domElement.style.left) || 0;
+          const currentTop = parseFloat(entry.domElement.style.top) || 0;
+          entry.domElement.style.left = `${currentLeft + dx}px`;
+          entry.domElement.style.top = `${currentTop + dy}px`;
         }
 
         if (entry.domShadowElement) {
           const currentLeft = parseFloat(entry.domShadowElement.style.left) || 0;
           const currentTop = parseFloat(entry.domShadowElement.style.top) || 0;
-          entry.domShadowElement.style.setProperty('left', `${currentLeft + dx}px`, 'important');
-          entry.domShadowElement.style.setProperty('top', `${currentTop + dy}px`, 'important');
+          entry.domShadowElement.style.left = `${currentLeft + dx}px`;
+          entry.domShadowElement.style.top = `${currentTop + dy}px`;
         }
+      }
+
+      // Also translate DOM shadow elements whose parent entry has already despawned
+      for (const shadowEl of this.orphanedDOMShadows) {
+        const currentLeft = parseFloat(shadowEl.style.left) || 0;
+        const currentTop = parseFloat(shadowEl.style.top) || 0;
+        shadowEl.style.left = `${currentLeft + dx}px`;
+        shadowEl.style.top = `${currentTop + dy}px`;
       }
     }
 
@@ -1544,6 +1558,9 @@ export class OverlayScene {
         this.activeCollisions.get(otherId)?.delete(id);
       }
       this.activeCollisions.delete(id);
+    }
+    if (entry.domShadowElement) {
+      this.orphanedDOMShadows.add(entry.domShadowElement);
     }
     this.objects.delete(id);
   }
@@ -3084,10 +3101,9 @@ export class OverlayScene {
     const width = entry.domElement.offsetWidth;
     const height = entry.domElement.offsetHeight;
 
-    // Use setProperty with 'important' to override any CSS rules
-    entry.domElement.style.setProperty('left', `${x - width / 2}px`, 'important');
-    entry.domElement.style.setProperty('top', `${y - height / 2}px`, 'important');
-    entry.domElement.style.setProperty('transform', `rotate(${angleDeg}deg)`, 'important');
+    entry.domElement.style.left = `${x - width / 2}px`;
+    entry.domElement.style.top = `${y - height / 2}px`;
+    entry.domElement.style.transform = `rotate(${angleDeg}deg)`;
   }
 
   /** TTL expiration + below-floor despawn in a single O(N) pass */
