@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.7
+
+### Patch Changes
+
+- 84b7a4c: fix: shadow recenter
+
 ## 0.11.6
 
 ### Patch Changes
