@@ -215,9 +215,11 @@ scene.spawnObject({
 });
 ```
 
+**Positioning convention:** overlay-core sets `position: absolute` on the element and owns `left`, `top`, and `transform` entirely via inline styles. Position is expressed as `left: x - width/2; top: y - height/2` (body centre → top-left corner). Rotation is applied via `transform: rotate(angle)`. Do not set `left`, `top`, or `transform` on the element yourself — they will be overwritten. To place the element before spawn, set it off-screen or hidden; overlay-core writes the correct position on `spawnObject` for both static and dynamic elements, so it is visible and correctly placed immediately after the call returns.
+
 When a DOM element collapses:
-- The element's CSS transform is updated each frame to follow physics
-- Shadow creates a cloned DOM element at the original position
+- The element follows its physics body each frame via `left`/`top` updates
+- If `shadow` is configured, a cloned DOM element is left at the original spawn position
 
 ```typescript
 // Get the shadow element after collapse (if shadow was configured)
@@ -555,7 +557,7 @@ const scene = new OverlayScene(canvas, {
 | `floorConfig.minIntegrity` | none | Minimum segments required, otherwise all collapse |
 | `floorConfig.segmentWidths` | none | Proportional widths for each segment (array that sums to 1.0) |
 | `despawnBelowFloor` | 1.0 | Distance below floor to despawn objects (as fraction of height) |
-| `recenterOnResize` | false | Translate all objects to stay centred when canvas dimensions change — useful for phone rotation and responsive layouts |
+| `recenterOnResize` | false | Translate all objects to stay centred when canvas dimensions change — useful for phone rotation and responsive layouts. Applies to all object types including static DOM obstacles (their CSS `left`/`top` is updated immediately at resize time, not deferred to the next frame). |
 
 ### Background Configuration
 

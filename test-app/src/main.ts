@@ -731,7 +731,7 @@ btnSpawnDomLorem.addEventListener('click', () => {
     'font-size:13px',
     'line-height:1.5',
     'font-family:system-ui,sans-serif',
-    'pointer-events:none',
+    'cursor:pointer',
   ].join(';');
   el.textContent = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
   sceneWrapper.appendChild(el);
@@ -739,7 +739,14 @@ btnSpawnDomLorem.addEventListener('click', () => {
   requestAnimationFrame(() => {
     const x = (canvas?.width ?? 800) / 2;
     const y = (canvas?.height ?? 600) / 3;
-    scene!.spawnObject({ element: el, x, y, tags: ['static'] });
+    scene!.spawnObject({
+      element: el,
+      x,
+      y,
+      tags: ['static'],
+      clickToFall: { clicks: 2 },
+      shadow: { opacity: 0.4 },
+    });
   });
 });
 
