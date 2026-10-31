@@ -1,5 +1,11 @@
 # @blorkfield/overlay-core
 
+## 0.11.8
+
+### Patch Changes
+
+- 92b433c: chore: machine handoff 2026 10 31
+
 ## 0.11.7
 
 ### Patch Changes
