@@ -203,6 +203,50 @@ context it applies to **and** which `[Jitter]` reporting mode (instantaneous or
 changed once (`a0b307e`) without every anchor being re-measured, and it can
 again.
 
+**A crouched-idle steadiness gate reads a per-draw statistic at matched offsets, never one draw's max
+over a set.** The max of the final `crouch_idle`'s Segment2 peak over a 15-draw set is one draw's
+extreme. The control alone reads 3.27 / 4.19 / 4.07 / 4.17 / 3.29 / 4.64 / 3.59 / 4.34 over offsets 0–119.
+Half its draws log no idle `[Jitter]` line at all (59 of 120 quiet, score under 15); the shipped
+floor-turned arm logs 16 of 120 quiet. Measured on card
+`a-crouched-idle-yaw-steadiness-gate-separates-two-arms-instead-of-reading-one-draw-s-max-over-15`
+(`crouch_turn_alternate`, sole, HEAD `27d992b`, logs `dev/euphoria/logs/T4.4/ys/g1`, local only;
+calibration `ys/CALIBRATION.md`). **The gate:** per draw, take the idle peak; a quiet draw is its own
+class, the lowest. Two statistics are summed over 60 matched draws (offsets 0–59, one binary), with
+d = arm − ref:
+- **E** = Σ max(0, peak − 3): fails when Σd > +11.
+- **H** = draws with peak > 5 rad/s: fails when Σd > +4.
+
+The gate fails on either. It is calibrated on the sign-flip null of two no-change pairs (control and
+shipped arm, each at offset 2i vs 2i+1): P(false fail) 0.041 / 0.000. The arm's null is the wider one,
+since the control never passes 5. It separates the arm without `8a0c92d`
+(`T44_YAW_TWIN_CROUCH_D=1 T44_YAW_TWIN_IDLE_K=3`) from the arm with it: E +47.2, H +10 (13 vs 3 draws
+> 5 of 60), FAIL; the reverse reads ok. At 30 draws E's power drops to 0.90 and H's to 0.57, so 60 is the
+count; fewer is "not enough to gate". Whether a draw logs a line at all does not separate them (+5,
+bound +9). Reader: `python3 -I dev/euphoria/logs/T4.4/ys/idlegate.py <absdir> <ref> <arm>`; null and
+candidates: `null.py <dir> <arm> 60`. Gate a floor-turned fix against the arm without its switch, as
+below. The shipped arm against the control reads FAIL on E (+22.7): report it, do not gate it. Pass
+`arms.sh` an **absolute** log dir; a relative `--log` is not written anywhere.
+
+**A crouched-idle lift-off kick gate reads `[StepKick]`, is gated against the arm without the fix, and never asks
+for 0.** `STEP_KICK_TRACE=1` (FootStepper) logs one line per `[Step] X triggered`: the largest |Δω_y| of lTorso
+over the tick before the trigger, the trigger tick and the two after. It runs on every arm, the control included.
+`ys/liftkick.py` (over `[TwinTrace]`, twin arms only) is superseded: its window is one tick late and blind where
+the twin logs no row, so it read 18 where `[StepKick]` reads 20 on the same logs. Measured on card
+`a-crouched-idle-lift-off-kick-gate-is-calibrated-against-the-control-and-its-own-draw-noise-before-any-build-is-asked-for-zero-kicks`
+(`crouch_turn_alternate`, sole, HEAD `8883481` + the reader, logs `dev/euphoria/logs/T4.4/ys/kg1`, local only;
+calibration `ys/CALIBRATION.md`). Final crouch_idle kicks > 3 rad/s, per 15-draw set over offsets 0–59:
+- control: 1 / 2 / 2 / 1 (6)
+- control `EXT_OFF=YawTorque`: 0 / 0 / 0 / 0, on 4× the control's triggers
+- shipped arm: 6 / 3 / 3 / 8 (20)
+
+The control's count moves when the torque is removed, so it is bought and is not the gate. The no-torque 0 comes
+from a body with no heading hold. **The gate:** per draw, K = kicks with dw > 3 and X = Σ max(0, dw − 3). Each is
+differenced at matched offsets 0–59 (d = arm − ref) and summed. It fails when Σd K > +11 or Σd X > +20.
+P(false fail) is 0.048 on the shipped arm's 2i / 2i+1 sign-flip null (one sign per pair for both) and 0.000 on
+the control's. It is coarse. The arm against the control reads K +14 / X +21.5 on 0–59 (FAIL) but K +10 / X +7.5
+on 60–119 (ok), so a kick change under ~12 per 60 draws is "not distinguishable". Reader:
+`python3 -I dev/euphoria/logs/T4.4/ys/kickgate.py <absdir> <ref> <arm>`; null: `kickgate.py --null <dir> <arm>`.
+
 Jitter scores that increase monotonically over time (not plateau) indicate slow energy accumulation — a positive feedback loop, not an equilibrium oscillation. These must be diagnosed differently from steady-state jitter.
 
 ### Speed Oscillation Ratio
@@ -233,6 +277,7 @@ Measure `peak_speed / trough_speed` per step cycle. In the IvM logs, trough is j
 | Jitter Seg2 growing over time | Slow energy injection — not plateau oscillation |
 | `swingYaw` > ±3° | Yaw contamination in leg swing — check liftAxis derivation |
 | speed oscillation ratio > 2.0 | Foot impact too hard — LandingRampTicks too short |
+| `[SwingMiss] errLat` / `out` | `errLat` = `(target − foot) · rightFlat`, and `rightFlat` (`StepFrameRight()`, the anchor's `Basis.Y`) points to the character's **left** (`[StopTrace]`'s `right` = −rightFlat). Its sign alone does not say which side of its target the foot ended on: L is outside when errLat < 0, R when errLat > 0, so **\|errLat\| mixes a foot flung outside its target with a foot left inside a lateral target** (crouch_stop sole base arm: 27 \|errLat\| > 0.15 m misses, 1 outside). Gate on `out=` (on `[SwingMiss]` and `[Step] planted`): the foot's distance outside its target on its own side, negative = inside. |
 | `[SoleAnkle] specShare` > 0 | Some of the impulse readback came from speculative (non-touching) contact points — treat that fraction as unreliable |
 | `[SoleAnkle] cop` | The engine's impact estimate weighted over touching points, **not** the solved centre of pressure. Read +0.140–0.146 m in every arm and variant (lean ×0.5 included) while `sCopSs` moved +0.034 → +0.115 m. Never gate on it; gate on `sCopSs` (solved single-support CoP). Logs `dev/euphoria/logs/toeroom/` |
 | `[SoleAnkle] capTk` | Counts the **heel** cap (`SOLE_HEEL_CAP`: toe-up spring demand past `HeelCapBudget`), not a toe limit. Upright walking's budget is `SoleCapLever` = 0, so any toe-up demand counts. Moving the CoM back over the foot *raises* it (0 → 57–83 capped stances), so "cop low" and "capped ≤ control + 5" pull in opposite directions — never write both as gates |

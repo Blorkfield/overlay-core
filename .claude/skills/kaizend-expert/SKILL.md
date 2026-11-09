@@ -65,6 +65,7 @@ spends tokens on a different job.
 |---|---|---|
 | **Work** | live | `runner.dart` (the one resident run), `decision.dart` (pick), `status_writer.dart` (apply) |
 | **Unblock** | live (S9), **button only** since 2026-09-05 | `unblock.dart` (pure) + `unblock_executor.dart` (real AI re-attempt over the `WorkerDriver` seam, routed through `applyWorkerResult`). Reached only through `POST …/runner/unblock` and the chip that calls it — the runner never starts one on its own (`the-runner-stops-unblocking-on-its-own`): a person reads the card's `## Blockers` questions, writes into the `**A:**` slots, and presses the button |
+| **Review** | live | `review.dart` (pure) + `review_executor.dart` + `review_evidence.dart`. A fresh context judges each finished card in Work's verify column (no roles of its own, like Unblock), quoting evidence per criterion; a pass routes to Work's output through `applyWorkerResult`, a failure goes back through `rejectCard`, the third rejection lands in Work's error column. The resident loop runs it only under `autonomy: reviewed`; `POST …/runner/review` and the chip run it by hand |
 | **Garbage time (General, S10a)** | live (S10 Commit C) | `garbage_time.dart` (pure picker/scope/promotion) + `garbage_time_executor.dart` (button pass over the `WorkerDriver` seam → `applyWorkerResult`). Subsumes the old "Audit pass" idea (wiki/audit work is configured here) |
 | **Garbage time (Wind-down, S10b)** | live (S10 Commit B) | a runner-loop step (`runner.dart _windDownGarbageTime`), not a pass — drains small gc on wind-down + the small→large promotion counter |
 | **Post-completion obligations** | live (S11) | `obligations.dart` + the `applyWorkerResult` hook; config-driven `completionObligations` auto-create follow-up cards via the shared `BoardStore.createCard` primitive |
@@ -571,8 +572,8 @@ bundle and the client-side deliverer recorded under "Beyond the port").
   waiting on a human that way burns the card's spend budget until the guard
   force-blocks it anyway.
 - **The dial decides where a completion lands**, not the worker alone.
-  `PassAutonomy` (`autonomy:` under `orchestrator:`; four stops —
-  `always_verify` / `worker_decides` / `trusted` / `never_verify`) crossed with
+  `PassAutonomy` (`autonomy:` under `orchestrator:`; five stops —
+  `always_verify` / `reviewed` / `worker_decides` / `trusted` / `never_verify`) crossed with
   the worker's verdict, in `routeCompletion` at the `applyWorkerResult` seam.
   Defaults are computed, never written to disk: verify column unbound →
   `never_verify` whatever the file says; bound with `autonomy:` unset →

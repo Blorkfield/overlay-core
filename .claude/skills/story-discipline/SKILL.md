@@ -1,6 +1,6 @@
 ---
 name: story-discipline
-description: "How this shop turns a request into work: every task the user gives you becomes a board card BEFORE the work starts, written with title/area/tags and always both context: and effort:, created through POST /v1/boards/{board}/cards with your own X-Kaizend-Context header, and edited through the API rather than the file on disk. Also covers the way out: every card a session works lands in a column and carries a ## Handoff log entry before you report back. A card whose done-line came true goes to 05_TESTING/06_DONE; one that did not has exactly three exits, and you pick it, never the user — (1) the rest of the work lives in other cards, so depends_on them and back to 01_TODO; (2) 08_FAILED with a concrete retry plan a fresh context can run; (3) it truly cannot be done or only the user can decide, so tell them the real reason (08_FAILED or 03_STUCK with question-shaped blockers). Never close an unmet card as 'answered' or 'premise refuted', and never hand the column choice back. A finding that names work becomes its own card, and an unmeetable acceptance criterion is itself a finding to file. Not a keyword skill — it applies to every task, in every repo."
+description: "How this shop turns a request into work: every task the user gives you becomes a board card BEFORE the work starts, written with title/area/tags and always both context: and effort:, created through POST /v1/boards/{board}/cards with your own X-Kaizend-Context header, and edited through the API rather than the file on disk. Also covers the way out: every card a session works lands in a column and carries a ## Handoff log entry before you report back. A card whose done-line came true goes to 06_DONE; one that did not has exactly three exits, and you pick it, never the user — (1) the rest of the work lives in other cards, so depends_on them and back to 01_TODO; (2) 08_FAILED with a concrete retry plan a fresh context can run; (3) it truly cannot be done or only the user can decide, so tell them the real reason (08_FAILED or 03_STUCK with question-shaped blockers). Never close an unmet card as 'answered' or 'premise refuted', and never hand the column choice back. A finding that names work becomes its own card, and an unmeetable acceptance criterion is itself a finding to file. Not a keyword skill — it applies to every task, in every repo."
 ---
 
 # Story Discipline
@@ -54,8 +54,13 @@ If yes:
 
 | Outcome | Column |
 |---|---|
-| Every task done and the evidence is in hand (suite green, behaviour verified) | `05_TESTING` — the human verification gate is the user's, not yours to skip |
-| Verified by the user in this session, or the card carries no gate | `06_DONE` |
+| Every task done and the evidence is in hand (suite green, behaviour verified) | `06_DONE` |
+
+**Nobody is coming to look.** The user does not do acceptance testing, so there is no human gate and
+finished work does not wait in `05_TESTING`. Never end a report by asking the user to run, watch or
+eyeball something. A question the automated tests cannot answer is a gap in the tests: expand them
+(a new scenario, log signal or assertion) and finish on what they measure, or file a card for the
+gap. A product decision only the user can make is exit 3 below.
 
 If no, the card has **exactly three exits**. Decide which one it is yourself; it is never the
 user's job to sort it:
@@ -69,7 +74,7 @@ user's job to sort it:
 Never:
 
 - **Close a card whose done-line did not come true.** "Answered, not fixed", "premise refuted",
-  "closed at the user's request", "nothing to fix" — none is a way into `05_TESTING` or `06_DONE`.
+  "closed at the user's request", "nothing to fix" — none is a way into `06_DONE`.
   A refuted premise means you learned *why* the work is elsewhere (exit 1), what to try next
   (exit 2), or that it can't be done (exit 3). Pick one.
 - **Hand the column decision back** — "move it back if you'd rather", "you can put it in TESTING
@@ -95,7 +100,7 @@ chat scrolls away; the column is the record of where the work actually landed.
 ```bash
 curl -sS -X POST "$KAIZEND_SERVER_URL/v1/boards/blorkfield/cards/<id>/move" \
   -H "Authorization: Bearer $KAIZEND_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"toColumn": "05_TESTING"}'
+  -d '{"toColumn": "06_DONE"}'
 ```
 
 ### The handoff log
@@ -282,8 +287,9 @@ is:
 
 - **Specific** — names the exact thing checked, not "it works" or "looks correct".
 - **Measurable** — a number, a threshold, a log tag, or an explicit before/after.
-- **Readable by automation, or explicitly a human check** — a purely visual
-  criterion with no signal to read is a question for the user, not a criterion.
+- **Readable by automation** — a purely visual criterion with no signal to read
+  is not a criterion. Building the signal (a log field, a diag, a scenario) is
+  part of the card.
 - **Not padding** — no criterion that restates another.
 
 Good: `"dotnet build exits 0 with no errors after the rename."` ·
@@ -451,4 +457,4 @@ curl -sS -X PATCH "$KAIZEND_SERVER_URL/v1/boards/blorkfield/cards/<id>" \
   -d '{"fields": {"effort": "high"}}'
 ```
 
-Move with `POST .../cards/<id>/move` (`{"toColumn": "05_TESTING"}`). Same rule: the API, not the folder.
+Move with `POST .../cards/<id>/move` (`{"toColumn": "06_DONE"}`). Same rule: the API, not the folder.
